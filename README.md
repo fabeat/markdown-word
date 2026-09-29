@@ -9,24 +9,28 @@ Parsing is done by [`league/commonmark`][commonmark], writing by
 [`phpoffice/phpword`][phpword]. Everything in between — mapping the Markdown
 syntax tree onto Word's document model — is this library.
 
+**Markdown to Word:**
+
 ```php
 use MarkdownWord\MarkdownToWord;
 
 (new MarkdownToWord())->save(file_get_contents('README.md'), 'README.docx');
 ```
 
-Or from a terminal, with no PHP to write:
-
-```sh
-mdword to-docx README.md
-```
-
-And back out again:
+**Word to Markdown:**
 
 ```php
 use MarkdownWord\WordToMarkdown;
 
 echo (new WordToMarkdown())->convert('README.docx');
+```
+
+Or from a terminal, with no PHP to write. The direction is worked out from the
+file, so there is nothing to choose:
+
+```sh
+mdword README.md          # writes README.docx
+mdword README.docx        # writes README.md
 ```
 
 ## Why it exists
@@ -95,13 +99,13 @@ version is exercised.
 
 ## Word to Markdown
 
-The same mapping runs in reverse:
+The same mapping runs in reverse, and the interface mirrors the way in:
 
 ```php
 use MarkdownWord\WordToMarkdown;
 
-$markdown = (new WordToMarkdown())->convert('report.docx');
-(new WordToMarkdown())->save('report.docx', 'report.md');
+echo (new WordToMarkdown())->convert('report.docx');      // as a string
+(new WordToMarkdown())->save('report.docx', 'report.md'); // straight to a file
 ```
 
 A Word document is a lower-fidelity form of the Markdown it came from, so the
@@ -151,23 +155,16 @@ at side by side.
 
 ## Command line
 
-Everything the library does is available as `mdword`, so a document can be
-converted without writing any PHP:
-
-```sh
-mdword README.md          # writes README.docx
-mdword README.docx        # writes README.md
-```
+`mdword` is the whole library at a terminal, and it works out for itself which
+way the data has to go. A Word document is a zip archive and Markdown is text,
+and the four bytes that say which is which are part of the format rather than a
+convention — so the *name* of the file is never consulted, and a Markdown file
+called `notes.docx` still converts the right way. `--to docx` or
+`--to markdown` says it outright, which is the only way to be explicit when
+reading from a pipe.
 
 From a checkout, `php bin/mdword`. As a single file with nothing installed,
 `php mdword.phar`.
-
-The direction is worked out from the file. A Word document is a zip archive and
-Markdown is text, and the four bytes that say which is which are part of the
-format rather than a convention — so the *name* of the file is never consulted, and
-a Markdown file called `notes.docx` still converts the right way. `--to docx` or
-`--to markdown` says it outright, which is the only way to be explicit when
-reading from a pipe.
 
 The commands still exist for a script to use, where being explicit is worth more
 than being short:
