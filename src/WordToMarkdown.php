@@ -18,8 +18,14 @@ use RuntimeException;
  * Converts a Word document back into Markdown.
  *
  * ```php
- * $markdown = (new WordToMarkdown())->convert('report.docx');
- * $markdown = (new WordToMarkdown())->convertString($bytes);
+ * // A file, named once and converted to a string.
+ * echo (new WordToMarkdown('report.docx'))->convert();
+ *
+ * // File to file.
+ * (new WordToMarkdown('report.docx'))->save('report.md');
+ *
+ * // Bytes already in hand.
+ * echo (new WordToMarkdown($bytes))->toMarkdown();
  * ```
  *
  * This is the inverse of {@see \MarkdownWord\MarkdownToWord}, and the two together
@@ -35,8 +41,14 @@ use RuntimeException;
  */
 final class WordToMarkdown
 {
-    public function __construct(private readonly Options $options = new Options())
-    {
+    /**
+     * @param string|null $source The document to convert: a path, or the bytes
+     *        of one. Null leaves the choice to {@see self::toMarkdown()}.
+     */
+    public function __construct(
+        private readonly ?string $source = null,
+        private readonly Options $options = new Options(),
+    ) {
     }
 
     public function getOptions(): Options
@@ -45,27 +57,50 @@ final class WordToMarkdown
     }
 
     /**
-     * Convert a `.docx` file.
+     * Convert the source given to the constructor.
+     *
+     * Written to `$target` when there is one, and returned either way, so the
+     * same call serves a string and a file.
+     *
+     * @throws RuntimeException when no source was given.
      */
-    public function convert(string $path): string
+    public function convert(?string $target = null): string
     {
-        if (!is_file($path)) {
-            throw new RuntimeException(sprintf('"%s" does not exist.', $path));
+        if ($this->source === null) {
+            throw new RuntimeException(
+                'There is no document to convert. Give one to the constructor, '
+                . 'or the bytes to ' . self::class . '::toMarkdown().',
+            );
         }
 
-        $package = Package::open($path);
+        $package = Package::fromString(Input::document($this->source));
 
         try {
-            return $this->write($package);
+            $markdown = $this->write($package);
         } finally {
             $package->close();
         }
+
+        if ($target !== null) {
+            file_put_contents($target, $markdown);
+        }
+
+        return $markdown;
     }
 
     /**
-     * Convert a `.docx` held in memory.
+     * Convert the source and write the Markdown to a file.
      */
-    public function convertString(string $bytes): string
+    public function save(string $target): void
+    {
+        $this->convert($target);
+    }
+
+    /**
+     * Convert a document held in memory, the counterpart of
+     * {@see \MarkdownWord\MarkdownToWord::toDocx()}.
+     */
+    public function toMarkdown(string $bytes): string
     {
         $package = Package::fromString($bytes);
 
@@ -90,18 +125,6 @@ final class WordToMarkdown
             return $this->reader($package)->read($package);
         } finally {
             $package->close();
-        }
-    }
-
-    /**
-     * Convert a document and write the result to a file.
-     */
-    public function save(string $docxPath, string $markdownPath): void
-    {
-        $markdown = $this->convert($docxPath);
-
-        if (file_put_contents($markdownPath, $markdown) === false) {
-            throw new RuntimeException(sprintf('Unable to write "%s".', $markdownPath));
         }
     }
 

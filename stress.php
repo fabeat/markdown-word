@@ -150,11 +150,11 @@ foreach ($configurations as $configName => $config) {
         $checks++;
 
         try {
-            $converter = new MarkdownToWord($config ?? new Configuration(), $parser);
+            $converter = new MarkdownToWord(null, $config ?? new Configuration(), $parser);
             $phpWord = $converter->toPhpWord($markdown);
 
             $path = $work . '/out.docx';
-            $converter->save($markdown, $path);
+            file_put_contents($path, $converter->toDocx($markdown));
 
             if (!is_file($path) || filesize($path) < 100) {
                 throw new RuntimeException('the document is empty');

@@ -132,13 +132,14 @@ it('a custom parser can be supplied', function () {
         }
     };
 
-    $document = (new \MarkdownWord\MarkdownToWord(new Configuration(), $parser))->toPhpWord('ignored');
+    $document = (new \MarkdownWord\MarkdownToWord(null, new Configuration(), $parser))->toPhpWord('ignored');
 
     expect(TextExtractor::fromPhpWord($document))->toBe('Only this');
 });
 
 it('the common mark only parser leaves gfm syntax alone', function () {
     $converter = new \MarkdownWord\MarkdownToWord(
+        null,
         new Configuration(),
         CommonMarkParser::commonMarkOnly(),
     );
@@ -154,6 +155,7 @@ it('the common mark only parser leaves gfm syntax alone', function () {
 
 it('the extended parser adds footnotes', function () {
     $converter = new \MarkdownWord\MarkdownToWord(
+        null,
         new Configuration(),
         CommonMarkParser::extended(),
     );

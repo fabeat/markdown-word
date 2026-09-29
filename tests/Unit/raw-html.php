@@ -37,11 +37,7 @@ function renderHtml(string $markdown, array $options = []): array
 {
     $file = Scratch::path('html');
 
-    saveDocument(
-        new MarkdownToWord(Configuration::create()->withOptions($options)),
-        $markdown,
-        $file,
-    );
+    saveDocument($markdown, $file, Configuration::create()->withOptions($options));
 
     return [
         'xml' => TemplateFactory::xmlOf($file),

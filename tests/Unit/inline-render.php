@@ -241,14 +241,10 @@ it('carries the alt text of an embedded image', function () {
     Scratch::image('inline.png');
 
     $file = Scratch::path('image-alt');
-    saveDocument(
-        new MarkdownToWord(Configuration::create()->withOptions([
-            'images' => Options::IMAGE_EMBED,
-            'imageBasePath' => Scratch::directory(),
-        ])),
-        '![A red square](inline.png)',
-        $file,
-    );
+    saveDocument('![A red square](inline.png)', $file, Configuration::create()->withOptions([
+        'images' => Options::IMAGE_EMBED,
+        'imageBasePath' => Scratch::directory(),
+    ]));
 
     // An image with no alt text is in the document and its meaning is not, so the
     // text the Markdown supplied has to survive into the file.

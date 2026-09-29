@@ -25,7 +25,7 @@ use PhpOffice\PhpWord\Style\Paragraph;
  */
 function convertTo(string $markdown, ?Configuration $config = null, ?PhpWord $phpWord = null): PhpWord
 {
-    return (new MarkdownToWord($config ?? new Configuration()))->toPhpWord($markdown, $phpWord);
+    return (new MarkdownToWord(null, $config ?? new Configuration()))->toPhpWord($markdown, $phpWord);
 }
 
 /**
@@ -53,7 +53,7 @@ function renderSection(string $markdown, ?Configuration $config = null): Abstrac
  */
 function renderText(string $markdown, ?Configuration $config = null): string
 {
-    $converter = new MarkdownToWord($config ?? new Configuration());
+    $converter = new MarkdownToWord(null, $config ?? new Configuration());
 
     return TextExtractor::fromPhpWord(
         $converter->toPhpWord($markdown),
@@ -322,7 +322,7 @@ function withoutUpstreamDeprecations(callable $work): mixed
 function toDocx(string $markdown, ?Configuration $config = null): string
 {
     return withoutUpstreamDeprecations(
-        static fn (): string => (new MarkdownToWord($config ?? new Configuration()))->toDocx($markdown),
+        static fn (): string => (new MarkdownToWord(null, $config ?? new Configuration()))->toDocx($markdown),
     );
 }
 
@@ -348,13 +348,13 @@ pest()->afterEach(function (): void {
 /**
  * Write a `.docx` file.
  *
- * The wrapper is only there for the upstream deprecation described above; from
- * the test's point of view this is `save()`.
+ * The guard is only there for the upstream deprecation described above; from the
+ * test's point of view this is `(new MarkdownToWord($markdown))->save($path)`.
  */
-function saveDocument(MarkdownToWord $converter, string $markdown, string $path): void
+function saveDocument(string $markdown, string $path, ?Configuration $config = null): void
 {
-    withoutUpstreamDeprecations(static function () use ($converter, $markdown, $path): void {
-        $converter->save($markdown, $path);
+    withoutUpstreamDeprecations(static function () use ($markdown, $path, $config): void {
+        (new MarkdownToWord($markdown, $config ?? new Configuration()))->save($path);
     });
 }
 
@@ -363,7 +363,7 @@ function saveDocument(MarkdownToWord $converter, string $markdown, string $path)
  */
 function saveMarkdown(string $markdown, string $path): void
 {
-    saveDocument(new MarkdownToWord(), $markdown, $path);
+    saveDocument($markdown, $path);
 }
 
 /**

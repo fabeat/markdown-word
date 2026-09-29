@@ -19,14 +19,21 @@ use MarkdownWord\Render\StyleResolver;
 use MarkdownWord\Writer\DocxWriter;
 use PhpOffice\PhpWord\Element\AbstractContainer;
 use PhpOffice\PhpWord\PhpWord;
+use RuntimeException;
 
 /**
  * Converts Markdown into a Word document.
  *
  * ```php
+ * // Markdown in a string, a document out.
  * $converter = new MarkdownToWord();
  * $phpWord = $converter->toPhpWord('# Hello *World*');
- * $converter->save('# Hello', 'hello.docx');
+ *
+ * // A file in, a file out.
+ * (new MarkdownToWord('notes.md'))->save('notes.docx');
+ *
+ * // A file in, bytes out.
+ * $bytes = (new MarkdownToWord('notes.md'))->convert();
  * ```
  *
  * The parser is `league/commonmark`, so CommonMark and GitHub-Flavored Markdown
@@ -39,7 +46,12 @@ final class MarkdownToWord
 
     private ?ImageDescriptionCollector $images = null;
 
+    /**
+     * @param string|null $source The Markdown to convert: a path, or the text
+     *        itself. Null leaves the choice to {@see self::toDocx()} and friends.
+     */
     public function __construct(
+        private readonly ?string $source = null,
         private readonly Configuration $config = new Configuration(),
         private readonly ?MarkdownParserInterface $parser = null,
     ) {
@@ -100,17 +112,44 @@ final class MarkdownToWord
     }
 
     /**
-     * Write Markdown straight to a `.docx` file.
+     * Convert the source given to the constructor.
+     *
+     * Written to `$target` when there is one, and returned either way, so the
+     * same call serves a string and a file.
+     *
+     * @throws RuntimeException when no source was given.
      */
-    public function save(string $markdown, string $path, ?PhpWord $phpWord = null): void
+    public function convert(?string $target = null): string
     {
-        $phpWord = $this->toPhpWord($markdown, $phpWord);
+        if ($this->source === null) {
+            throw new RuntimeException(
+                'There is no Markdown to convert. Give some to the constructor, '
+                . 'or to ' . self::class . '::toDocx().',
+            );
+        }
 
-        DocxWriter::write($phpWord, $path, $this->links, $this->images);
+        $markdown = Input::markdown($this->source);
+        $phpWord = $this->toPhpWord($markdown);
+        $bytes = DocxWriter::toString($phpWord, $this->links, $this->images);
+
+        if ($target !== null) {
+            file_put_contents($target, $bytes);
+        }
+
+        return $bytes;
     }
 
     /**
-     * Write Markdown to a `.docx` file and return its raw bytes.
+     * Convert the source and write the document to a file.
+     */
+    public function save(string $target): void
+    {
+        $this->convert($target);
+    }
+
+    /**
+     * Write Markdown to a `.docx` file and return its raw bytes, the counterpart
+     * of {@see \MarkdownWord\WordToMarkdown::toMarkdown()}.
      */
     public function toDocx(string $markdown, ?PhpWord $phpWord = null): string
     {

@@ -51,13 +51,13 @@ it('actually loads the corpora for the round trip', function () {
 function assertExampleSurvives(SpecExample $example): void
 {
     withoutUpstreamDeprecations(static function () use ($example): void {
-        $first = new MarkdownToWord(roundTripConfiguration());
+        $first = new MarkdownToWord(null, roundTripConfiguration());
         $docx = $first->toDocx($example->markdown);
         $before = normaliseRoundTripText($first, $example->markdown);
 
-        $markdown = (new WordToMarkdown())->convertString($docx);
+        $markdown = (new WordToMarkdown($docx))->convert();
 
-        $second = new MarkdownToWord(roundTripConfiguration());
+        $second = new MarkdownToWord(null, roundTripConfiguration());
         $second->toPhpWord($markdown);
         $after = normaliseRoundTripText($second, $markdown);
 

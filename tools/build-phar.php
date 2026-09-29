@@ -73,7 +73,10 @@ function run(string $command, string $what): void
     $output = [];
     $status = 0;
 
-    exec($command . ' 2>&1', $output, $status);
+    // Standard input is closed for the child, so that a Composer command asking
+    // a question — or waiting on one that was never asked — cannot leave the
+    // build waiting on a terminal that is not there.
+    exec($command . ' 2>&1 < /dev/null', $output, $status);
 
     if ($status !== 0) {
         fwrite(STDOUT, "failed\n");

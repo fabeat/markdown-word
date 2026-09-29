@@ -98,11 +98,11 @@ final class ToMarkdown implements Command
      */
     private function convert(CommandLine $command, ?string $input, string $output): string
     {
-        $reader = $this->application->reader($this->readingOptions($command));
+        // The document is named once, in the constructor, and converting it is
+        // then the one verb both directions share.
+        $reader = $this->application->reader($this->readingOptions($command), $this->readDocument($input));
 
-        $document = $this->readDocument($input);
-
-        return $this->withMedia($command, $output, static fn (): string => $reader->convertString($document));
+        return $this->withMedia($command, $output, static fn (): string => $reader->convert());
     }
 
     private function readDocument(?string $input): string

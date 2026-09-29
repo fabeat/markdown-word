@@ -536,14 +536,14 @@ final class Application
     /**
      * The converter, for callers that want the object rather than a written file.
      */
-    public function converter(Configuration $config): MarkdownToWord
+    public function converter(Configuration $config, ?string $source = null): MarkdownToWord
     {
-        return new MarkdownToWord($config);
+        return new MarkdownToWord($source, $config);
     }
 
-    public function reader(ReverseOptions $options): WordToMarkdown
+    public function reader(ReverseOptions $options, ?string $source = null): WordToMarkdown
     {
-        return new WordToMarkdown($options);
+        return new WordToMarkdown($source, $options);
     }
 
     public function template(string $path, Configuration $config, array $values): MarkdownTemplate

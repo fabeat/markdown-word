@@ -50,7 +50,7 @@ function conformanceConfiguration(): Configuration
 
 function assertExampleMatches(SpecExample $example): void
 {
-    $converter = new MarkdownToWord(conformanceConfiguration());
+    $converter = new MarkdownToWord(null, conformanceConfiguration());
     $phpWord = $converter->toPhpWord($example->markdown);
 
     $actual = normaliseDocumentText(TextExtractor::fromPhpWord(

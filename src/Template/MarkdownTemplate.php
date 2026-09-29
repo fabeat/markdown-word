@@ -75,6 +75,7 @@ final class MarkdownTemplate
         // different document, so hyperlinks are written as placeholders and
         // resolved once the output document exists.
         $this->converter = new MarkdownToWord(
+            null,
             $config->withOptions(['deferredHyperlinks' => true]),
         );
 

@@ -137,7 +137,7 @@ $docx = $work . '/sample.docx';
 
 check('Markdown converts to a Word document', static function () use ($sample, $docx): bool|string {
     UpstreamDeprecations::quietly(
-        static fn () => (new MarkdownToWord())->save($sample, $docx),
+        static fn () => (new MarkdownToWord($sample))->save($docx),
     );
 
     return is_file($docx) && filesize($docx) > 0 ? true : 'nothing was written';
@@ -182,7 +182,7 @@ check('the hyperlink placeholder did not survive into the document', static func
 $markdown = '';
 
 check('the document converts back to Markdown', static function () use ($docx, &$markdown): bool|string {
-    $markdown = (new WordToMarkdown())->convert($docx);
+    $markdown = (new WordToMarkdown($docx))->convert();
 
     return str_contains($markdown, '# Heading') ? true : 'the heading did not survive';
 });
@@ -211,11 +211,11 @@ check('a round trip keeps the text', static function () use ($markdown, $work): 
     $again = $work . '/again.docx';
 
     UpstreamDeprecations::quietly(
-        static fn () => (new MarkdownToWord())->save($markdown, $again),
+        static fn () => (new MarkdownToWord($markdown))->save($again),
     );
 
     $readBack = UpstreamDeprecations::quietly(
-        static fn (): string => (new WordToMarkdown())->convert($again),
+        static fn (): string => (new WordToMarkdown($again))->convert(),
     );
 
     $before = normalise($markdown);
@@ -231,14 +231,14 @@ check('a document in memory converts back too', static function () use ($sample)
         static fn (): string => (new MarkdownToWord())->toDocx($sample),
     );
 
-    $readBack = (new WordToMarkdown())->convertString($bytes);
+    $readBack = (new WordToMarkdown($bytes))->convert();
 
     return str_contains($readBack, '# Heading') ? true : 'the heading did not survive';
 });
 
 check('something that is not a document is reported, not swallowed', static function (): bool|string {
     try {
-        (new WordToMarkdown())->convertString('not a zip file');
+        (new WordToMarkdown('not a zip file'))->convert();
     } catch (RuntimeException) {
         return true;
     }

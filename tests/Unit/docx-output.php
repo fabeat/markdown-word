@@ -134,7 +134,7 @@ it('the table width is configurable', function () {
     $file = Scratch::path('out');
 
     $config = Configuration::create()->withOptions(['tableWidth' => 2500]);
-    saveDocument(new MarkdownToWord($config), "| a |\n| --- |\n| 1 |", $file);
+    saveDocument("| a |\n| --- |\n| 1 |", $file, $config);
 
     expect(TemplateFactory::xmlOf($file))->toContain('<w:tblW w:w="2500" w:type="pct"/>');
 });
@@ -143,7 +143,7 @@ it('a zero table width leaves the sizing to word', function () {
     $file = Scratch::path('out');
 
     $config = Configuration::create()->withOptions(['tableWidth' => 0]);
-    saveDocument(new MarkdownToWord($config), "| a |\n| --- |\n| 1 |", $file);
+    saveDocument("| a |\n| --- |\n| 1 |", $file, $config);
 
     $xml = TemplateFactory::xmlOf($file);
 
@@ -158,7 +158,7 @@ it('a custom table style keeps the full width', function () {
     $config = Configuration::create()->withStyles([
         \MarkdownWord\Configuration\Styles::TABLE => ['layout' => 'fixed'],
     ]);
-    saveDocument(new MarkdownToWord($config), "| a |\n| --- |\n| 1 |", $file);
+    saveDocument("| a |\n| --- |\n| 1 |", $file, $config);
 
     $xml = TemplateFactory::xmlOf($file);
 
@@ -229,7 +229,7 @@ it('embeds images from disk', function () {
     ]);
 
     $file = Scratch::path('out');
-    saveDocument(new MarkdownToWord($config), '![Logo](logo.png)', $file);
+    saveDocument('![Logo](logo.png)', $file, $config);
 
     $zip = new ZipArchive();
     $zip->open($file, ZipArchive::RDONLY);
@@ -249,10 +249,10 @@ it('embeds images from disk', function () {
 
 it('an image that cannot be read falls back to its alt text', function () {
     $file = Scratch::path('out');
-    saveDocument(new MarkdownToWord(Configuration::create()->withOptions([
+    saveDocument('![The logo](not-there.png)', $file, Configuration::create()->withOptions([
         'images' => Options::IMAGE_EMBED,
         'imageBasePath' => Scratch::directory(),
-    ])), '![The logo](not-there.png)', $file);
+    ]));
 
     expect(TemplateFactory::textOf($file))->toContain('The logo');
 });

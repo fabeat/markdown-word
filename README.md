@@ -14,7 +14,7 @@ syntax tree onto Word's document model — is this library.
 ```php
 use MarkdownWord\MarkdownToWord;
 
-(new MarkdownToWord())->save(file_get_contents('README.md'), 'README.docx');
+(new MarkdownToWord(file_get_contents('README.md')))->save('README.docx');
 ```
 
 **Word to Markdown:**
@@ -22,7 +22,17 @@ use MarkdownWord\MarkdownToWord;
 ```php
 use MarkdownWord\WordToMarkdown;
 
-echo (new WordToMarkdown())->convert('README.docx');
+echo (new WordToMarkdown('README.docx'))->convert();
+```
+
+The two classes have the same shape. The thing being converted goes in the
+constructor — a path, or the content itself — and `convert()` is the verb:
+
+```php
+(new MarkdownToWord('notes.md'))->convert();          // → the document's bytes
+(new MarkdownToWord('notes.md'))->save('notes.docx'); // → a file
+(new WordToMarkdown('notes.docx'))->convert();        // → the Markdown
+(new WordToMarkdown('notes.docx'))->save('notes.md'); // → a file
 ```
 
 Or from a terminal, with no PHP to write. The direction is worked out from the
@@ -104,8 +114,9 @@ The same mapping runs in reverse, and the interface mirrors the way in:
 ```php
 use MarkdownWord\WordToMarkdown;
 
-echo (new WordToMarkdown())->convert('report.docx');      // as a string
-(new WordToMarkdown())->save('report.docx', 'report.md'); // straight to a file
+echo (new WordToMarkdown('report.docx'))->convert();       // as a string
+(new WordToMarkdown('report.docx'))->save('report.md');   // straight to a file
+(new WordToMarkdown($bytes))->toMarkdown();               // bytes already in hand
 ```
 
 A Word document is a lower-fidelity form of the Markdown it came from, so the
@@ -127,7 +138,7 @@ The distinctions Word does not record are options:
 ```php
 use MarkdownWord\Reverse\Options;
 
-new WordToMarkdown(Options::fromArray(['mediaDirectory' => 'assets']));
+new WordToMarkdown(null, Options::fromArray(['mediaDirectory' => 'assets']));
 ```
 
 The output is GitHub-Flavored Markdown: a Word table can only be a GFM table,
@@ -400,14 +411,18 @@ Keep the `PhpWord` document and add your own content — a cover page, a
 
 ```php
 $phpWord = new PhpWord();
-$converter = new MarkdownToWord($config);
+$converter = new MarkdownToWord(null, $config);
+
+$markdown = "# Chapter one\n\n…";
 
 $section = $phpWord->addSection();
 $section->addTitle('Annual Report', 1);
-$converter->renderIntoContainer("# Chapter one\n\n…", $section, $phpWord);
+$converter->renderIntoContainer($markdown, $section, $phpWord);
 
 $phpWord->getDocInfo()->setTitle('Annual Report');
-$converter->save('', 'report.docx', $phpWord);
+
+// toDocx() takes that same document and hands back the finished bytes.
+file_put_contents('report.docx', $converter->toDocx($markdown, $phpWord));
 ```
 
 Recover the plain text of a rendered document, for indexing or an accessibility
@@ -424,9 +439,9 @@ Use a different Markdown dialect:
 ```php
 use MarkdownWord\Parser\CommonMarkParser;
 
-new MarkdownToWord($config, CommonMarkParser::commonMarkOnly());
-new MarkdownToWord($config, CommonMarkParser::extended());        // + footnotes
-new MarkdownToWord($config, CommonMarkParser::withAllExtensions());
+new MarkdownToWord(null, $config, CommonMarkParser::commonMarkOnly());
+new MarkdownToWord(null, $config, CommonMarkParser::extended());      // + footnotes
+new MarkdownToWord(null, $config, CommonMarkParser::withAllExtensions());
 ```
 
 Or implement `MarkdownParserInterface` for anything else.

@@ -64,14 +64,16 @@ final class ToDocx implements Command
             // ignoring them would leave the person wondering why nothing changed.
             $this->rejectWithoutTemplate($command);
 
-            $converter = $this->application->converter($config);
-
             // `-` is the request for standard output, and there is no way to write
-            // a file called `-`, so the bytes are produced in memory instead.
+            // a file called `-`. `convert()` returns the bytes either way and
+            // writes the target when there is one, so the two differ only in
+            // where the result is put.
+            $bytes = $this->application->converter($config, $markdown)->convert(
+                $output === '-' ? null : $output,
+            );
+
             if ($output === '-') {
-                $this->application->writeResult($output, $converter->toDocx($markdown));
-            } else {
-                $converter->save($markdown, $output);
+                $this->application->writeResult($output, $bytes);
             }
         } else {
             $this->intoTemplate($markdown, $template, $command, $config, $output);

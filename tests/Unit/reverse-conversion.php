@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use MarkdownWord\Configuration;
+use MarkdownWord\Configuration\Styles;
 use MarkdownWord\Configuration\Options;
 use MarkdownWord\MarkdownToWord;
 use MarkdownWord\Reverse\Block;
@@ -26,9 +27,9 @@ use MarkdownWord\Tests\Support\Scratch;
 function roundTrip(string $markdown, ?Configuration $config = null, ?ReverseOptions $options = null): string
 {
     $file = Scratch::path('reverse');
-    saveMarkdown($markdown, $file);
+    saveMarkdown($markdown, $file, $config);
 
-    return (new WordToMarkdown($options ?? new ReverseOptions()))->convert($file);
+    return (new WordToMarkdown($file, $options ?? new ReverseOptions()))->convert();
 }
 
 /**
@@ -42,7 +43,7 @@ function readBack(string $markdown, ?ReverseOptions $options = null): array
     $file = Scratch::path('reverse');
     saveMarkdown($markdown, $file);
 
-    return (new WordToMarkdown($options ?? new ReverseOptions()))->read($file);
+    return (new WordToMarkdown(null, $options ?? new ReverseOptions()))->read($file);
 }
 
 it('writes a file as Markdown', function () {
@@ -50,7 +51,7 @@ it('writes a file as Markdown', function () {
     saveMarkdown('# Title', $file);
     $target = Scratch::path('read-back', '.md');
 
-    (new WordToMarkdown())->save($file, $target);
+    (new WordToMarkdown($file))->save($target);
 
     expect(file_get_contents($target))->toContain('# Title');
 });
@@ -58,17 +59,23 @@ it('writes a file as Markdown', function () {
 it('converts a document held in memory', function () {
     $bytes = toDocx('# Title');
 
-    expect((new WordToMarkdown())->convertString($bytes))->toContain('# Title');
+    expect((new WordToMarkdown($bytes))->convert())->toContain('# Title');
 });
 
 it('reports a file that is not there', function () {
-    expect(fn () => (new WordToMarkdown())->convert('/does/not/exist.docx'))
+    expect(fn () => (new WordToMarkdown('/does/not/exist.docx'))->convert())
         ->toThrow(RuntimeException::class);
 });
 
 it('reports bytes that are not a document', function () {
-    expect(fn () => (new WordToMarkdown())->convertString('not a zip file'))
+    expect(fn () => (new WordToMarkdown('not a zip file'))->convert())
         ->toThrow(RuntimeException::class);
+});
+
+it('reports being given nothing to convert', function () {
+    // Better a sentence than a document of nothing.
+    expect(fn () => (new WordToMarkdown())->convert())
+        ->toThrow(RuntimeException::class, 'There is no document to convert');
 });
 
 // ------------------------------------------------------------------ blocks
@@ -181,15 +188,15 @@ it('reads an image back with its alt text', function () {
 
     $file = Scratch::path('reverse');
     saveDocument(
-        new MarkdownToWord(Configuration::create()->withOptions([
-            'images' => Options::IMAGE_EMBED,
-            'imageBasePath' => Scratch::directory(),
-        ])),
         '![A red square](picture.png)',
         $file,
+        Configuration::create()->withOptions([
+            'images' => Options::IMAGE_EMBED,
+            'imageBasePath' => Scratch::directory(),
+        ]),
     );
 
-    expect((new WordToMarkdown())->convert($file))->toContain('![A red square]');
+    expect((new WordToMarkdown($file))->convert())->toContain('![A red square]');
 });
 
 it('takes the images out of the document into a media directory', function () {
@@ -198,16 +205,16 @@ it('takes the images out of the document into a media directory', function () {
 
     $file = Scratch::path('reverse');
     saveDocument(
-        new MarkdownToWord(Configuration::create()->withOptions([
-            'images' => Options::IMAGE_EMBED,
-            'imageBasePath' => Scratch::directory(),
-        ])),
         '![A red square](picture.png)',
         $file,
+        Configuration::create()->withOptions([
+            'images' => Options::IMAGE_EMBED,
+            'imageBasePath' => Scratch::directory(),
+        ]),
     );
 
     $options = ReverseOptions::fromArray(['mediaDirectory' => $media]);
-    $markdown = (new WordToMarkdown($options))->convert($file);
+    $markdown = (new WordToMarkdown($file, $options))->convert();
 
     // The reference has to resolve, so the image has to be on disk under the name
     // the document uses for it.
@@ -251,17 +258,15 @@ it('reads another set of heading styles when told to', function () {
 
     $file = Scratch::path('reverse');
     saveDocument(
-        new MarkdownToWord(Configuration::create()->withStyles([
-            MarkdownWord\Configuration\Styles::HEADING_1 => 'CorpTitle',
-        ])),
         '# Title',
         $file,
+        Configuration::create()->withStyles([Styles::HEADING_1 => 'CorpTitle']),
     );
 
     // A corporate style is not a heading as far as Markdown is concerned, so the
     // configuration has to say so.
-    expect((new WordToMarkdown($options))->convert($file))->toContain('# Title');
-    expect((new WordToMarkdown())->convert($file))->toContain('Title');
+    expect((new WordToMarkdown($file, $options))->convert())->toContain('# Title');
+    expect((new WordToMarkdown($file))->convert())->toContain('Title');
 });
 
 // --------------------------------------------------------------- escaping

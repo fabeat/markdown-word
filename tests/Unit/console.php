@@ -384,12 +384,12 @@ it('takes the images out beside the Markdown it writes', function () {
 
     $document = Scratch::path('extract', '.docx');
     saveDocument(
-        new MarkdownWord\MarkdownToWord(MarkdownWord\Configuration::create()->withOptions([
-            'images' => MarkdownWord\Configuration\Options::IMAGE_EMBED,
-            'imageBasePath' => Scratch::directory(),
-        ])),
         '![A red square](extract.png)',
         $document,
+        MarkdownWord\Configuration::create()->withOptions([
+            'images' => MarkdownWord\Configuration\Options::IMAGE_EMBED,
+            'imageBasePath' => Scratch::directory(),
+        ]),
     );
 
     $output = Scratch::path('extracted', '.md');

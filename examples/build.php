@@ -58,7 +58,7 @@ foreach ([
     ]);
 
     $path = $out . '/' . $name . '.docx';
-    (new MarkdownToWord($config))->save($markdown, $path);
+    (new MarkdownToWord($markdown, $config))->save($path);
 
     $built[] = [$name, $description, $path];
 }
@@ -68,31 +68,33 @@ foreach ([
 // Shows what the configuration controls, side by side with the default.
 
 $path = $out . '/07-no-decoration.docx';
-(new MarkdownToWord(Configuration::create()->withoutDecoration()))
-    ->save((string) file_get_contents($root . '/markdown/01-kitchen-sink.md'), $path);
+(new MarkdownToWord(
+    (string) file_get_contents($root . '/markdown/01-kitchen-sink.md'),
+    Configuration::create()->withoutDecoration(),
+))->save($path);
 $built[] = ['07-no-decoration', 'The kitchen sink with every default switched off.', $path];
 
 // --- A house style, defined in code ------------------------------------------
 
 $path = $out . '/08-house-style.docx';
-(new MarkdownToWord(houseStyle()))->save(
+(new MarkdownToWord(
     (string) file_get_contents($root . '/markdown/01-kitchen-sink.md'),
-    $path,
-);
+    houseStyle(),
+))->save($path);
 $built[] = ['08-house-style', 'The kitchen sink in a custom house style.', $path];
 
 // --- The same source, with the extras a README tends to use ------------------
 
 $path = $out . '/09-extended-parser.docx';
-(new MarkdownToWord(Configuration::create(), CommonMarkParser::extended()))
-    ->save(
-        "# With the extended parser\n\n"
-        . "Footnotes[^1] and description lists are available here.\n\n"
-        . "Term\n:   A word being defined\n"
-        . ":   Another definition\n\n"
-        . "[^1]: The note itself.\n",
-        $path,
-    );
+(new MarkdownToWord(
+    "# With the extended parser\n\n"
+    . "Footnotes[^1] and description lists are available here.\n\n"
+    . "Term\n:   A word being defined\n"
+    . ":   Another definition\n\n"
+    . "[^1]: The note itself.\n",
+    Configuration::create(),
+    CommonMarkParser::extended(),
+))->save($path);
 $built[] = ['09-extended-parser', 'Footnotes and description lists.', $path];
 
 // --- A Word template ---------------------------------------------------------
@@ -116,9 +118,8 @@ $built[] = ['10-template', 'Markdown rendered into a Word template.', $outputPat
 
 // --- The way back ------------------------------------------------------------
 
-$reverse = new WordToMarkdown();
 
-$roundTripped = $reverse->convert($out . '/01-kitchen-sink.docx');
+$roundTripped = (new WordToMarkdown($out . '/01-kitchen-sink.docx'))->convert();
 file_put_contents($out . '/11-round-trip.md', $roundTripped);
 
 $built[] = [

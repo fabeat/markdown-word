@@ -46,7 +46,7 @@ $check = static function (string $name, callable $body) use (&$failures): void {
 $check('quick start', function () use ($work): void {
     $md = __DIR__ . '/tmp/readme/README.md';
     file_put_contents($md, "# Title\n\nBody.\n");
-    (new MarkdownToWord())->save(file_get_contents($md), $work . '/quick.docx');
+    (new MarkdownToWord(file_get_contents($md)))->save($work . '/quick.docx');
     assertTrue(is_file($work . '/quick.docx'), 'no file written');
 });
 
@@ -116,16 +116,18 @@ $check('configuration from an array', function () use ($work): void {
 });
 
 $check('advanced: compose with PhpWord', function () use ($work): void {
-    $config = new Configuration();
     $phpWord = new PhpWord();
-    $converter = new MarkdownToWord($config);
+    $converter = new MarkdownToWord(null, new Configuration());
 
     $section = $phpWord->addSection();
     $section->addTitle('Annual Report', 1);
     $converter->renderIntoContainer("# Chapter one\n\nBody.", $section, $phpWord);
 
     $phpWord->getDocInfo()->setTitle('Annual Report');
-    $converter->save('', $work . '/report.docx', $phpWord);
+    file_put_contents(
+        $work . '/report.docx',
+        $converter->toDocx("# Chapter one\n\nBody.", $phpWord),
+    );
 
     assertTrue(is_file($work . '/report.docx'), 'no file written');
 });
@@ -139,7 +141,7 @@ $check('text extractor', function (): void {
 
 $check('parser flavours', function (): void {
     foreach (['commonMarkOnly', 'extended', 'withAllExtensions'] as $flavour) {
-        $converter = new MarkdownToWord(new Configuration(), CommonMarkParser::{$flavour}());
+        $converter = new MarkdownToWord(null, new Configuration(), CommonMarkParser::{$flavour}());
         $converter->toPhpWord("# Title\n\n- a\n- b\n");
     }
 });

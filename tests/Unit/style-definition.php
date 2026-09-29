@@ -48,7 +48,7 @@ it('leaves a custom style name to the template', function () {
     $config = Configuration::create()->withStyles([Styles::HEADING_1 => 'CorpTitle']);
     $file = Scratch::path('custom-style');
 
-    saveDocument(new MarkdownToWord($config), '# One', $file);
+    saveDocument('# One', $file, $config);
 
     // Defining it here would override the template's own design.
     expect(TemplateFactory::xmlOf($file, 'word/styles.xml'))->not->toContain('w:styleId="CorpTitle"');
@@ -100,7 +100,7 @@ it('does not redefine a style on a second render', function () {
 function stylesOf(string $markdown, ?Configuration $config = null): string
 {
     $file = Scratch::path('styles');
-    saveDocument(new MarkdownToWord($config ?? new Configuration()), $markdown, $file);
+    saveDocument($markdown, $file, $config ?? new Configuration());
 
     return TemplateFactory::xmlOf($file, 'word/styles.xml');
 }
