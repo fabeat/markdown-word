@@ -1,0 +1,1021 @@
+<?php
+
+declare(strict_types=1);
+
+namespace MarkdownWord\Reverse;
+
+use DOMElement;
+use DOMXPath;
+
+/**
+ * Reads a `.docx` package into the block tree {@see MarkdownWriter} turns back
+ * into Markdown.
+ *
+ * Word's document is a flat list of paragraphs and tables, so three grouping
+ * passes reconstruct the structure Markdown has. They run in a fixed order,
+ * because each one needs the previous to have finished:
+ *
+ *  1. every paragraph and table becomes a flat *unit*;
+ *  2. runs of monospaced paragraphs become code blocks;
+ *  3. units carrying a numbering reference become lists;
+ *  4. units drawn with a quote style become nested quotes.
+ *
+ * Lists are grouped before quotes so that a list inside a quote is one list
+ * that then lands inside the quote, rather than a quote interrupted by stray
+ * paragraphs. A unit without a quote style never opens a quote, which is what
+ * stops an indented list from being mistaken for one.
+ */
+final class DocumentReader
+{
+    private const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+    private const R_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+    private const A_NS = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+    private const WP_NS = 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing';
+    private const V_NS = 'urn:schemas-microsoft-com:vml';
+    private const O_NS = 'urn:schemas-microsoft-com:office:office';
+
+    /** @var list<array<int, string>> Typefaces considered monospaced, lower-cased. */
+    private array $monospace = [];
+
+    /** @var array<string, string> Relationship id => target. */
+    private array $relationships = [];
+
+    public function __construct(
+        private readonly Options $options,
+        private readonly StyleTable $styles,
+        private readonly NumberingTable $numbering,
+    ) {
+        $this->monospace = array_map(
+            static fn (string $font): string => mb_strtolower($font),
+            $options->monospaceFonts,
+        );
+    }
+
+    /**
+     * @return list<Block>
+     */
+    public function read(Package $package): array
+    {
+        $this->relationships = $package->relationships();
+
+        $document = $package->document();
+        $xpath = new DOMXPath($document);
+        $xpath->registerNamespace('w', self::W_NS);
+        $xpath->registerNamespace('r', self::R_NS);
+        $xpath->registerNamespace('a', self::A_NS);
+        $xpath->registerNamespace('wp', self::WP_NS);
+        $xpath->registerNamespace('v', self::V_NS);
+        $xpath->registerNamespace('o', self::O_NS);
+
+        $body = $xpath->query('/w:document/w:body')->item(0);
+        if (!$body instanceof DOMElement) {
+            return [];
+        }
+
+        $units = $this->readUnits($xpath, $body);
+        $units = $this->groupCodeBlocks($units);
+        $units = $this->groupLists($units);
+
+        return $this->nestQuotes($units);
+    }
+
+    // ------------------------------------------------------------------- units
+
+    /**
+     * @return list<Block>
+     */
+    private function readUnits(DOMXPath $xpath, DOMElement $body): array
+    {
+        $units = [];
+
+        foreach ($xpath->query('./w:p | ./w:tbl', $body) ?: [] as $node) {
+            /** @var DOMElement $node */
+            $unit = $node->localName === 'tbl'
+                ? $this->readTable($xpath, $node)
+                : $this->readParagraph($xpath, $node);
+
+            if ($unit !== null) {
+                $units[] = $unit;
+            }
+        }
+
+        return $units;
+    }
+
+    /**
+     * A paragraph, a heading, or a horizontal rule.
+     */
+    private function readParagraph(DOMXPath $xpath, DOMElement $paragraph): ?Block
+    {
+        $inlines = $this->readInlines($xpath, $paragraph);
+        $properties = $this->paragraphProperties($xpath, $paragraph);
+
+        if ($this->isRule($xpath, $paragraph, $inlines)) {
+            // The indentation rides along so that a rule inside a block quote is
+            // recognised as being inside it.
+            return Block::rule()->withAttrs(['indent' => $properties['indent']]);
+        }
+
+        return Block::paragraph($inlines, $properties['level'], [
+            'style' => $properties['style'],
+            'indent' => $properties['indent'],
+            'alignment' => $properties['alignment'],
+            'numId' => $properties['numId'],
+            'listLevel' => $properties['listLevel'],
+            'tight' => $properties['tight'],
+        ]);
+    }
+
+    /**
+     * The block properties the grouping passes need: the style, the effective
+     * indentation, and any numbering reference.
+     *
+     * @return array{style: string, indent: int, alignment: string, level: ?int,
+     *               numId: ?int, listLevel: int}
+     */
+    private function paragraphProperties(DOMXPath $xpath, DOMElement $paragraph): array
+    {
+        $style = '';
+        $styleNode = $xpath->query('./w:pPr/w:pStyle', $paragraph)?->item(0);
+        if ($styleNode instanceof DOMElement) {
+            $style = $styleNode->getAttributeNS(self::W_NS, 'val');
+        }
+
+        $level = $this->headingLevel($style);
+
+        // Direct formatting wins; otherwise the referenced style decides. The
+        // outermost block quote has no indentation of its own, because it
+        // inherits one from the style, so the style has to be consulted for the
+        // nesting depth to be recoverable at all.
+        $indent = 0;
+        $indentation = $xpath->query('./w:pPr/w:ind', $paragraph)?->item(0);
+        if ($indentation instanceof DOMElement) {
+            $left = $indentation->getAttributeNS(self::W_NS, 'left');
+            $indent = $left === '' ? 0 : (int) $left;
+        } elseif ($style !== '') {
+            $indent = $this->styles->indentOf($style);
+        }
+
+        $alignment = '';
+        $alignmentNode = $xpath->query('./w:pPr/w:jc', $paragraph)?->item(0);
+        if ($alignmentNode instanceof DOMElement) {
+            $alignment = $alignmentNode->getAttributeNS(self::W_NS, 'val');
+        } elseif ($style !== '') {
+            $alignment = $this->styles->alignmentOf($style);
+        }
+
+        $numId = null;
+        $listLevel = 0;
+
+        $numIdNode = $xpath->query('./w:pPr/w:numPr/w:numId', $paragraph)?->item(0);
+        if ($numIdNode instanceof DOMElement) {
+            $candidate = (int) $numIdNode->getAttributeNS(self::W_NS, 'val');
+
+            // A number that is not in the numbering part cannot be turned into a
+            // marker, so the paragraph stays what it visibly is.
+            if ($this->numbering->knows($candidate)) {
+                $numId = $candidate;
+            }
+        }
+
+        $levelNode = $xpath->query('./w:pPr/w:numPr/w:ilvl', $paragraph)?->item(0);
+        if ($levelNode instanceof DOMElement) {
+            $listLevel = (int) $levelNode->getAttributeNS(self::W_NS, 'val');
+        }
+
+        return [
+            'style' => $style,
+            'indent' => $indent,
+            'alignment' => $alignment,
+            'level' => $level,
+            'numId' => $numId,
+            'listLevel' => $listLevel,
+            // A tight list has its items run together, which Word records as
+            // paragraphs with no space above or below. A loose one leaves the
+            // spacing alone, so the difference is visible.
+            'tight' => $this->isTight($xpath, $paragraph),
+        ];
+    }
+
+    /**
+     * Whether a paragraph opts out of the spacing between list items.
+     */
+    private function isTight(DOMXPath $xpath, DOMElement $paragraph): bool
+    {
+        $spacing = $xpath->query('./w:pPr/w:spacing', $paragraph)?->item(0);
+
+        if (!$spacing instanceof DOMElement) {
+            return false;
+        }
+
+        return $spacing->getAttributeNS(self::W_NS, 'before') === '0'
+            && $spacing->getAttributeNS(self::W_NS, 'after') === '0';
+    }
+
+    /**
+     * The heading level a paragraph style stands for, or null.
+     *
+     * The built-in ids carry the level in the name. A custom name cannot, and a
+     * custom style is a corporate decision rather than Markdown structure, so it
+     * is read as body text.
+     */
+    private function headingLevel(string $style): ?int
+    {
+        if ($style === '') {
+            return null;
+        }
+
+        $matched = null;
+
+        foreach ($this->options->headingStyles as $candidate) {
+            if (stripos($style, $candidate) !== 0) {
+                continue;
+            }
+
+            $suffix = substr($style, strlen($candidate));
+
+            if ($suffix === '') {
+                $matched ??= 1;
+
+                continue;
+            }
+
+            if (ctype_digit($suffix) && (int) $suffix >= 1 && (int) $suffix <= 6) {
+                return (int) $suffix;
+            }
+        }
+
+        return $matched;
+    }
+
+    private function isQuoteStyle(string $style): bool
+    {
+        foreach ($this->options->quoteStyles as $candidate) {
+            if (strcasecmp($style, $candidate) === 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * An empty paragraph carrying a bottom border is a horizontal rule.
+     *
+     * @param list<Inline> $inlines
+     */
+    private function isRule(DOMXPath $xpath, DOMElement $paragraph, array $inlines): bool
+    {
+        if ($inlines !== []) {
+            foreach ($inlines as $inline) {
+                if ($inline->kind === Inline::BREAK || trim($inline->text) !== '') {
+                    return false;
+                }
+            }
+        }
+
+        return $xpath->query('./w:pPr/w:pBdr/w:bottom', $paragraph)?->length > 0;
+    }
+
+    // ------------------------------------------------------------------ tables
+
+    private function readTable(DOMXPath $xpath, DOMElement $table): Block
+    {
+        $rows = [];
+        $alignments = [];
+
+        foreach ($xpath->query('./w:tr', $table) ?: [] as $rowNode) {
+            /** @var DOMElement $rowNode */
+            $cells = [];
+
+            foreach ($xpath->query('./w:tc', $rowNode) ?: [] as $cellNode) {
+                /** @var DOMElement $cellNode */
+                $cells[] = Block::cell($this->readUnits($xpath, $cellNode));
+            }
+
+            if ($rows === []) {
+                // The alignment lives on the paragraphs inside each cell, because
+                // that is the only place a Word cell can carry it.
+                foreach ($xpath->query('./w:tc', $rowNode) ?: [] as $index => $cellNode) {
+                    $alignments[$index] = $this->cellAlignment($xpath, $cellNode);
+                }
+            }
+
+            $rows[] = Block::row($cells);
+        }
+
+        ksort($alignments);
+
+        return Block::table($rows, $alignments);
+    }
+
+    private function cellAlignment(DOMXPath $xpath, DOMElement $cell): string
+    {
+        $alignment = $xpath->query('./w:p[1]/w:pPr/w:jc', $cell)?->item(0);
+
+        if (!$alignment instanceof DOMElement) {
+            return '';
+        }
+
+        return $alignment->getAttributeNS(self::W_NS, 'val');
+    }
+
+    // ----------------------------------------------------------------- inlines
+
+    /**
+     * @return list<Inline>
+     */
+    private function readInlines(DOMXPath $xpath, DOMElement $paragraph): array
+    {
+        $inlines = [];
+
+        foreach ($paragraph->childNodes as $child) {
+            if (!$child instanceof DOMElement) {
+                continue;
+            }
+
+            switch ($child->localName) {
+                case 'hyperlink':
+                    $inlines = array_merge($inlines, $this->readHyperlink($xpath, $child));
+
+                    break;
+
+                case 'r':
+                    $inlines = array_merge($inlines, $this->readRun($xpath, $child));
+
+                    break;
+
+                // A break written outside any run, which is how PHPWord emits a
+                // line break that is not itself formatted.
+                case 'br':
+                case 'cr':
+                    if ($child->getAttributeNS(self::W_NS, 'type') === '') {
+                        $inlines[] = Inline::break();
+                    }
+
+                    break;
+
+                case 'tab':
+                    $inlines[] = Inline::text("\t");
+
+                    break;
+
+                case 'drawing':
+                case 'pict':
+                    $image = $this->readImage($xpath, $child);
+                    if ($image !== null) {
+                        $inlines[] = $image;
+                    }
+
+                    break;
+
+                // Anything else is a run-level property change with no content,
+                // which Word writes around a field and which carries nothing.
+                default:
+                    break;
+            }
+        }
+
+        return $this->merge($inlines);
+    }
+
+    /**
+     * @return list<Inline>
+     */
+    private function readHyperlink(DOMXPath $xpath, DOMElement $hyperlink): array
+    {
+        $id = $hyperlink->getAttributeNS(self::R_NS, 'id');
+        $url = $this->relationships[$id] ?? '';
+
+        $title = $hyperlink->getAttributeNS(self::W_NS, 'tooltip');
+        $title = $title === '' ? null : $title;
+
+        // A link with no resolvable destination is not a link, as on the way in.
+        if ($url === '') {
+            return $this->readChildren($xpath, $hyperlink);
+        }
+
+        $label = [];
+        foreach ($hyperlink->childNodes as $child) {
+            if ($child instanceof DOMElement && $child->localName === 'r') {
+                $label = array_merge($label, $this->readRun($xpath, $child));
+            }
+        }
+
+        return [Inline::link($url, $title, $this->merge($label))];
+    }
+
+    /**
+     * @return list<Inline>
+     */
+    private function readChildren(DOMXPath $xpath, DOMElement $parent): array
+    {
+        $inlines = [];
+
+        foreach ($parent->childNodes as $child) {
+            if ($child instanceof DOMElement && $child->localName === 'r') {
+                $inlines = array_merge($inlines, $this->readRun($xpath, $child));
+            }
+        }
+
+        return $this->merge($inlines);
+    }
+
+    /**
+     * A run contributes text, a line break, or an image.
+     *
+     * @return list<Inline>
+     */
+    private function readRun(DOMXPath $xpath, DOMElement $run): array
+    {
+        $bold = false;
+        $italic = false;
+        $strike = false;
+        $code = false;
+
+        $properties = $xpath->query('./w:rPr', $run)?->item(0);
+        if ($properties instanceof DOMElement) {
+            $bold = $this->isOn($xpath, $properties, 'w:b');
+            $italic = $this->isOn($xpath, $properties, 'w:i');
+            $strike = $this->isOn($xpath, $properties, 'w:strike');
+            $code = $this->isMonospace($xpath, $properties);
+        }
+
+        $inlines = [];
+
+        foreach ($run->childNodes as $child) {
+            if (!$child instanceof DOMElement) {
+                continue;
+            }
+
+            if ($child->localName === 't') {
+                $inlines[] = Inline::text($child->textContent, $bold, $italic, $strike, $code);
+
+                continue;
+            }
+
+            // `w:br` is a line break the author asked for; a break with a type
+            // is a column or page break, which is a layout concern rather than
+            // content.
+            if ($child->localName === 'br' && $child->getAttributeNS(self::W_NS, 'type') === '') {
+                $inlines[] = Inline::break();
+
+                continue;
+            }
+
+            if ($child->localName === 'tab') {
+                $inlines[] = Inline::text("\t", $bold, $italic, $strike, $code);
+            }
+        }
+
+        $image = $this->readImage($xpath, $run);
+        if ($image !== null) {
+            $inlines[] = $image;
+        }
+
+        return $inlines;
+    }
+
+    private function isOn(DOMXPath $xpath, DOMElement $properties, string $name): bool
+    {
+        $node = $xpath->query('./' . $name, $properties)?->item(0);
+
+        if (!$node instanceof DOMElement) {
+            return false;
+        }
+
+        // A toggle property carries an explicit `w:val`; "0", "false" and "off"
+        // all mean off, and anything else means on.
+        $value = strtolower($node->getAttributeNS(self::W_NS, 'val'));
+
+        return !in_array($value, ['0', 'false', 'off'], true);
+    }
+
+    private function isMonospace(DOMXPath $xpath, DOMElement $properties): bool
+    {
+        $fonts = $xpath->query('./w:rFonts', $properties)?->item(0);
+
+        if (!$fonts instanceof DOMElement) {
+            return false;
+        }
+
+        foreach (['ascii', 'hAnsi', 'cs'] as $attribute) {
+            $name = mb_strtolower($fonts->getAttributeNS(self::W_NS, $attribute));
+
+            if ($name !== '' && in_array($name, $this->monospace, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function readImage(DOMXPath $xpath, DOMElement $run): ?Inline
+    {
+        // Two shapes describe an image in OOXML. DrawingML is what Word writes
+        // today; VML is the older form that PHPWord emits for a plain inline
+        // picture, and a document written by this library is full of them.
+        $blip = $xpath->query('.//a:blip', $run)?->item(0);
+        $id = $blip instanceof DOMElement
+            ? $blip->getAttributeNS(self::R_NS, 'embed')
+            : '';
+
+        $alt = '';
+
+        if ($id !== '') {
+            // The description is the alt text, which is also the fallback a reader
+            // with no image support sees — the same value the forward converter
+            // prefers to embed.
+            $properties = $xpath->query('.//wp:docPr', $run)?->item(0);
+            if ($properties instanceof DOMElement) {
+                $alt = $properties->getAttribute('descr');
+            }
+        } else {
+            $imagedata = $xpath->query('.//v:imagedata', $run)?->item(0);
+
+            if (!$imagedata instanceof DOMElement) {
+                return null;
+            }
+
+            $id = $imagedata->getAttributeNS(self::R_NS, 'id');
+            $alt = $imagedata->getAttributeNS(self::O_NS, 'title');
+        }
+
+        return Inline::image($alt, $this->mediaPath($this->relationships[$id] ?? ''));
+    }
+
+    /**
+     * Where an image should be referenced from in the Markdown that comes out.
+     *
+     * Without a media directory the reference names the image as it sits inside
+     * the archive, which documents the file without being a path any reader can
+     * open. With one, it is the path the image is extracted to, so that the
+     * Markdown and the files beside it agree.
+     */
+    private function mediaPath(string $target): string
+    {
+        if ($target === '') {
+            return '';
+        }
+
+        $relative = (string) preg_replace('#^\./#', '', $target);
+
+        if ($this->options->mediaDirectory === null) {
+            return $relative;
+        }
+
+        return rtrim($this->options->mediaDirectory, '/') . '/' . basename($relative);
+    }
+
+    /**
+     * Merge neighbouring runs that are formatted identically.
+     *
+     * Word splits a sentence into a run per formatting change, and often into
+     * more than that. Joining them back up is what stops a paragraph of plain
+     * prose from coming out as a paragraph of fragments.
+     *
+     * @param list<Inline> $inlines
+     * @return list<Inline>
+     */
+    private function merge(array $inlines): array
+    {
+        $merged = [];
+
+        foreach ($inlines as $inline) {
+            $last = $merged === [] ? null : $merged[count($merged) - 1];
+
+            if (
+                $last !== null
+                && $last->kind === Inline::TEXT
+                && $inline->kind === Inline::TEXT
+                && $last->sameFormatting($inline)
+            ) {
+                $merged[count($merged) - 1] = $last->withText($last->text . $inline->text);
+
+                continue;
+            }
+
+            $merged[] = $inline;
+        }
+
+        return $merged;
+    }
+
+    // ------------------------------------------------------------- code blocks
+
+    /**
+     * Join runs of monospaced paragraphs into a single verbatim block.
+     *
+     * Word has no code block, so one becomes a paragraph per line in a
+     * monospaced face. Two or more such paragraphs in a row are a block; a
+     * single one is left alone, because a paragraph that happens to contain
+     * only an inline code span looks exactly the same and is far more common.
+     *
+     * @param list<Block> $units
+     * @return list<Block>
+     */
+    private function groupCodeBlocks(array $units): array
+    {
+        if (!$this->options->fenceCodeBlocks) {
+            return $units;
+        }
+
+        $result = [];
+        $pending = [];
+        $index = 0;
+
+        while ($index < count($units)) {
+            $unit = $units[$index];
+
+            if ($this->isMonospaceParagraph($unit)) {
+                $pending[] = $unit;
+                $index++;
+
+                continue;
+            }
+
+            $result = array_merge($result, $this->flushCodeBlock($pending));
+            $pending = [];
+            $result[] = $unit;
+            $index++;
+        }
+
+        return array_merge($result, $this->flushCodeBlock($pending));
+    }
+
+    /**
+     * @param list<Block> $pending
+     * @return list<Block>
+     */
+    private function flushCodeBlock(array $pending): array
+    {
+        if (count($pending) < 2) {
+            return $pending;
+        }
+
+        $lines = [];
+        foreach ($pending as $unit) {
+            $lines[] = $this->plainText($unit->inlines);
+        }
+
+        // The indentation of the first line rides along, for the same reason a
+        // rule's does: a code block inside a block quote has to stay inside it.
+        return [Block::code(implode("\n", $lines))->withAttrs([
+            'indent' => (int) ($pending[0]->attr('indent', 0)),
+        ])];
+    }
+
+    private function isMonospaceParagraph(Block $unit): bool
+    {
+        if (!$unit->is(Block::PARAGRAPH) || $unit->attr('level') !== null) {
+            return false;
+        }
+
+        if ($unit->inlines === []) {
+            return false;
+        }
+
+        foreach ($unit->inlines as $inline) {
+            if ($inline->kind !== Inline::TEXT || !$inline->code) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param list<Inline> $inlines
+     */
+    private function plainText(array $inlines): string
+    {
+        $text = '';
+
+        foreach ($inlines as $inline) {
+            $text .= $inline->kind === Inline::TEXT ? $inline->text : "\n";
+        }
+
+        return $text;
+    }
+
+    // ------------------------------------------------------------------ lists
+
+    /**
+     * Turn units that reference a numbering definition into nested lists.
+     *
+     * The level comes from the paragraph, so nesting is exact rather than
+     * guessed at from indentation. A run of paragraphs sharing a definition at
+     * the same level is one list; a different definition starts a new one, which
+     * is how two adjacent Markdown lists stay two lists. Two adjacent lists that
+     * happen to share a definition cannot be told apart and come back as one.
+     *
+     * @param list<Block> $units
+     * @return list<Block>
+     */
+    private function groupLists(array $units): array
+    {
+        $result = [];
+
+        /** @var list<array{numId: int, level: int, indent: int, list: Block, parent: int, item: ?int}> $stack */
+        $stack = [];
+
+        foreach ($units as $unit) {
+            $numId = $this->listNumberId($unit);
+
+            if ($numId === null) {
+                $this->closeLists($stack, $result);
+                $result[] = $unit;
+
+                continue;
+            }
+
+            $level = (int) $unit->attr('listLevel', 0);
+            $indent = (int) $unit->attr('indent', 0);
+
+            // A deeper item, or one belonging to a different list, ends whatever
+            // is open: the paragraph that follows belongs somewhere else.
+            $this->closeLists($stack, $result, $numId, $level, $indent);
+
+            if ($this->depth($stack) !== $level) {
+                $list = Block::list([], $this->listAttributes($numId, $level) + [
+                    // A list inside a block quote is only recorded as an indented
+                    // numbered paragraph. The indentation is what keeps it inside
+                    // the quote, and what tells it apart from the same list
+                    // outside the quote.
+                    'indent' => $indent,
+                    'tight' => (bool) $unit->attr('tight', false),
+                ]);
+
+                $stack[] = [
+                    'numId' => $numId,
+                    'level' => $level,
+                    'indent' => $indent,
+                    'list' => $list,
+                    // Where this list belongs inside the item it is nested in.
+                    // It is remembered rather than acted on now, because the list
+                    // is still empty and its parent is still being built.
+                    'parent' => $stack === [] ? -1 : count($stack) - 1,
+                    'item' => $this->lastItem($stack),
+                ];
+            }
+
+            $this->appendItem($stack, Block::item([$unit->withAttrs(['numId' => null])]));
+        }
+
+        $this->closeLists($stack, $result);
+
+        return $result;
+    }
+
+    /**
+     * The numbering definition a unit belongs to, or null if it is not a list.
+     */
+    private function listNumberId(Block $unit): ?int
+    {
+        if (!$unit->is(Block::PARAGRAPH)) {
+            return null;
+        }
+
+        $numId = $unit->attr('numId');
+
+        return is_int($numId) ? $numId : null;
+    }
+
+    /**
+     * How a list's marker is written, as recorded in the numbering definition.
+     *
+     * @return array<string, mixed>
+     */
+    private function listAttributes(int $numId, int $level): array
+    {
+        $definition = $this->numbering->level($numId, $level)
+            ?? $this->numbering->root($numId)
+            ?? ['format' => 'decimal', 'text' => '%1.', 'start' => 1];
+
+        return [
+            'numId' => $numId,
+            'level' => $level,
+            'ordered' => $definition['format'] !== 'bullet',
+            'format' => $definition['format'],
+            'start' => $definition['start'],
+            // The marker is baked into the numbering text, so its last character
+            // is what tells `1.` from `1)`.
+            'delimiter' => str_ends_with($definition['text'], ')') ? ')' : '.',
+        ];
+    }
+
+    /**
+     * Close every open list the paragraph that follows ends.
+     *
+     * A list is identified by its numbering definition, its level and its
+     * indentation. The last of those is what separates two lists that share a
+     * definition — the list inside a block quote and the same list outside it,
+     * say, or two lists whose only difference was the blank line between them.
+     *
+     * A list is not handed to the document when it opens but when it closes,
+     * because it is still growing at that point. A nested one has already been
+     * attached to the item it belongs to; a top-level one lands here.
+     *
+     * @param list<array{numId: int, level: int, indent: int, list: Block, parent: int, item: ?int}> $stack
+     * @param list<Block>                                                                            $result
+     */
+    private function closeLists(
+        array &$stack,
+        array &$result,
+        ?int $numId = null,
+        ?int $level = null,
+        ?int $indent = null,
+    ): void {
+        while ($stack !== []) {
+            $top = $stack[count($stack) - 1];
+
+            $ends = $numId === null
+                || $top['level'] > $level
+                || ($top['level'] === $level && ($top['numId'] !== $numId || $top['indent'] !== $indent));
+
+            if (!$ends) {
+                break;
+            }
+
+            $closed = array_pop($stack);
+
+            if ($closed['parent'] < 0) {
+                $result[] = $closed['list'];
+
+                continue;
+            }
+
+            // A nested list goes into the item it belongs under. That item is
+            // still the last one of its list, because a sibling at the same level
+            // would have closed this list before it was reached.
+            $index = $closed['parent'];
+            $items = array_values($stack[$index]['list']->children);
+            $item = $closed['item'];
+
+            if ($item !== null && isset($items[$item])) {
+                $items[$item] = $items[$item]->withChildren([...$items[$item]->children, $closed['list']]);
+                $stack[$index]['list'] = $stack[$index]['list']->withChildren($items);
+            }
+        }
+    }
+
+    /**
+     * The index of the item of the innermost open list that a nested list would
+     * belong under.
+     *
+     * @param list<array{numId: int, level: int, indent: int, list: Block, parent: int, item: ?int}> $stack
+     */
+    private function lastItem(array $stack): ?int
+    {
+        if ($stack === []) {
+            return null;
+        }
+
+        $items = array_values($stack[count($stack) - 1]['list']->children);
+
+        return $items === [] ? null : array_key_last($items);
+    }
+
+    /**
+     * @param list<array{numId: int, level: int, indent: int, list: Block, parent: int, item: ?int}> $stack
+     */
+    private function appendItem(array &$stack, Block $item): void
+    {
+        $index = count($stack) - 1;
+        $stack[$index]['list'] = $stack[$index]['list']->withChildren(
+            [...$stack[$index]['list']->children, $item],
+        );
+    }
+
+    /**
+     * @param list<array{numId: int, level: int, indent: int, list: Block, parent: int, item: ?int}> $stack
+     */
+    private function depth(array $stack): ?int
+    {
+        return $stack === [] ? null : $stack[count($stack) - 1]['level'];
+    }
+
+
+    // ------------------------------------------------------------------ quotes
+
+    /**
+     * Nest the units that are drawn with a quote style.
+     *
+     * Depth comes from the effective indentation, so a quote inside a quote
+     * steps in and stays there. Only the style opens a quote: an indented
+     * paragraph is an indented paragraph, and a list inside a quote carries the
+     * quote's indentation without itself being quoted.
+     *
+     * A quote ends when a paragraph follows that is not indented far enough to be
+     * inside it. Indentation rather than adjacency, because Word has no way to
+     * say "this paragraph is outside the quote" — a list inside a quote is only
+     * ever recorded as an indented numbered paragraph.
+     *
+     * @param list<Block> $units
+     * @return list<Block>
+     */
+    private function nestQuotes(array $units): array
+    {
+        $result = [];
+
+        /** @var list<array{depth: int, blocks: list<Block>}> $frames */
+        $frames = [];
+
+        foreach ($units as $unit) {
+            $depth = $this->quoteDepth($unit);
+
+            if ($depth !== null) {
+                // Everything this unit is not inside of closes first.
+                while ($frames !== [] && $frames[count($frames) - 1]['depth'] >= $depth) {
+                    $result = $this->closeQuote($frames, $result);
+                }
+
+                $frames[] = ['depth' => $depth, 'blocks' => []];
+            } else {
+                $result = $this->closeDeeperQuotes($frames, $result, $unit);
+            }
+
+            $result = $this->add($frames, $result, $unit);
+        }
+
+        while ($frames !== []) {
+            $result = $this->closeQuote($frames, $result);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Close the quotes a unit is not indented far enough to be inside of.
+     *
+     * @param list<array{depth: int, blocks: list<Block>}> $frames
+     * @param list<Block>                                    $result
+     * @return list<Block>
+     */
+    private function closeDeeperQuotes(array &$frames, array $result, Block $unit): array
+    {
+        $indent = (int) $unit->attr('indent', 0);
+        $step = max(1, $this->options->quoteIndent);
+
+        while ($frames !== [] && $indent < $frames[count($frames) - 1]['depth'] * $step) {
+            $result = $this->closeQuote($frames, $result);
+        }
+
+        return $result;
+    }
+
+    /**
+     * The nesting depth of the quote a unit sits in, or null if it is not quoted.
+     */
+    private function quoteDepth(Block $unit): ?int
+    {
+        if (!$unit->is(Block::PARAGRAPH) || !$this->isQuoteStyle((string) $unit->attr('style', ''))) {
+            return null;
+        }
+
+        $indent = (int) $unit->attr('indent', 0);
+        $step = max(1, $this->options->quoteIndent);
+
+        return $indent <= 0 ? 1 : max(1, (int) round($indent / $step));
+    }
+
+    /**
+     * Add a block to the innermost open quote, or to the document, and return the
+     * document so far.
+     *
+     * @param list<array{depth: int, blocks: list<Block>}> $frames
+     * @param list<Block>                                    $result
+     * @return list<Block>
+     */
+    private function add(array &$frames, array $result, Block $block): array
+    {
+        if ($frames === []) {
+            $result[] = $block;
+
+            return $result;
+        }
+
+        $index = count($frames) - 1;
+        $frames[$index]['blocks'][] = $block;
+
+        return $result;
+    }
+
+    /**
+     * Wrap the innermost open quote's contents and hand it to the level above.
+     *
+     * @param list<array{depth: int, blocks: list<Block>}> $frames
+     * @param list<Block>                                    $result
+     * @return list<Block>
+     */
+    private function closeQuote(array &$frames, array $result): array
+    {
+        $closed = array_pop($frames);
+
+        if ($closed === null || $closed['blocks'] === []) {
+            return $result;
+        }
+
+        return $this->add($frames, $result, Block::quote($closed['blocks']));
+    }
+}

@@ -1,0 +1,71 @@
+name: phar
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+  # Building on a pull request catches a broken build before it reaches a tag,
+  # without spending a release on it.
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'bin/**'
+      - 'composer.json'
+      - 'composer.lock'
+      - 'tools/build-phar.php'
+      - '.github/workflows/phar.yml'
+
+concurrency:
+  group: phar-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build mdword.phar
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          # One version, so the artifact is the same file however many times it is
+          # built. The phar carries no dev dependencies, so the test framework's
+          # floor of 8.4 is irrelevant here; 8.3 is the oldest that builds it.
+          php-version: '8.3'
+          coverage: none
+          tools: composer:v2
+
+      - name: Build
+        # The script re-runs itself with phar.readonly off, so the flag in
+        # composer.json is only needed when it is called directly.
+        run: composer build:phar
+
+      - name: Run the phar on its own
+        run: |
+          ./build/mdword.phar --version
+          printf '# Built\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n' > check.md
+          ./build/mdword.phar to-docx check.md -o check.docx
+          ./build/mdword.phar to-markdown check.docx -o - | tee round-trip.md
+          grep -q '# Built' round-trip.md
+
+      # One file, and nothing else beside it. A `build/` full of staging
+      # directories would turn the download into a tarball and defeat the point.
+      - name: Upload the phar
+        uses: actions/upload-artifact@v4
+        with:
+          name: mdword-phar
+          path: build/mdword.phar
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attach the phar to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/mdword.phar
+          # The phar's own version is the single source of truth for what this
+          # is, so a tag that disagrees with it is a mistake worth failing on.
+          fail_on_unmatched_files: true

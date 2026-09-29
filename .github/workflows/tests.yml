@@ -1,0 +1,117 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# One push does not need five runs; the last is enough.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The checks that do not depend on a PHP version. Cheap, and they fail fastest.
+  quality:
+    name: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          coverage: none
+          tools: composer:v2
+
+      # A manifest that does not validate, or a lock file that disagrees with it,
+      # is not worth running anything else against.
+      - name: Validate composer.json
+        run: composer validate --strict
+
+      - name: Known security advisories
+        run: composer audit --no-interaction
+
+      - name: Install
+        run: composer update --prefer-dist --no-interaction --no-progress
+
+      # Every code block in the README is executed, so the documentation cannot
+      # quietly stop describing what the code does.
+      - name: The examples in the README work
+        run: php readme-check.php
+
+      # Not `vendor/bin/mdword`: Composer symlinks a dependency's binaries, not
+      # the root package's own, so from a checkout the script is run directly.
+      - name: The command line runs
+        run: php bin/mdword --version
+
+  # The library on the oldest PHP it claims to support.
+  #
+  # Pest 5 needs PHP 8.4, so the test suite cannot run here. What can — and must —
+  # is proof that the library itself works on this version: that it parses, writes,
+  # reads back and its command line runs. A version-specific syntax error or a
+  # broken autoloader is exactly what this catches.
+  minimum:
+    name: php 8.2 (minimum)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+          tools: composer:v2
+
+      - name: Install runtime dependencies only
+        run: composer update --prefer-dist --no-interaction --no-progress --no-dev
+
+      - name: The library works on this version
+        run: php smoke.php
+
+      - name: Malformed input across every configuration
+        run: php stress.php
+
+  # The full suite. Pest 5 needs PHP 8.4, so the floor here is 8.4 rather than
+  # the library's own 8.2 — the two together cover the whole range.
+  test:
+    name: php ${{ matrix.php }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.4', '8.5']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          # pcov rather than xdebug: it is roughly an order of magnitude faster
+          # and this suite writes and reads a few thousand documents.
+          coverage: pcov
+          tools: composer:v2
+
+      - name: Install
+        run: composer update --prefer-dist --no-interaction --no-progress
+
+      - name: Test
+        run: vendor/bin/pest
+
+      # A coverage report on its own says little; this fails if the reported
+      # figure is a placeholder, or if the code stops being covered at all.
+      - name: Coverage
+        if: matrix.php == '8.5'
+        run: |
+          vendor/bin/pest --coverage --min=80 \
+            --coverage-clover=build/coverage/clover.xml \
+            --coverage-html=build/coverage/html
+
+      - name: Upload the coverage report
+        if: matrix.php == '8.5'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: build/coverage
+          retention-days: 7

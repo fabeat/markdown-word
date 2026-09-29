@@ -1,0 +1,276 @@
+<?php
+
+declare(strict_types=1);
+
+use MarkdownWord\Configuration;
+use MarkdownWord\Configuration\Styles;
+use MarkdownWord\Template\MarkdownTemplate;
+use MarkdownWord\TemplateNotFound;
+use MarkdownWord\Tests\Support\Scratch;
+use MarkdownWord\Tests\Support\Upstream;
+use MarkdownWord\Tests\Support\TemplateFactory;
+
+/*
+ * Filling in a template writes a document for every block it inserts, so the
+ * filter for the one known upstream deprecation has to span the whole test
+ * rather than wrap the final save.
+ */
+beforeEach(fn () => Upstream::install());
+afterEach(fn () => Upstream::restore());
+
+it('reports a missing template', function () {
+    expect(fn () => new MarkdownTemplate('/does/not/exist.docx'))
+        ->toThrow(TemplateNotFound::class);
+});
+
+it('values are substituted', function () {
+    $output = renderTemplate(Scratch::remember(TemplateFactory::report()), ['reference' => 'REF-1']);
+
+    expect(TemplateFactory::textOf($output))->toContain('Reference: REF-1');
+});
+
+it('markdown is inserted where the placeholder sits', function () {
+    $output = renderTemplate(
+        Scratch::remember(TemplateFactory::report()),
+        ['reference' => 'REF-1'],
+        static function (MarkdownTemplate $template): void {
+            $template->insert('summary', "First line\n\nSecond line");
+        },
+    );
+
+    expect(TemplateFactory::textOf($output))->toContain('First line');
+    expect(TemplateFactory::textOf($output))->toContain('Second line');
+});
+
+it('headings keep their structure inside a template', function () {
+    $output = renderTemplate(
+        Scratch::remember(TemplateFactory::placeholder()),
+        [],
+        static function (MarkdownTemplate $template): void {
+            $template->insert('body', "# Title\n\nBody text");
+        },
+    );
+
+    expect(TemplateFactory::xmlOf($output))->toContain('w:val="Heading1"');
+});
+
+it('lists survive template insertion', function () {
+    $output = renderTemplate(
+        Scratch::remember(TemplateFactory::placeholder()),
+        [],
+        static function (MarkdownTemplate $template): void {
+            $template->insert('body', "- one\n- two");
+        },
+    );
+
+    expect(TemplateFactory::xmlOf($output))->toContain('w:numPr');
+    expect(TemplateFactory::textOf($output))->toContain('one');
+});
+
+it('lists keep their numbering inside a template', function () {
+    $output = renderTemplate(
+        Scratch::remember(TemplateFactory::placeholder()),
+        [],
+        static function (MarkdownTemplate $template): void {
+            $template->insert('body', "- one\n- two");
+        },
+    );
+
+    $document = TemplateFactory::xmlOf($output);
+    $numbering = TemplateFactory::xmlOf($output, 'word/numbering.xml');
+
+    expect($document)->toContain('w:numId');
+
+    // The numbering definition the paragraphs point at has to exist in the
+    // template's own numbering part, or the bullets disappear.
+    preg_match('/<w:numId w:val="(\d+)"\/>/', $document, $reference);
+    expect($reference)->not->toBeEmpty();
+    expect($numbering)->toContain(sprintf('<w:num w:numId="%s">', $reference[1]));
+    expect($numbering)->toContain('w:numFmt w:val="bullet"');
+});
+
+it('different lists get distinct numbering', function () {
+    $output = renderTemplate(
+        Scratch::remember(TemplateFactory::placeholder()),
+        [],
+        static function (MarkdownTemplate $template): void {
+            $template->insert('body', "- bullets");
+            $template->insert('body', "1. numbers");
+        },
+    );
+
+    $numbering = TemplateFactory::xmlOf($output, 'word/numbering.xml');
+
+    // Reusing one identifier for both would make the bullets render as
+    // numbers, or the numbers continue where the bullets left off.
+    expect(substr_count($numbering, 'w:numFmt w:val="bullet"'))->toBe(9);
+    expect(substr_count($numbering, 'w:numFmt w:val="decimal"'))->toBe(9);
+});
+
+it('repeated identical lists share one definition', function () {
+    $output = renderTemplate(
+        Scratch::remember(TemplateFactory::placeholder()),
+        [],
+        static function (MarkdownTemplate $template): void {
+            $template->insert('body', "- first");
+            $template->insert('body', "- second");
+        },
+    );
+
+    // Identical lists need only one definition; duplicating them would bloat
+    // the file for no benefit.
+    expect(substr_count(TemplateFactory::xmlOf($output, 'word/numbering.xml'), 'w:numFmt w:val="bullet"'))->toBe(9);
+});
+
+it('tables survive template insertion', function () {
+    $output = renderTemplate(
+        Scratch::remember(TemplateFactory::placeholder()),
+        [],
+        static function (MarkdownTemplate $template): void {
+            $template->insert('body', "| a | b |\n| --- | --- |\n| 1 | 2 |");
+        },
+    );
+
+    expect(TemplateFactory::xmlOf($output))->toContain('<w:tbl>');
+});
+
+it('template styles can be targeted by name', function () {
+    $output = renderTemplate(
+        Scratch::remember(TemplateFactory::styled()),
+        [],
+        static function (MarkdownTemplate $template): void {
+            $template->insert('body', '# Title');
+        },
+        Configuration::create()->withStyles([Styles::HEADING_1 => 'Corp Title']),
+    );
+
+    expect(TemplateFactory::xmlOf($output))->toContain('w:val="Corp Title"');
+});
+
+it('repeating region is cloned for each row', function () {
+    $output = renderTemplate(
+        Scratch::remember(TemplateFactory::report()),
+        ['reference' => 'REF-1'],
+        static function (MarkdownTemplate $template): void {
+            $template->repeat('lines', [
+                ['line' => 'first'],
+                ['line' => 'second'],
+            ]);
+        },
+    );
+
+    $text = TemplateFactory::textOf($output);
+
+    expect($text)->toContain('first');
+    expect($text)->toContain('second');
+});
+
+it('plain hyperlinks survive template insertion', function () {
+    $output = renderTemplate(
+        Scratch::remember(TemplateFactory::placeholder()),
+        [],
+        static function (MarkdownTemplate $template): void {
+            $template->insert('body', '[docs](https://example.com)');
+        },
+    );
+
+    expect(TemplateFactory::hyperlinkCount($output))->toBe(1);
+    expect(TemplateFactory::targetsOf($output))->toContain('https://example.com');
+});
+
+it('hyperlinks with emphasis survive template insertion', function () {
+    $output = renderTemplate(
+        Scratch::remember(TemplateFactory::placeholder()),
+        [],
+        static function (MarkdownTemplate $template): void {
+            $template->insert('body', '[**bold** link](https://example.com)');
+        },
+    );
+
+    // The placeholder must not leak into the finished document.
+    expect(TemplateFactory::xmlOf($output))->not->toContain('MDWL');
+    expect(TemplateFactory::hyperlinkCount($output))->toBe(1);
+    expect(TemplateFactory::targetsOf($output))->toContain('https://example.com');
+    expect(TemplateFactory::textOf($output))->toContain('bold');
+});
+
+it('emphasised hyperlink keeps its bold run', function () {
+    $output = renderTemplate(
+        Scratch::remember(TemplateFactory::placeholder()),
+        [],
+        static function (MarkdownTemplate $template): void {
+            $template->insert('body', '[**bold** link](https://example.com)');
+        },
+    );
+
+    $xml = TemplateFactory::xmlOf($output);
+    $start = strpos($xml, '<w:hyperlink');
+
+    expect($start)->not->toBeFalse();
+    expect(substr($xml, $start, 400))->toContain('<w:b/>');
+});
+
+it('inserting empty markdown leaves the template intact', function () {
+    $output = renderTemplate(
+        Scratch::remember(TemplateFactory::placeholder()),
+        [],
+        static function (MarkdownTemplate $template): void {
+            $template->insert('body', '');
+        },
+    );
+
+    expect($output)->toBeFile();
+});
+
+it('to string produces a document', function () {
+    $template = new MarkdownTemplate(Scratch::remember(TemplateFactory::placeholder()));
+    $template->insert('body', '# Title');
+
+    $bytes = renderTemplateToString($template);
+
+    expect($bytes)->toStartWith('PK');
+    expect(strlen($bytes))->toBeGreaterThan(1000);
+});
+
+/**
+ * Fill in a template and write the result, returning the path to it.
+ *
+ * @param array<string, string>                $values
+ * @param null|callable(MarkdownTemplate): void $configure
+ */
+
+
+function renderTemplate(
+    string $template,
+    array $values,
+    ?callable $configure = null,
+    ?Configuration $config = null,
+): string {
+    $target = Scratch::path('out');
+
+    $processor = new MarkdownTemplate($template, $config ?? new Configuration(), $values);
+
+    if ($configure !== null) {
+        $configure($processor);
+    }
+
+    saveTemplate($processor, $target);
+
+    return $target;
+}
+
+/**
+ * Write a filled-in template out. The wrapper is only here for the upstream
+ * deprecation described in tests/Pest.php.
+ */
+function saveTemplate(MarkdownTemplate $template, string $path): void
+{
+    withoutUpstreamDeprecations(static function () use ($template, $path): void {
+        $template->save($path);
+    });
+}
+
+function renderTemplateToString(MarkdownTemplate $template): string
+{
+    return withoutUpstreamDeprecations(static fn (): string => $template->toString());
+}

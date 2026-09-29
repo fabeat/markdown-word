@@ -1,0 +1,51 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/**
+ * `mdword` — convert Markdown to Word, and back.
+ *
+ * This file works three ways, all of them the same code:
+ *
+ *  - run from a checkout: `php bin/mdword README.md -o README.docx`
+ *  - run as the phar: `php mdword.phar README.md -o README.docx`
+ *  - installed on your `PATH` as `mdword`
+ *
+ * The autoloader is looked for inside the archive first and then next to this
+ * file, which is what lets the identical script serve both a checkout and a
+ * phar without either knowing about the other.
+ */
+
+use MarkdownWord\Console\Application;
+
+(static function (): void {
+    $candidates = [
+        // Inside a phar: the bundled production dependencies.
+        __DIR__ . '/../vendor/autoload.php',
+        // A phar built by tools/build-phar.php, which keeps them under /app.
+        'phar://' . __FILE__ . '/app/vendor/autoload.php',
+        // A checkout, or a composer install of the library as a dependency.
+        __DIR__ . '/../../../autoload.php',
+    ];
+
+    foreach ($candidates as $candidate) {
+        if (file_exists($candidate)) {
+            require $candidate;
+
+            return;
+        }
+    }
+
+    fwrite(
+        STDERR,
+        'mdword: the dependencies are not installed.' . PHP_EOL
+        . 'Run `composer install` in the project directory, or download the phar from'
+        . PHP_EOL
+        . 'https://github.com/fabiangrassl/markdown-word/releases' . PHP_EOL,
+    );
+
+    exit(1);
+})();
+
+exit((new Application())->run(array_slice($argv, 1)));

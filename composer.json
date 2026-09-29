@@ -1,0 +1,72 @@
+{
+    "name": "fabeat/markdown-word",
+    "description": "Pure PHP Markdown to Word (DOCX) generator and back, built on PHPWord. Full CommonMark and GitHub-Flavored Markdown support, configurable styling, Word template rendering, and a command line utility.",
+    "type": "library",
+    "keywords": [
+        "markdown",
+        "docx",
+        "word",
+        "phpword",
+        "commonmark",
+        "gfm",
+        "converter",
+        "template",
+        "cli",
+        "phar",
+        "pandoc"
+    ],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Fabian Graßl",
+            "email": "mail@fabiangrassl.de"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "ext-zip": "*",
+        "ext-dom": "*",
+        "ext-mbstring": "*",
+        "ext-gd": "*",
+        "phpoffice/phpword": "^1.4",
+        "league/commonmark": "^2.10"
+    },
+    "require-dev": {
+        "pestphp/pest": "^5.0",
+        "phpunit/phpunit": "^13.3.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "MarkdownWord\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "MarkdownWord\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "scripts": {
+        "test": "pest",
+        "test:unit": "pest --testsuite=unit",
+        "test:spec": "pest --testsuite=conformance",
+        "test:roundtrip": "pest --testsuite=roundtrip",
+        "test:coverage": "pest --coverage --min=80 --coverage-clover=build/coverage/clover.xml --coverage-html=build/coverage/html",
+        "check": [
+            "@composer validate --strict",
+            "@php readme-check.php",
+            "@php smoke.php",
+            "@php stress.php",
+            "@php vendor/bin/pest"
+        ],
+        "build:phar": "@php -d phar.readonly=0 tools/build-phar.php"
+    },
+    "bin": [
+        "bin/mdword"
+    ]
+}

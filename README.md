@@ -1,0 +1,505 @@
+# markdown-word
+
+[![tests](https://github.com/fabiangrassl/markdown-word/actions/workflows/tests.yml/badge.svg)](https://github.com/fabiangrassl/markdown-word/actions/workflows/tests.yml)
+[![phar](https://github.com/fabiangrassl/markdown-word/actions/workflows/phar.yml/badge.svg)](https://github.com/fabiangrassl/markdown-word/actions/workflows/phar.yml)
+
+Convert Markdown to Word documents in pure PHP — and back again.
+
+Parsing is done by [`league/commonmark`][commonmark], writing by
+[`phpoffice/phpword`][phpword]. Everything in between — mapping the Markdown
+syntax tree onto Word's document model — is this library.
+
+```php
+use MarkdownWord\MarkdownToWord;
+
+(new MarkdownToWord())->save(file_get_contents('README.md'), 'README.docx');
+```
+
+Or from a terminal, with no PHP to write:
+
+```sh
+mdword to-docx README.md
+```
+
+And back out again:
+
+```php
+use MarkdownWord\WordToMarkdown;
+
+echo (new WordToMarkdown())->convert('README.docx');
+```
+
+## Why it exists
+
+The obvious way to build a Markdown-to-Word converter is to render HTML and hand
+it to PHPWord's HTML importer. That works for simple documents and quietly falls
+apart on real ones: emphasis nested inside emphasis, line breaks, code blocks,
+links whose text is itself formatted. Those are exactly the things READMEs are
+made of.
+
+This library walks the Markdown **syntax tree** instead. Nothing is flattened on
+the way through HTML, so what comes out is what the author wrote.
+
+## Conformance
+
+The test suite runs every example from the official specification suites and
+checks that the resulting document carries exactly the text the specification
+says it should:
+
+| Suite | Examples |
+| --- | --- |
+| [CommonMark 0.31.2][cm-spec] | 654 |
+| [GitHub-Flavored Markdown][gfm-spec] | 646 |
+
+`league/commonmark` is a fully conforming parser, so the visible text of its HTML
+output *is* the specification's answer. Comparing the text of the generated Word
+document against that is a strong, automatic check — a construct that loses or
+invents text fails the build.
+
+```
+composer check             # the lot, in the order continuous integration runs it
+composer test              # the test suite
+composer test:unit         # the unit tests alone
+composer test:spec         # just the conformance suite
+composer test:roundtrip    # just the round-trip suite
+composer test:coverage     # with a report in build/coverage
+composer build:phar        # writes build/mdword.phar
+php smoke.php              # does the library work on this version of PHP?
+php stress.php             # malformed input across every configuration
+php readme-check.php       # runs the examples on this page
+php examples/build.php     # a document for every example in examples/
+```
+
+`stress.php` feeds deliberately awkward input — unterminated delimiters, control
+characters, lone `<` and `&`, very deep nesting — through nine configurations
+and the template renderer, and checks that every result is a valid `.docx`. It
+is what caught the escaping defect described below.
+
+`readme-check.php` runs every example on this page, so the documentation cannot
+quietly stop describing what the code does.
+
+Tests are written with [Pest][pest] 5, against PHPUnit 13.
+
+### Continuous integration
+
+| Workflow | What it does |
+| --- | --- |
+| `tests` | `composer validate --strict`, `composer audit`, the README examples and the command line, then the suite on PHP 8.4 and 8.5 with a coverage report |
+| `phar` | builds `mdword.phar`, runs it on its own, uploads it, and attaches it to a release when a tag is pushed |
+
+PHP 8.2 is in the matrix too, but the test suite cannot run there: **Pest 5
+requires PHP 8.4**, while the library itself supports 8.2. That gap is covered by
+`smoke.php`, which uses no test framework and checks that both directions and the
+command line work on whatever PHP it is given. Between the two, every supported
+version is exercised.
+
+## Word to Markdown
+
+The same mapping runs in reverse:
+
+```php
+use MarkdownWord\WordToMarkdown;
+
+$markdown = (new WordToMarkdown())->convert('report.docx');
+(new WordToMarkdown())->save('report.docx', 'report.md');
+```
+
+A Word document is a lower-fidelity form of the Markdown it came from, so the
+round trip preserves what Word was told to keep and is explicit about the rest.
+The distinctions Word does not record are options:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `headingStyles` | `Heading`, `Title` | style ids read as ATX headings |
+| `quoteStyles` | `IntenseQuote`, `Quote`, `BlockQuote` | style ids read as block quotes |
+| `monospaceFonts` | Consolas, Courier, Menlo, … | typefaces read as code |
+| `quoteIndent` | `720` | twips per level of quote nesting |
+| `fenceCodeBlocks` | `true` | two or more monospaced paragraphs are a code block |
+| `tableHeader` | `true` | the first row is written as the header |
+| `headingSetext` | `false` | first- and second-level headings underlined |
+| `mediaDirectory` | `null` | a directory the images are taken out into |
+| `lineEnding` | newline | what the output file uses |
+
+```php
+use MarkdownWord\Reverse\Options;
+
+new WordToMarkdown(Options::fromArray(['mediaDirectory' => 'assets']));
+```
+
+The output is GitHub-Flavored Markdown: a Word table can only be a GFM table,
+and struck-through text can only be GFM's `~~`.
+
+### Round trips
+
+```
+Markdown --> Word --> Markdown --> Word
+             |------ same text -----|
+```
+
+The round-trip suite runs all 1300 specification examples through both
+directions and checks that the second Word document says the same thing as the
+first. It is the check the forward direction alone cannot make: a defect in the
+reader cannot hide behind a document nobody reads back.
+
+It is what found that a link's title was dropped, that an image's alt text never
+reached the file, and that a task list marker was silently discarded — none of
+which the forward suite could see, because each of them loses nothing the
+specification's expected text mentions.
+
+`examples/out/11-round-trip.md` is `01-kitchen-sink.docx` read back, for looking
+at side by side.
+
+## Command line
+
+Everything the library does is available as `mdword`, so a document can be
+converted without writing any PHP:
+
+```sh
+mdword README.md          # writes README.docx
+mdword README.docx        # writes README.md
+```
+
+From a checkout, `php bin/mdword`. As a single file with nothing installed,
+`php mdword.phar`.
+
+The direction is worked out from the file. A Word document is a zip archive and
+Markdown is text, and the four bytes that say which is which are part of the
+format rather than a convention — so the *name* of the file is never consulted, and
+a Markdown file called `notes.docx` still converts the right way. `--to docx` or
+`--to markdown` says it outright, which is the only way to be explicit when
+reading from a pipe.
+
+The commands still exist for a script to use, where being explicit is worth more
+than being short:
+
+```sh
+mdword to-docx notes.md
+mdword to-markdown report.docx
+```
+
+Using one direction's option with the other says which command it belongs to
+rather than that it is unknown. The result goes to standard output and progress
+goes to standard error, so it composes with everything else:
+
+```sh
+cat notes.md | mdword --to docx - -o - | pbcopy
+```
+
+With no `-o`, the result is written beside the input with the extension swapped.
+Reading from standard input there is no name to derive, so it goes to standard
+output instead. A run whose result would land on its own input stops rather than
+overwriting it.
+
+The options both directions share:
+
+| Option | Meaning |
+| --- | --- |
+| `-o, --output <file>` | where the result goes; `-` for standard output |
+| `--to <docx\|markdown>` | which way to convert; detected from the file otherwise |
+| `-c, --config <file.php>` | a file returning the styles and options to use |
+| `--plain` | no code colouring, no quote style, no table borders |
+
+`to-docx` also takes:
+
+| Option | Meaning |
+| --- | --- |
+| `-t, --template <file.docx>` | render into a Word template rather than a new document |
+| `--region <name>` | the template region to fill in, `body` by default |
+| `--define <name=value>` | a value for a single-line placeholder; repeatable |
+| `--images <mode>` | `embed`, `placeholder` or `skip` |
+| `--no-images` | shorthand for `--images skip` |
+| `--image-base <dir>` | where relative image paths resolve from |
+| `--table-width <n>` | table width in fiftieths of a percent; `5000` is full width |
+
+`to-markdown` also takes:
+
+| Option | Meaning |
+| --- | --- |
+| `--media <dir>` | take the images out of the document, beside the Markdown |
+| `--line-ending <lf\|crlf>` | what the output file uses between lines |
+| `--setext` | write first- and second-level headings underlined |
+| `--no-fence` | leave monospaced paragraphs as text rather than a code block |
+| `--no-header` | do not treat the first table row as a header |
+
+`mdword help` lists them all, and `mdword to-docx --help` the ones for one
+direction. The help and the parser are separate lists — one is for reading, one
+is for parsing — and a test holds them to each other, so neither can mention
+something the other does not have.
+
+A mistake is reported in a sentence, with what to do about it, and the exit code
+is non-zero — a wrong `--region` names the regions the template does have rather
+than producing a document full of `${...}`.
+
+### The phar
+
+```sh
+composer build:phar        # build/mdword.phar
+```
+
+One self-contained file, about a megabyte, needing nothing but PHP. The
+development dependencies are left out, which is most of why it is a megabyte
+rather than ten: the test suite is several times the size of the library.
+
+The build installs the runtime dependencies into a directory of its own rather
+than into the project, so your `vendor/` keeps its test tools, and it checks the
+result by converting a document in both directions before reporting success.
+
+## Supported Markdown
+
+| Construct | Result in Word |
+| --- | --- |
+| ATX and Setext headings | `Heading1`…`Heading6` styles |
+| Paragraphs, soft and hard breaks | paragraphs and line breaks |
+| `**bold**`, `*italic*`, `~~strike~~` | character formatting, nestable |
+| `` `code` ``, fenced and indented blocks | monospaced, shaded paragraphs |
+| Bullet and ordered lists, nested | real Word numbering, any depth |
+| `> block quotes`, nested | indented, styled paragraphs |
+| Tables with alignment | `w:tbl` with the alignment applied |
+| `[links](url)`, reference links, autolinks | `w:hyperlink`, including emphasis inside the label |
+| Images | embedded, or alt text when the file is missing |
+| `---` | a paragraph with a bottom border |
+| Raw HTML | rebuilt as Word content, or shown as text, or dropped |
+| Footnotes, description lists, task lists | with `CommonMarkParser::extended()` |
+
+A link whose label contains formatting, such as `[**bold** link](url)`, becomes a
+genuine Word hyperlink *with* the bold applied. PHPWord cannot express that
+directly, so the renderer emits a placeholder and rewrites `word/document.xml`
+into a `w:hyperlink` element while writing the file.
+
+## Word templates
+
+Point the renderer at the **styleIds** your template defines and it inherits the
+whole design — fonts, colours, spacing, headers and footers.
+
+```php
+use MarkdownWord\Configuration;
+use MarkdownWord\Configuration\Styles;
+use MarkdownWord\Template\MarkdownTemplate;
+
+$config = Configuration::create()->withStyles([
+    Styles::HEADING_1 => 'ReportTitle',   // a styleId in your template
+    Styles::PARAGRAPH => 'BodyText',
+    Styles::BLOCK_QUOTE => 'PullQuote',
+]);
+
+$template = new MarkdownTemplate('report-template.docx', $config, [
+    'customer' => 'Northwind Ltd',
+]);
+
+$template
+    ->insert('body', file_get_contents('summary.md'))
+    ->repeat('rows', [
+        ['item' => 'Licence', 'price' => '1,200 EUR'],
+        ['item' => 'Support', 'price' => '300 EUR'],
+    ])
+    ->save('northwind.docx');
+```
+
+### The template contract
+
+A `${name}` macro is for a **single-line value**:
+
+```
+Report for ${customer}
+```
+
+Markdown needs a **region** — a `${name}` marker, a `${slot}` paragraph, and a
+matching `${/name}` marker. The region is cloned once per rendered block and each
+clone's slot is replaced:
+
+```
+${body}
+${slot}
+${/body}
+```
+
+A region whose macros are ordinary names repeats once per row instead:
+
+```
+${rows}
+${item}: ${price}
+${/rows}
+```
+
+`MarkdownTemplate::processor()` returns PHPWord's own `TemplateProcessor` for
+anything this class does not wrap — replacing images, applying an XSL style sheet
+and so on.
+
+Two things are carried across into the template that a naive copy would lose, and
+that the library therefore rebuilds on the way out:
+
+- **Hyperlink relationships.** A `w:hyperlink` points at a relationship in the
+  document it was written into.
+- **List numbering.** A list paragraph points at a numbering definition, and the
+  template has its own `word/numbering.xml`.
+
+## Configuration
+
+`Configuration` is immutable; every `with*` method returns a new instance.
+
+```php
+Configuration::create()
+    ->withStyles([Styles::CODE_FONT => ['name' => 'Fira Code', 'size' => 10]])
+    ->withOptions(['images' => Options::IMAGE_PLACEHOLDER]);
+```
+
+It can equally be built from a plain array, which keeps the look of your
+documents in a config file:
+
+```php
+Configuration::fromArray(require 'config/markdown.php');
+```
+
+### Styles
+
+Each slot holds a styleId, an inline style array, or `null`.
+
+| Slot | Default | Controls |
+| --- | --- | --- |
+| `heading.1` … `heading.6` | `Heading1` … `Heading6` | headings |
+| `paragraph` | `null` | body text |
+| `blockQuote` | `IntenseQuote` | `>` blocks |
+| `codeBlock` | `null` | fenced code paragraphs |
+| `thematicBreak` | `null` | `---` |
+| `listParagraph` | `null` | list item paragraphs |
+| `htmlFallback` | `null` | raw HTML |
+| `codeFont` | Consolas 9pt, dark red | `` `code` `` |
+| `linkFont` | blue, underlined | hyperlink text |
+| `bulletList` | `MarkdownWord-Bullet` | bullet numbering style name |
+| `orderedList` | `MarkdownWord-Ordered` | ordered numbering style name |
+| `table` | `null` | table style name |
+| `tableHeaderRow` | `null` | header row style |
+| `tableCell` | `null` | cell style |
+
+> **StyleIds, not display names.** Word looks a style up by its *identifier*, so
+> the built-in headings are `Heading1`, not `Heading 1`, and `IntenseQuote`, not
+> `Intense Quote`. Use the identifier your template defines.
+
+### Options
+
+| Option | Default | Values |
+| --- | --- | --- |
+| `softBreak` | `space` | `space`, `lineBreak`, `paragraph` |
+| `hardBreak` | `line` | `line`, `paragraph`, `remove` |
+| `html` | `strip` | how raw HTML is handled: `strip` rebuilds it as Word, `preserve` shows it as monospaced text, `drop` discards it |
+| `images` | `embed` | `embed`, `placeholder`, `skip` |
+| `imageBasePath` | `null` | directory relative image paths resolve against |
+| `imageMaxWidth` | `15.0` | centimetres; `0` disables scaling |
+| `maxHeadingLevel` | `6` | deeper headings become paragraphs |
+| `orderedListFormat` | `decimal` | any OOXML `w:numFmt`, e.g. `lowerRoman` |
+| `orderedListSuffix` | `tab` | `tab`, `space`, `nothing` |
+| `tableBorders` | `true` | draw cell borders |
+| `tableHeaderBold` | `true` | bold the header row |
+| `tableWidth` | `5000` | fiftieths of a percent of the text column; `0` leaves sizing to Word |
+| `codeBlockShading` | `true` | shade code blocks |
+| `linkTarget` | `_blank` | `_blank` or `_self` |
+| `thematicBreak` | `border` | `border` or `text` |
+| `deferredHyperlinks` | `false` | resolve links while writing the file |
+
+## Advanced use
+
+Keep the `PhpWord` document and add your own content — a cover page, a
+`TOC`, metadata:
+
+```php
+$phpWord = new PhpWord();
+$converter = new MarkdownToWord($config);
+
+$section = $phpWord->addSection();
+$section->addTitle('Annual Report', 1);
+$converter->renderIntoContainer("# Chapter one\n\n…", $section, $phpWord);
+
+$phpWord->getDocInfo()->setTitle('Annual Report');
+$converter->save('', 'report.docx', $phpWord);
+```
+
+Recover the plain text of a rendered document, for indexing or an accessibility
+fallback:
+
+```php
+use MarkdownWord\Text\TextExtractor;
+
+TextExtractor::fromPhpWord($phpWord);
+```
+
+Use a different Markdown dialect:
+
+```php
+use MarkdownWord\Parser\CommonMarkParser;
+
+new MarkdownToWord($config, CommonMarkParser::commonMarkOnly());
+new MarkdownToWord($config, CommonMarkParser::extended());        // + footnotes
+new MarkdownToWord($config, CommonMarkParser::withAllExtensions());
+```
+
+Or implement `MarkdownParserInterface` for anything else.
+
+## Requirements
+
+PHP 8.2+ with `ext-zip`, `ext-dom`, `ext-mbstring` and `ext-gd`.
+
+Working on the library needs PHP 8.4+, because Pest 5 does. That is a floor for
+the *test suite* only: the published package installs on 8.2 and the phar runs on
+it, and `smoke.php` checks that it does.
+
+## Notes
+
+- **Output escaping is turned on while writing**, and the previous setting is
+  restored afterwards. PHPWord has escaping off by default, which is correct for
+  content that is already escaped and wrong for everything else: a document
+  containing a lone `<` or `&` — `a < b`, `AT&T` — otherwise gets raw markup in
+  its XML and Word refuses to open it.
+- **Tables span the text column.** PHPWord's own default is `w:tblW w:w="0"`,
+  and a zero width makes every viewer shrink the table to its narrowest content.
+  The width is written as a percentage of the column, so it follows the page size
+  and the margins; `tableWidth` changes it.
+- **PHPWord 1.4 emits a deprecation on PHP 8.1+** (`Using null as an array
+  offset`). It comes from `PhpWord\Style::getStyle()` being called with a null
+  name while writing a paragraph that carries no numbering of its own, which
+  every list item does. The output is correct and nothing reachable from this
+  library's API can avoid it, so the command line and the test suite silence
+  that one message from that one file rather than switching deprecation
+  reporting off. Embedding the library in an application leaves it visible.
+- **Hyperlinks around images** are rendered as the image without the link.
+  PHPWord's `Link` element holds only a string, so there is nowhere to put it.
+- **Image alt text and link titles are written by a pass over the finished
+  file.** PHPWord has nowhere to put either through its API — it emits
+  `o:title` as a literal empty string — so they are filled in while the archive
+  is written. That is the same reason links whose label carries emphasis are
+  resolved then rather than by PHPWord's own `Link` element.
+- **A document in memory is written to the system temp directory to be read
+  back**, because `ext-zip` only opens files. It is removed once the archive is
+  closed. The library does not write anywhere near its own install directory, so
+  nothing appears in your `vendor/` and the phar works unchanged.
+- **Raw HTML never becomes markup in the document.** This is worth stating
+  precisely, because the default does more than remove tags: a fragment of HTML
+  is parsed and *rebuilt* as Word content. `<b>`, `<i>`, `<s>` and `<code>`
+  become the corresponding formatting, `<br>` becomes a line break, comments are
+  dropped, and `<img>`, `<hr>` and friends contribute nothing. The words they
+  wrapped are kept — which is what makes a document with embedded HTML compare
+  equal to the same document rendered as HTML, and is why `strip` is the default
+  rather than `drop`.
+
+  What cannot happen is the HTML contributing structure of its own: no attribute,
+  event handler, script URL or frame reaches the document, because the tags are
+  never copied into the XML — only text is. An attribute carrying what would
+  close an element and open a run has nothing to escape into, and an external
+  entity is not resolved. A raw `<a href>` does not even become a live link,
+  though a Markdown `[link](url)` does. `preserve` keeps the markup as literal
+  monospaced text, and `drop` discards the fragment outright.
+
+  One thing this cannot do: style text that sits *outside* the element. CommonMark
+  makes `a <b>bold</b> b` five sibling nodes rather than a `b` wrapping a word, so
+  the bold is not applied — the text survives unformatted. Write `**bold**` for
+  text you want emphasised, and reserve raw HTML for content that brings its own
+  markup.
+
+## Licence
+
+MIT. PHPWord, which this library builds on, is LGPL-3.0.
+
+[commonmark]: https://github.com/thephpleague/commonmark
+[pest]: https://pestphp.com
+[phpword]: https://github.com/PHPOffice/PHPWord
+[cm-spec]: https://spec.commonmark.org/0.31.2/
+[gfm-spec]: https://github.github.com/gfm/

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+         failOnWarning="true"
+         failOnRisky="true"
+         beStrictAboutOutputDuringTests="true"
+         cacheDirectory=".phpunit.cache">
+    <!--
+        Pest test files are closures, not classes, so they carry no `Test.php`
+        suffix; the suites are matched on the extension instead.
+
+        One known upstream deprecation is silenced precisely, in tests/Pest.php,
+        rather than here.
+    -->
+    <testsuites>
+        <testsuite name="unit">
+            <directory suffix=".php">tests/Unit</directory>
+        </testsuite>
+        <testsuite name="conformance">
+            <directory suffix=".php">tests/Conformance</directory>
+        </testsuite>
+        <testsuite name="roundtrip">
+            <directory suffix=".php">tests/RoundTrip</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory>src</directory>
+        </include>
+    </source>
+    <php>
+        <!--
+            Collecting coverage for the whole suite runs out of the default 128M:
+            2800 tests write and read a few thousand documents, and the coverage
+            driver keeps a record of every line each one touched. The limit is
+            raised here rather than in a command so a local run and a continuous
+            integration run behave the same way.
+        -->
+        <ini name="memory_limit" value="1G"/>
+    </php>
+</phpunit>
