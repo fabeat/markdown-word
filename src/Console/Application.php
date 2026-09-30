@@ -390,7 +390,10 @@ final class Application
      */
     public static function commandHelp(string $command, string $summary): string
     {
-        $name = (string) preg_replace('/(?<!^)[A-Z]/', ' $0', substr($command, (int) strrpos($command, '\\') + 1));
+        // The name as it is typed, not as the heading spells it out: the heading
+        // reads "TO DOCX" and the usage line has to read `to-docx`, because that
+        // is what someone would type.
+        $name = self::commandName($command);
 
         return implode(PHP_EOL, [
             self::NAME . ' ' . $name . ' — ' . $summary,

@@ -12,80 +12,37 @@ use MarkdownWord\Reverse\Options;
 /**
  * `mdword to-markdown` — a Word document in, Markdown out.
  */
-final class ToMarkdown implements Command
+final class ToMarkdown extends BaseCommand
 {
-    public function __construct(private readonly Application $application)
-    {
-    }
-
     /**
      * @param list<string> $argv
      */
     public function execute(array $argv): int
     {
-        $command = CommandLine::parse(
-            $argv,
-            values: self::spec()['values'],
-            flags: self::spec()['flags'],
-            repeated: self::spec()['repeated'],
-            aliases: self::spec()['aliases'],
-            foreign: Application::specFor(ToDocx::class),
-        );
+        $command = $this->parseOptions($argv, 'convert a Word document to Markdown.');
 
-        if ($command->flag('help')) {
-            $this->application->print(Application::commandHelp(self::class, 'convert a Word document to Markdown.'));
-
+        if ($command === null) {
             return Application::SUCCESS;
         }
 
-        self::assertDirection($command);
-
         $input = $command->input();
-        $output = $this->application->outputPath($input, '.md', $command->value('output'));
-
-        self::assertNotOverwriting($input, $output);
+        $output = $this->outputPath($command, '.md');
 
         $this->application->writeResult($output, $this->convert($command, $input, $output));
 
-        $this->application->report($input, $output);
+        $this->report($input, $output);
 
         return Application::SUCCESS;
     }
 
-    /**
-     * A `--to` that names this direction is redundant, and one that names the
-     * other is a contradiction worth saying so about rather than ignoring.
-     */
-    private static function assertDirection(CommandLine $command): void
+    protected static function other(): string
     {
-        $asked = $command->value('to');
-
-        if ($asked !== null && $asked !== 'markdown' && $asked !== 'md') {
-            throw new ConsoleException(
-                sprintf('--to %s does not match what this reads: it takes a Word document.', $asked),
-                ['Omit it and let mdword work the direction out from the file.'],
-            );
-        }
+        return ToDocx::class;
     }
 
-    /**
-     * Refuse to write the result over the file it was read from.
-     */
-    private static function assertNotOverwriting(?string $input, string $output): void
+    protected static function formats(): array
     {
-        if ($input === null || $input === '-' || $output === '-') {
-            return;
-        }
-
-        $from = realpath($input);
-        $to = realpath(dirname($output) . '/' . basename($output));
-
-        if ($from !== false && $to !== false && $from === $to) {
-            throw new ConsoleException(
-                sprintf('The result would overwrite the input file "%s".', $input),
-                ['Pass --output to write it somewhere else.'],
-            );
-        }
+        return ['markdown', 'md'];
     }
 
     /**

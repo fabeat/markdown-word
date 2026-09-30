@@ -1,0 +1,185 @@
+<?php
+
+declare(strict_types=1);
+
+use MarkdownWord\Configuration;
+use MarkdownWord\Configuration\Options;
+use MarkdownWord\Configuration\Styles;
+use MarkdownWord\MarkdownToWord;
+use MarkdownWord\Parser\CommonMarkParser;
+use MarkdownWord\Reverse\Options as ReverseOptions;
+use MarkdownWord\Reverse\WordToMarkdown;
+use MarkdownWord\Render\InlineStyle;
+use MarkdownWord\Render\StyleResolver;
+use MarkdownWord\Text\TextExtractor;
+use MarkdownWord\Tests\Support\Upstream;
+use PhpOffice\PhpWord\Style\Font;
+
+/*
+ * The smaller public surface: the fluent setters, the parser factories and the
+ * style resolver.
+ *
+ * These are all things a caller reaches for and none of them was covered, which
+ * is how a method can sit in a released library having never once run. They are
+ * thin, so the tests are thin too — what they are here for is to be executed at
+ * all, and to say what each one means.
+ */
+beforeEach(fn () => Upstream::install());
+afterEach(fn () => Upstream::restore());
+
+// ------------------------------------------------- Configuration\Options
+
+it('offers a setter for every option it takes', function () {
+    // The array form is the documented way in, and these are the convenience
+    // spellings of it. Each returns a new instance and leaves the original alone.
+    $options = new Options();
+
+    expect($options->withSoftBreak(Options::SOFT_BREAK_PARAGRAPH)->softBreak)
+        ->toBe(Options::SOFT_BREAK_PARAGRAPH)
+        ->and($options->softBreak)->toBe(Options::SOFT_BREAK_SPACE)
+        ->and($options)->not->toBe($options->withSoftBreak(Options::SOFT_BREAK_PARAGRAPH));
+});
+
+it('changes each behaviour through its own setter', function (string $method, mixed $argument, string $property) {
+    // The setters return a new instance; the value is read back off the readonly
+    // property rather than through a getter, because there is no getter.
+    $changed = (new Options())->{$method}($argument);
+
+    expect($changed->{$property})->toBe($argument)
+        ->and((new Options())->{$property})->not->toBe($changed->{$property});
+})->with([
+    'hard break' => ['withHardBreak', 'paragraph', 'hardBreak'],
+    'html' => ['withHtml', 'preserve', 'html'],
+    'heading depth' => ['withMaxHeadingLevel', 3, 'maxHeadingLevel'],
+    'table borders' => ['withTableBorders', false, 'tableBorders'],
+    'code shading' => ['withCodeBlockShading', false, 'codeBlockShading'],
+    'table width' => ['withTableWidth', 2500, 'tableWidth'],
+]);
+
+it('changes the image mode, and the two things that go with it, at once', function () {
+    $options = (new Options())->withImages(Options::IMAGE_PLACEHOLDER, '/tmp/pics', 8.5);
+
+    expect($options->images)->toBe(Options::IMAGE_PLACEHOLDER)
+        ->and($options->imageBasePath)->toBe('/tmp/pics')
+        ->and($options->imageMaxWidth)->toBe(8.5);
+});
+
+it('leaves the image settings alone when they are not given', function () {
+    $options = (new Options())->withImages(Options::IMAGE_SKIP);
+
+    expect($options->images)->toBe(Options::IMAGE_SKIP)
+        ->and($options->imageBasePath)->toBeNull()
+        ->and($options->imageMaxWidth)->toBe(15.0);
+});
+
+it('clamps the values that have a range', function () {
+    // The constructor casts loosely typed values from a config file, so these
+    // arrive as strings there and have to come out as something usable.
+    expect(Options::fromArray(['tableWidth' => '99999'])->tableWidth)->toBe(5000)
+        ->and(Options::fromArray(['tableWidth' => '-4'])->tableWidth)->toBe(0)
+        ->and(Options::fromArray(['maxHeadingLevel' => '99'])->maxHeadingLevel)->toBe(6)
+        ->and(Options::fromArray(['imageMaxWidth' => '-1'])->imageMaxWidth)->toBe(0.0)
+        ->and(Options::fromArray(['tableBorders' => '1'])->tableBorders)->toBeTrue()
+        ->and(Options::fromArray(['imageBasePath' => ''])->imageBasePath)->toBeNull();
+});
+
+it('ignores an option it does not know rather than refusing the file', function () {
+    // A config file may carry entries for another version; that is not a reason
+    // to refuse to render the document.
+    expect(Options::fromArray(['noSuchOption' => true])->tableWidth)->toBe(5000);
+});
+
+// ------------------------------------------------------ Reverse\Options
+
+it('offers a setter for the media directory and for a batch of options', function () {
+    expect((new ReverseOptions())->withMediaDirectory('assets')->mediaDirectory)->toBe('assets')
+        ->and((new ReverseOptions())->withMediaDirectory(null)->mediaDirectory)->toBeNull()
+        ->and((new ReverseOptions())->withAll(['headingSetext' => true])->headingSetext)->toBeTrue();
+});
+
+// ------------------------------------------------------ parser factories
+
+it('renders with a parser chosen for the dialect', function () {
+    // The extras are what the extended flavours are for: none of these constructs
+    // survives in plain CommonMark, and all of them do once the extension that
+    // knows them is loaded.
+    $markdown = <<<'MD'
+        - [x] done
+
+        Footnote[^1]
+
+        [^1]: the note
+        MD;
+
+    $render = static fn (string $flavour): string => TextExtractor::fromPhpWord(
+        (new MarkdownToWord(null, new Configuration(), CommonMarkParser::$flavour()))->toPhpWord($markdown),
+    );
+
+    // Without the extensions the markers are just characters: a literal `[x]`, and
+    // a reference nobody follows. With them, a checkbox and a real footnote.
+    expect($render('commonMarkOnly'))->toContain('[x] done')->toContain('[^1]');
+    expect($render('extended'))->toContain("\u{2612} done")->not->toContain('[^1]');
+    expect($render('withAllExtensions'))->toContain("\u{2612} done")->not->toContain('[^1]');
+});
+
+it('reads front matter when a YAML implementation is there, and says so when none is', function () {
+    // There are two ways this can work, and which one is in play depends on the
+    // machine rather than on anything here: the `yaml` PHP extension, or the
+    // symfony/yaml package. A continuous integration runner has the first by
+    // default, a checkout usually has neither. So the test asserts the outcome
+    // rather than the mechanism — front matter parses if anything can parse it,
+    // and the failure names the package when nothing can.
+    $canParseYaml = function_exists('yaml_parse')
+        || class_exists(\Symfony\Component\Yaml\Yaml::class);
+
+    $frontMatter = "---\ntitle: Report\n---\n\n# Heading\n";
+    $parse = static fn () => CommonMarkParser::withAllExtensions()->parse($frontMatter);
+
+    if ($canParseYaml) {
+        expect($parse())->toBeInstanceOf(League\CommonMark\Node\Block\Document::class);
+
+        return;
+    }
+
+    // Neither is present, and the message names the package to install rather
+    // than failing with something about front matter.
+    expect($parse)
+        ->toThrow(League\CommonMark\Exception\MissingDependencyException::class, 'symfony/yaml');
+});
+
+// ------------------------------------------------------- StyleResolver
+
+it('hands back the style a level is configured with', function () {
+    $resolver = new StyleResolver(new Configuration());
+
+    expect($resolver->headingStyle(1))->toBe('Heading1')
+        ->and($resolver->headingStyle(2))->toBe('Heading2')
+        // Beyond the six levels there are, the last one is the answer: there is
+        // no seventh heading style, and a caller asking for one wants the
+        // deepest rather than nothing.
+        ->and($resolver->headingStyle(9))->toBe('Heading6')
+        ->and($resolver->headingStyle(0))->toBe('Heading1');
+});
+
+it('turns a style given as an array into a font', function () {
+    $resolver = new StyleResolver(new Configuration());
+    $font = $resolver->font(['name' => 'Fira Code', 'size' => 10, 'bold' => true]);
+
+    expect($font)->toBeInstanceOf(Font::class)
+        ->and($font->getName())->toBe('Fira Code')
+        ->and($font->isBold())->toBeTrue();
+});
+
+it('uses a style named as a string only when it is the whole of the formatting', function () {
+    // A named style cannot be combined with anything else in a run, so a run
+    // that also carries emphasis has to fall back to the array form for the
+    // combination to resolve.
+    $config = Configuration::create()->withStyles([
+        Styles::CODE_FONT => 'CodeChar',
+        Styles::LINK_FONT => 'Hyperlink',
+    ]);
+
+    expect((new StyleResolver($config))->fontFor(new InlineStyle(code: true)))->toBe('CodeChar')
+        ->and((new StyleResolver($config))->fontFor(new InlineStyle(code: true, bold: true)))
+        ->toBeArray();
+});

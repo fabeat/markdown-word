@@ -32,8 +32,7 @@
         "league/commonmark": "^2.10"
     },
     "require-dev": {
-        "pestphp/pest": "^5.0",
-        "phpunit/phpunit": "^13.3.4"
+        "pestphp/pest": "^5.0"
     },
     "autoload": {
         "psr-4": {
@@ -68,5 +67,8 @@
     },
     "bin": [
         "bin/mdword"
-    ]
+    ],
+    "suggest": {
+        "symfony/yaml": "Lets CommonMarkParser::withAllExtensions() read YAML front matter. The `yaml` PHP extension does the same."
+    }
 }

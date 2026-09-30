@@ -133,13 +133,17 @@ final class MarkdownToWord implements Converter
 
         $markdown = Input::markdown($this->source);
         $phpWord = $this->toPhpWord($markdown);
-        $bytes = DocxWriter::toString($phpWord, $this->links, $this->images);
 
-        if ($target !== null) {
-            file_put_contents($target, $bytes);
+        if ($target === null) {
+            return DocxWriter::toString($phpWord, $this->links, $this->images);
         }
 
-        return $bytes;
+        // Through the writer rather than `file_put_contents`, because the writer
+        // stages the archive in the temp directory and moves it into place: a
+        // half-written document cannot be left where someone will open it, and a
+        // directory that does not exist yet is made rather than written to and
+        // warned about.
+        return DocxWriter::write($phpWord, $target, $this->links, $this->images);
     }
 
     /**
