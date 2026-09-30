@@ -122,20 +122,28 @@ it('renders with a parser chosen for the dialect', function () {
     expect($render('withAllExtensions'))->toContain("\u{2612} done")->not->toContain('[^1]');
 });
 
-it('needs symfony/yaml for the front matter the all-extensions parser reads', function () {
-    // The extension is loaded by withAllExtensions(), but it cannot parse without
-    // the YAML package, which is a suggested dependency rather than a required
-    // one. Failing with a named package is a far better outcome than failing with
-    // something about front matter, so this is only a statement of the trade.
-    if (class_exists(\Symfony\Component\Yaml\Yaml::class)) {
-        expect(true)->toBeTrue();
+it('reads front matter when a YAML implementation is there, and says so when none is', function () {
+    // There are two ways this can work, and which one is in play depends on the
+    // machine rather than on anything here: the `yaml` PHP extension, or the
+    // symfony/yaml package. A continuous integration runner has the first by
+    // default, a checkout usually has neither. So the test asserts the outcome
+    // rather than the mechanism — front matter parses if anything can parse it,
+    // and the failure names the package when nothing can.
+    $canParseYaml = function_exists('yaml_parse')
+        || class_exists(\Symfony\Component\Yaml\Yaml::class);
+
+    $frontMatter = "---\ntitle: Report\n---\n\n# Heading\n";
+    $parse = static fn () => CommonMarkParser::withAllExtensions()->parse($frontMatter);
+
+    if ($canParseYaml) {
+        expect($parse())->toBeInstanceOf(League\CommonMark\Node\Block\Document::class);
 
         return;
     }
 
-    $parser = CommonMarkParser::withAllExtensions();
-
-    expect(fn () => $parser->parse("---\ntitle: Report\n---\n\n# Heading\n"))
+    // Neither is present, and the message names the package to install rather
+    // than failing with something about front matter.
+    expect($parse)
         ->toThrow(League\CommonMark\Exception\MissingDependencyException::class, 'symfony/yaml');
 });
 
