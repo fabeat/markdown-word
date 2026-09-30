@@ -5,25 +5,27 @@ declare(strict_types=1);
 use MarkdownWord\Reverse\Options;
 
 /*
- * The reverse options' fluent setters.
+ * The reverse options' fluent setters, and the two separate bugs in them.
  *
- * `with()` reached `fromArray()`, which starts from the defaults rather than
- * from the receiver, so every setter discarded the other eleven properties. On
- * this object that is worse than an inconvenience: the archive limits live here
- * too, so a single `withLineEnding()` call put `maxPartBytes` back to 256 MB,
+ * `with()` reached `fromArray()`, which starts from the defaults rather than from
+ * the receiver, so every setter discarded the options it was not given. On this
+ * object that is worse than an inconvenience: the archive limits live here too,
+ * so a single `withLineEnding()` call put `maxPartBytes` back to 256 MB,
  * `maxEntries` back to 4096 and `maxStyleDepth` back to 32 — a caller who had
  * tightened the zip-bomb bound lost it by asking for CRLF line endings.
  *
- * The same bug shipped in `Configuration\Options`; this file is its twin, so the
- * test is the twin of that one.
+ * `Configuration\Options` had the identical `with()`; this file is its twin, so
+ * the test is the twin of the one in tests/Unit/options-fixes.php.
  *
- * The groups below are about the second half of it: the null handling that the
- * forward direction got in `50ea1ab` and this one never received. Eleven of the
- * twelve properties here throw a `TypeError` when a config file spells out a key
- * with no value for it — every property that does not accept a null — which is
- * reachable from the public API and from a JSON config even though the only
- * in-tree caller passes a null-free array, and a file at 100% line coverage
- * makes that look like a closed question.
+ * The other half arrived later and is not the same bug. Neither entry point read
+ * a `null` at all: it went straight to the constructor and raised a `TypeError`
+ * naming an argument number, from a config file the caller had written
+ * correctly, for a key that was only present because they had merged in an array
+ * that had no value for it yet. `mediaDirectory` is the one property here that
+ * accepts a null, so every other one raised. The only in-tree caller passes a
+ * null-free array, and a file at 100% line coverage makes that look like a closed
+ * question. `Configuration\Options` reads a null, and options-fixes.php is where
+ * that is pinned.
  */
 
 const BASE = [
@@ -47,8 +49,8 @@ function baseKeys(): array
 
 it('configures a base that differs from the defaults in every named property', function () {
     // A guard on the guard: if BASE ever came to equal the defaults, the dataset
-    // above would compare defaults with defaults and pass on broken code. So
-    // every property it names must actually be away from the default.
+    // below would compare defaults with defaults and pass on broken code. So every
+    // property it names must actually be away from the default.
     $configured = Options::fromArray(BASE);
     $defaults = Options::fromArray([]);
 
@@ -126,23 +128,22 @@ it('leaves the receiver alone', function () {
 // What a null means
 
 /*
-| A `null` in an array is two different things, and the two entry points have to
-| read it differently because they are in different positions.
-|
-| `fromArray()` builds an object that does not exist yet, so there is nothing a
-| null could take away: it means "not configured" and the default stands.
-| `withAll()` is handed an object that already holds values, and every one of
-| them was asked for, so a null there means "not mentioned" and the value stays.
-|
-| Before this, neither read it: the null went straight to the constructor and
-| raised a `TypeError` naming an argument number, from a config file the caller
-| had written correctly, for a key that was only present because they had merged
-| in an array that had no value for it yet.
-|
-| The one thing the two agree on is which properties can hold a null at all,
-| since that is a property of the class rather than of the caller. The guard at
-| the end pins that list against the constructor's declared types.
-*/
+ * A `null` in an array is two different things, and the two entry points have to
+ * read it differently because they are in different positions.
+ *
+ * `fromArray()` builds an object that does not exist yet, so there is nothing a
+ * null could take away: it means "not configured" and the default stands.
+ * `withAll()` is handed an object that already holds values, and every one of
+ * them was asked for, so a null there means "not mentioned" and the value stays.
+ *
+ * Before this, neither read it at all: the null went straight to the constructor
+ * and raised a `TypeError` naming an argument number.
+ *
+ * The one thing the two agree on is which properties can hold a null, since that
+ * is a property of the class rather than of the caller. The test that pins that
+ * list against the constructor's declared types is `lists exactly the options
+ * whose type accepts a null`.
+ */
 
 /**
  * The options of this class whose declared type accepts a `null`.
@@ -166,11 +167,10 @@ function nullableReverseOptions(): array
 }
 
 it('treats a key spelled out with no value as unconfigured', function () {
-    // The shape: a JSON config that says `"maxStyleDepth": null`, or a PHP
-    // config array merged over another that set the option. Stated over every
-    // property rather than over a few, because the failure was in all eleven of
-    // the non-nullable ones and naming a representative would leave the rest
-    // unpinned. Before this, all eleven raised a `TypeError`.
+    // The shape: a JSON config that says `"maxStyleDepth": null`, or a PHP config
+    // array merged over another that set the option. Stated over every property
+    // rather than over a few, because the failure was in all of the non-nullable
+    // ones and naming a representative would leave the rest unpinned.
     $defaults = Options::fromArray([])->toArray();
     $nullable = nullableReverseOptions();
 
@@ -224,10 +224,10 @@ it('keeps a value a merge was not asked to change when a key arrives null', func
 });
 
 it('reads a null for the media directory as the value it is', function () {
-    // The one property here that accepts a null, and the reason the merge is
-    // keyed on the list rather than on "is this null". `withMediaDirectory(null)`
-    // is the setter for it and has to keep clearing, or there is no way back to
-    // "no media directory" once one is set.
+    // The one property here that accepts a null, and the reason the merge is keyed
+    // on the list rather than on "is this null". `withMediaDirectory(null)` is the
+    // setter for it and has to keep clearing, or there is no way back to "no media
+    // directory" once one is set.
     $withOne = Options::fromArray(['mediaDirectory' => 'assets']);
 
     expect(Options::fromArray(['mediaDirectory' => null])->mediaDirectory)->toBeNull()
@@ -250,9 +250,9 @@ it('reads an empty media directory as a value rather than as an absence', functi
 
 it('lists exactly the options whose type accepts a null', function () {
     // The list deciding that is hand-written, so a property added without a line
-    // in it is broken from the moment a caller passes a null for it. This file
-    // had no list at all, which is the whole of the bug above; the forward
-    // direction has had one since `50ea1ab` and the same guard is kept there.
+    // in it is broken from the moment a caller passes a null for it. The class had
+    // no list at all, which is the whole of the null bug above; the forward
+    // direction has one and keeps the same guard there.
     $listed = (new ReflectionClass(Options::class))->getReflectionConstant('NULLABLE');
 
     expect($listed)->toBeInstanceOf(

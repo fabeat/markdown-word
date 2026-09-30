@@ -26,7 +26,8 @@ use PhpOffice\PhpWord\PhpWord;
  * with it.
  *
  * Writing a document reaches the known upstream deprecation described in
- * tests/Support/Upstream, so the filter spans the whole file.
+ * tests/Support/Upstream, which is why the filter is installed for the duration
+ * of each test rather than around a single call.
  */
 beforeEach(fn () => Upstream::install());
 afterEach(fn () => Upstream::restore());
@@ -64,9 +65,6 @@ it('leaves nothing in the temp directory when the document cannot land', functio
     expect(fn () => saveMarkdown("# {$marker}\n\n- one\n- two\n", $blocked . '/out.docx'))
         ->toThrow(RuntimeException::class);
 
-    // The archive is a whole document, world-readable in a directory every local
-    // user can list, under a name that says nothing about what it holds. One
-    // per failed conversion, and nothing ever collects them.
     $leaked = [];
 
     foreach (writerFixesStagedFiles() as $file) {
@@ -208,8 +206,8 @@ it('continues a template that already has a list rather than colliding with it',
 
     preg_match_all('/<w:num w:numId="(\d+)"/', $numbering, $ids);
 
-    // Word resolves a `w:numId` to the first definition carrying it, so a
-    // second one is whichever of the two never applies.
+    // A `w:numId` may be defined once only: Word takes the first definition that
+    // carries it, so a second is the one that never applies.
     expect($ids[1])->toBe(array_values(array_unique($ids[1])));
 
     // The paragraphs the Markdown added have to point at their own definition,
@@ -277,8 +275,7 @@ it('finds the free relationship identifier without a search per one taken', func
 
     // The obvious way to write this is to count up from 1 and ask whether each
     // identifier is taken, which is a walk of the whole list for every one of
-    // them: eighty thousand relationships took six seconds that way, and the
-    // list is only ever as long as the document makes it.
+    // them: the cost is quadratic in the number the document happens to have.
     expect($elapsed)->toBeLessThan(
         2.0,
         sprintf('Adding a relationship to 80,000 took %.3f s, which is a search per identifier.', $elapsed),
@@ -339,8 +336,6 @@ function writerFixesUnwritableDirectory(): string
 }
 
 /**
- * The files this library has staged in the system temp directory.
- *
  * @return list<string>
  */
 function writerFixesStagedFiles(): array
@@ -372,9 +367,6 @@ function writerFixesHolds(string $archive, string $text): bool
     return $document !== false && str_contains($document, $text);
 }
 
-/**
- * Fill in a template, returning the path to the result.
- */
 function writerFixesRenderInto(string $template, string $markdown): string
 {
     $output = Scratch::path('rendered');
@@ -387,9 +379,6 @@ function writerFixesRenderInto(string $template, string $markdown): string
     return $output;
 }
 
-/**
- * The numbering identifier the paragraph carrying this text points at.
- */
 function writerFixesNumIdOf(string $docx, string $text): ?int
 {
     $dom = new DOMDocument();
@@ -413,9 +402,6 @@ function writerFixesNumIdOf(string $docx, string $text): ?int
     return null;
 }
 
-/**
- * The definition a `w:num` points at, as the XML that follows the identifier.
- */
 function writerFixesNumberingOf(string $numbering, int $numId): string
 {
     preg_match(sprintf('/<w:num w:numId="%d">(.*?)<\/w:num>/s', $numId), $numbering, $match);
@@ -430,9 +416,6 @@ function writerFixesNumberingOf(string $numbering, int $numId): string
     return $definition[1] ?? '';
 }
 
-/**
- * A merger holding the one list definition a Markdown list needs.
- */
 function writerFixesMerger(): NumberingMerger
 {
     $scratch = new PhpWord();
@@ -450,8 +433,8 @@ function writerFixesMerger(): NumberingMerger
  * A `.docx` with a list of its own, no numbering relationship, and as many
  * relationships as asked for.
  *
- * Assembled part by part: a document this library writes has six, and the count
- * is the thing under test.
+ * Assembled part by part: a document this library writes has six relationships,
+ * and the count is the thing under test.
  */
 function writerFixesHostDocument(int $relationships): string
 {

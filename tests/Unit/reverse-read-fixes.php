@@ -22,9 +22,9 @@ use MarkdownWord\Xml;
  * document PHPWord produces.
  *
  * Assertions are made against the block tree and the exact Markdown rather than
- * against substrings. A `toContain` on the text of a quote passes whether the
+ * against substrings: a `toContain` on the text of a quote passes whether the
  * quote came back as one block or as several siblings of the same text, which is
- * the defect that is why quote nesting is checked structurally here.
+ * the defect quote nesting is checked structurally for.
  */
 
 // Helpers
@@ -33,9 +33,8 @@ use MarkdownWord\Xml;
  * A `.docx` written by this library with some of its parts replaced.
  *
  * The library's own output is the archive this starts from, because it is a
- * valid package by construction; the parts under test are then swapped out for
- * the ones Word would write. A null value drops a part altogether, which is how
- * a document with no numbering part at all is made.
+ * valid package by construction. A null value drops a part altogether, which is
+ * how a document with no numbering part at all is made.
  *
  * @param array<string, string|null> $overrides Part name => its new contents.
  */
@@ -85,8 +84,8 @@ function reverseFixArchive(array $overrides, string $markdown = 'seed'): string
 /**
  * A `word/document.xml` carrying the given body.
  *
- * Every namespace the reader looks in is declared, including the two DrawingML
- * ones that PHPWord's own output leaves out.
+ * Every namespace the reader looks in is declared, including the DrawingML ones
+ * PHPWord's own output leaves out — it writes VML only.
  */
 function reverseFixDocument(string $body): string
 {
@@ -104,9 +103,7 @@ function reverseFixDocument(string $body): string
         . '</w:document>';
 }
 
-/**
- * One paragraph, with whatever direct formatting is being tested.
- */
+/** One paragraph, with whatever direct formatting is being tested. */
 function reverseFixParagraph(string $text, string $properties = ''): string
 {
     return '<w:p>'
@@ -124,10 +121,8 @@ function reverseFixNumbering(int $numId, int $level = 0): string
 }
 
 /**
- * The shape of the document as a readable outline, depth first.
- *
- * A structural assertion, so that a block that came back at the wrong level or
- * with the wrong parent cannot pass.
+ * The document as a depth-first outline, so that a block that came back at the
+ * wrong level or with the wrong parent cannot pass.
  *
  * @param list<Block> $blocks
  * @return list<string>
@@ -144,10 +139,7 @@ function reverseFixOutline(array $blocks, int $depth = 0): array
     return $outline;
 }
 
-/**
- * The visible text of a block's own inlines, with a marker for anything that is
- * not a text run.
- */
+/** The visible text of a block's own inlines, `[kind:alt]` for anything that is not a run. */
 function reverseFixText(Block $block): string
 {
     $text = '';
@@ -164,8 +156,6 @@ function reverseFixText(Block $block): string
 }
 
 /**
- * The block tree a Markdown document converts to.
- *
  * @return list<Block>
  */
 function reverseFixTree(string $markdown): array
@@ -176,9 +166,6 @@ function reverseFixTree(string $markdown): array
     return (new WordToMarkdown($file))->read($file);
 }
 
-/**
- * The Markdown a document converts to, through the library's own writer.
- */
 function reverseFixMarkdown(string $markdown): string
 {
     $file = Scratch::path('reverse-fix');
@@ -191,9 +178,9 @@ function reverseFixMarkdown(string $markdown): string
  * Run a snippet of PHP in a child process and report how it went.
  *
  * A memory limit cannot be imposed on the process running the suite, and
- * exhausting it is a fatal error that ends the run rather than failing a test.
- * A child process is the only way to assert that a document converts within a
- * budget, so that a regression is a failed expectation rather than a dead suite.
+ * exhausting it is a fatal error that ends the run rather than failing a test. A
+ * child process is the only way to assert that a document converts within a
+ * budget, so a regression is a failed expectation rather than a dead suite.
  *
  * @return array{0: int, 1: string} The exit status and everything it printed.
  */
@@ -291,8 +278,8 @@ it('reads a multi-paragraph block quote as one quote', function () {
 });
 
 it('reads a quote nested two deep as one quote at each level', function () {
-    // The inner level has to keep its two paragraphs together as well, inside the
-    // paragraph of the outer quote they follow.
+    // The inner level has to keep its two paragraphs together as well, as a
+    // sibling of the outer quote's own paragraphs rather than inside one of them.
     $markdown = "> outer one\n>\n> > inner one\n> >\n> > inner two\n>\n> outer two";
 
     expect(reverseFixOutline(reverseFixTree($markdown)))->toBe([
@@ -377,8 +364,7 @@ it('stops following a basedOn chain at the configured depth', function () {
     // A hundred styles deep with a cap of eight: only the last eight of them
     // contribute, so `S92` can still reach the indentation at the bottom and
     // `S91` cannot. A table each, because a resolution is cached — the second
-    // question would otherwise be answered out of the first one's cache, which
-    // says nothing about where the cap is.
+    // question would otherwise be answered out of the first one's cache.
     expect((new StyleTable(Xml::parse($xml), 8))->indentOf('S92'))->toBe(720);
     expect((new StyleTable(Xml::parse($xml), 8))->indentOf('S91'))->toBe(0);
 
@@ -413,10 +399,9 @@ it('still terminates on a cycle in the basedOn chain', function () {
 });
 
 it('converts a document whose basedOn chain is absurdly deep', function () {
-    // Twenty thousand styles, each based on the next, is about 1.5 MB of XML and
-    // a few kilobytes zipped — which is to say it is cheap to send. Resolving it
-    // cost memory quadratic in the chain's own depth and died inside a hundred
-    // megabytes, in a way nothing could catch. It now converts, and the
+    // A chain far deeper than Word writes is a few megabytes of XML and a few
+    // kilobytes zipped, which is to say it is cheap to send. Resolving it
+    // exhausted memory in a way nothing could catch; it now converts, and the
     // paragraph keeps its text.
     $file = reverseFixArchive([
         'word/styles.xml' => reverseFixStyleChain(20000),
@@ -584,9 +569,9 @@ it('reads a list whose numbering part is missing altogether', function () {
 
 it('reads a break and a tab written inside a run', function () {
     // This is the form Word writes: the break and the tab are children of the
-    // run. The sibling form above them is what PHPWord emits, and it is the only
-    // one the library's own output exercises, so without this every
-    // hand-authored Word document would silently lose its line breaks.
+    // run. The sibling form PHPWord emits is the only one the library's own
+    // output exercises, so without this every hand-authored Word document would
+    // silently lose its line breaks.
     $file = reverseFixArchive([
         'word/document.xml' => reverseFixDocument(
             '<w:p><w:r>'
@@ -630,9 +615,9 @@ it('reads a break and a tab in a formatted run', function () {
 });
 
 it('reads a page break as nothing rather than as a line break', function () {
-    // A `w:br` with a type is a page or column break. It is a layout decision
-    // rather than content, and turning it into a hard break would put a line
-    // break in the Markdown that the author never asked for.
+    // A `w:br` with a type is a page or column break: layout rather than
+    // content, and turning it into a hard break would put a line break in the
+    // Markdown that the author never asked for.
     $file = reverseFixArchive([
         'word/document.xml' => reverseFixDocument(
             '<w:p><w:r>'
@@ -650,8 +635,8 @@ it('reads a page break as nothing rather than as a line break', function () {
 
 it('reads an image written as DrawingML, which is what Word writes', function () {
     // PHPWord only ever emits VML, so this is the shape of picture a real Word
-    // document contains and the library's own output never does. It is also the
-    // one that carries the alt text a reader with no image support falls back to.
+    // document contains and the library's own output never does — and the one
+    // that carries the alt text a reader with no image support falls back to.
     $image = Scratch::image('picture.png');
 
     $file = reverseFixArchive([

@@ -12,24 +12,19 @@ use MarkdownWord\WordToMarkdown;
  * The writer's edge cases, kept apart from the round trip and the general
  * reverse-conversion suite.
  *
- * Three of these are about what a document loses on the way out, or spends far
- * too long on: a blank line inside a verbatim block, the letters past the
- * twenty-sixth item of a list, and the fence around a long run of backticks.
- * Each is written as an assertion about the Markdown that comes out, because
- * that is the only place any of the three can be seen.
+ * These are about what a document loses on the way out, or spends far too long
+ * on: a blank line inside a verbatim block, the letters past the twenty-sixth
+ * item of a list, and the fence around a long run of backticks. Each is written
+ * as an assertion about the Markdown that comes out, because that is the only
+ * place any of the three can be seen.
  */
 
-/**
- * Render Markdown, read the document back, and return the Markdown.
- */
 function writeFixesRoundTrip(string $markdown): string
 {
     return (new WordToMarkdown(toDocx($markdown)))->convert();
 }
 
 /**
- * The Markdown a block tree is written as.
- *
  * @param list<Block> $blocks
  */
 function writeFixes(Block ...$blocks): string
@@ -129,9 +124,6 @@ function writeFixesCodeLine(string $text): string
 }
 
 /**
- * The Markdown a list of `w:numFmt` format reads back as, one item per entry of
- * the returned list.
- *
  * @return list<string>
  */
 function writeFixesList(string $format, int $items, int $start = 1): array
@@ -204,8 +196,7 @@ it('writes one blank line between the blocks of a loose list', function () {
 it('continues a lettered list past the twenty-sixth item', function () {
     // Word does not run out of letters at `z`: it goes on with `aa`, `ab` and so
     // on, the way a spreadsheet names its columns. Coming back round to `a` means
-    // two of the items in a thirty-item list carry a marker that is already
-    // taken.
+    // two items in the list carry a marker that is already taken.
     $markers = writeFixesList('lowerLetter', 30);
 
     expect($markers)->toHaveCount(30);
@@ -302,11 +293,9 @@ it('finds the longest run of a character in one pass', function () {
 it('fences a code block holding a very long run of backticks in reasonable time', function () {
     // The fence has to be longer than the longest run in the content, and the
     // obvious way to find that is to look for three backticks, then four, then
-    // five, and so on: a search of the whole content per backtick, which is time
-    // quadratic in the size of it. Two hundred thousand backticks took nine
-    // seconds that way; one pass over the content takes a few milliseconds, so
-    // the two are nowhere near each other and the budget below is not a close
-    // call on any machine.
+    // five: a search of the whole content per backtick, quadratic in its size.
+    // Two hundred thousand backticks took nine seconds that way against a few
+    // milliseconds now, so the budget below is not a close call on any machine.
     $start = hrtime(true);
 
     $markdown = writeFixes(Block::code(str_repeat('`', 200000)));

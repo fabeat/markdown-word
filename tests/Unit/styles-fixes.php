@@ -5,52 +5,49 @@ declare(strict_types=1);
 use MarkdownWord\Configuration\Styles;
 
 /*
-|------------------------------------------------------------------------------
-| The heading slot
-|------------------------------------------------------------------------------
-|
-| Heading levels reach a style slot through a name, and the name is composed
-| from the level number: `heading.3`. Three call sites compose it by hand
-| rather than asking `Styles` for it — `DocumentRenderer::renderHeading()`,
-| `StyleRegistrar::register()` and `Configuration::withBuiltInHeadingStyles()` —
-| which means the mapping from a level to a slot name is written down four
-| times, and the method that exists to hold it (`Styles::heading()`) is on the
-| side looking in: nothing in `src/` calls it. `StyleResolver::headingStyle()`
-| did call it, and had no caller of its own either, so it is gone and the
-| mapping is now read from nowhere.
-|
-| The call sites are named by method rather than by line number on purpose. A
-| line number in a comment is a claim about the very files this one exists to
-| stop drifting from, and the version of this comment that carried three of
-| them had all three wrong — which is the drift arriving through the guard.
-|
-| The duplication cannot be removed from here: `DocumentRenderer` picks the
-| *slot name* and hands it to `emitParagraph()`, which then resolves the style
-| and pushes its character half into the runs. Routing it through
-| `Styles::heading()` instead would lose the slot, and with it the ability to
-| recognise the slot again inside `emitParagraph()` — which resolves it twice,
-| once for the paragraph half and once for the character half.
-|
-| What these tests do is make the method the one place the answer is written
-| down, so the three call sites have something to converge on. They pin the two
-| things that would otherwise drift apart quietly:
-|
-|  - the constants, which the renderer and the registrar both use to look a slot
-|    up, and
-|  - the string `heading()` composes from the level number.
-|
-| If either side is renamed without the other, these fail — which is the failure
-| that would otherwise show up as a heading silently rendering unstyled.
-|
-*/
+ * The heading slot.
+ *
+ * Heading levels reach a style slot through a name, and the name is composed
+ * from the level number: `heading.3`. Three call sites compose it by hand rather
+ * than asking `Styles` for it — `DocumentRenderer::renderHeading()`,
+ * `StyleRegistrar::register()` and `Configuration::withBuiltInHeadingStyles()` —
+ * which means the mapping from a level to a slot name is written down four
+ * times, and the method that exists to hold it (`Styles::heading()`) is on the
+ * side looking in: nothing in `src/` calls it. `StyleResolver::headingStyle()`
+ * did call it, and had no caller of its own either, so it is gone and the mapping
+ * is now read from nowhere.
+ *
+ * The call sites are named by method rather than by line number on purpose. A
+ * line number in a comment is a claim about the very files this one exists to
+ * stop drifting from, and the version of this comment that carried three of them
+ * had all three wrong — which is the drift arriving through the guard.
+ *
+ * The duplication cannot be removed from here: `DocumentRenderer` picks the slot
+ * name and hands it to `emitParagraph()`, which then resolves the style and
+ * pushes its character half into the runs. Routing it through `Styles::heading()`
+ * instead would lose the slot, and with it the ability to recognise the slot
+ * again inside `emitParagraph()` — which resolves it twice, once for the
+ * paragraph half and once for the character half.
+ *
+ * What these tests do is make the method the one place the answer is written
+ * down, so the three call sites have something to converge on. They pin the two
+ * things that would otherwise drift apart quietly:
+ *
+ *  - the constants, which the renderer and the registrar both use to look a slot
+ *    up, and
+ *  - the string `heading()` composes from the level number.
+ *
+ * If either side is renamed without the other, these fail — which is the failure
+ * that would otherwise show up as a heading silently rendering unstyled.
+ */
 
 it('resolves every heading level to the slot its constant names', function (int $level) {
     $styles = new Styles();
     $constant = 'HEADING_' . $level;
 
-    // The level resolves through the constant the rest of the library uses...
+    // The level resolves through the constant the rest of the library uses, and
+    // through the name `heading()` composes from the number.
     expect($styles->get(Styles::{$constant}))->toBe('Heading' . $level)
-        // ...and through the name `heading()` composes from the number.
         ->and($styles->heading($level))->toBe($styles->get(Styles::{$constant}));
 })->with([1, 2, 3, 4, 5, 6]);
 
@@ -88,7 +85,6 @@ it('reports no style at all when neither the level nor the paragraph has one', f
     $styles = new Styles([Styles::HEADING_4 => null, Styles::PARAGRAPH => null]);
 
     expect($styles->heading(4))->toBeNull()
-        // ...and leaves the levels it does have alone.
         ->and($styles->heading(1))->toBe('Heading1');
 });
 
@@ -111,10 +107,9 @@ it('reads an inline heading style as readily as a style id', function () {
 
 it('keeps the slots a heading lookup is built from', function () {
     // `heading()` is a `get()` against a composed name, so the composed name and
-    // the constants describing it have to agree. If a constant is renamed and
-    // the composition is not, the renderer asks for a slot that no longer has a
-    // constant pointing at it, and headings come out with Word's default
-    // styling rather than an error.
+    // the constants describing it have to agree. If a constant is renamed and the
+    // composition is not, the renderer asks for a slot nothing points at any more,
+    // and headings come out with Word's default styling rather than an error.
     $slots = (new Styles())->toArray();
 
     foreach ([1, 2, 3, 4, 5, 6] as $level) {

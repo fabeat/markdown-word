@@ -14,9 +14,9 @@ use MarkdownWord\Tests\Support\Upstream;
  * enough, and a second copy of it would be a second thing to keep right.
  *
  * Writing a document reaches the one known upstream deprecation described in
- * tests/Support/Upstream, so the filter spans the whole file. The last test
- * installs the library's own filter as well, below the runner's, and checks it
- * is still there afterwards.
+ * tests/Support/Upstream, so the filter is installed for the duration of each
+ * test. The last test installs the library's own filter as well, below the
+ * runner's, and checks it is still there afterwards.
  */
 beforeEach(fn () => Upstream::install());
 afterEach(fn () => Upstream::restore());
@@ -138,22 +138,23 @@ it('checks the output again after the conversion, in case it was swapped', funct
 });
 
 it('writes the same document to a pipe as to a file', function () {
-    // `-o -` is the documented pipe-to-clipboard workflow, so it is the path
-    // every `| pbcopy` takes. It used to convert the document twice — once to a
-    // path of `-` that nothing is written to, and once again for the bytes that
-    // are — which cost a full parse, render and zip for a result that was thrown
-    // away. Measured at 168 ms against 84 ms for a 400-section document.
+    // `-o -` is the documented pipe-to-clipboard workflow, so it is the path every
+    // `| pbcopy` takes. It used to convert the document twice — once to a path of
+    // `-` that nothing is written to, and once again for the bytes that are —
+    // which cost a full parse, render and zip for a result that was thrown away.
+    // Measured at 168 ms against 84 ms for a 400-section document.
     //
-    // What is asserted is that the two agree, compared on the document body
-    // rather than on the archive: a zip records its entries' timestamps, so two
-    // correct conversions of the same input are not byte-identical and never
-    // were. The number of conversions is not asserted, because nothing
-    // observable from outside the command reports it: `Application` is `final`,
-    // `ToDocx` is `final`, and the one signal that could be counted — the
-    // upstream null-offset deprecation PHPWord raises while writing — belongs to
-    // PHP and to PHPWord, not to this library. A test built on that passed on a
-    // laptop and failed on a build machine for a conversion that was correct.
-    // The saving is in the code, where the second call was.
+    // What is asserted is that the two agree, compared on the document body rather
+    // than on the archive: a zip records its entries' timestamps, so two correct
+    // conversions of the same input are not byte-identical and never were.
+    //
+    // The number of conversions is *not* asserted, because nothing observable from
+    // outside the command reports it: `Application` and `ToDocx` are both `final`,
+    // and the one signal that could be counted — the upstream null-offset
+    // deprecation PHPWord raises while writing — belongs to PHP and to PHPWord, not
+    // to this library. A test built on that passed on a laptop and failed on a
+    // build machine for a conversion that was correct. The saving is in the code,
+    // where the second call was.
     $input = Scratch::path('piped', '.md');
     $toFile = Scratch::path('once', '.docx');
 
@@ -171,12 +172,7 @@ it('writes the same document to a pipe as to a file', function () {
     expect(documentBody($piped['out']))->toBe(documentBody((string) file_get_contents($toFile)));
 });
 
-/**
- * The `word/document.xml` out of a `.docx`, as bytes.
- *
- * Compared instead of the archive because a zip stores a timestamp per entry,
- * so two conversions of the same input never match byte for byte.
- */
+/** The `word/document.xml` out of a `.docx`, as bytes. */
 function documentBody(string $docx): string
 {
     $path = Scratch::path('body', '.docx');
@@ -198,14 +194,10 @@ function documentBody(string $docx): string
 
 it('leaves a deprecation filter the host installed in place', function () {
     // A host that embedded the application and installed the filter itself keeps
-    // it: `run()` used to call `restore()` in a `finally` whatever the state,
-    // so the first run of a long-lived process tore down what its host had put
-    // there — and every conversion after it flooded stderr with the diagnostic
-    // the filter exists to swallow.
-    //
-    // `install()` returns void, so the flag is read rather than called for: a
-    // filter the host installed is already in place before `run()` starts, and
-    // `run()` must not take it away.
+    // it: `run()` used to call `restore()` in a `finally` whatever the state, so
+    // the first run of a long-lived process tore down what its host had put there
+    // — and every conversion after it flooded stderr with the diagnostic the
+    // filter exists to swallow.
     UpstreamDeprecations::install();
 
     expect(filterIsInstalled())->toBeTrue();

@@ -26,9 +26,9 @@ use MarkdownWord\Tests\Support\Upstream;
  * Only the negative half is asserted. A test that greps its own bootstrap for the
  * literal text `pest()->afterEach(` fails the moment anybody reformats the line
  * or writes it as `pest()->afterEach (` — a suite broken by whitespace, over
- * something that still works. The check that matters is the one below: a hook
- * that is not reached through `pest()` is the defect, and it has several
- * spellings, so all of them are excluded.
+ * something that still works. What matters is that a hook not reached through
+ * `pest()` is the defect, and it has several spellings, so all of them are
+ * excluded.
  */
 it('registers the scratch clean-up through the suite rather than to the bootstrap file', function () {
     $bootstrap = (string) file_get_contents(dirname(__DIR__) . '/Pest.php');
@@ -86,14 +86,17 @@ it('leaves the output of a check running beside it alone', function () {
 });
 
 /*
- * The one place the tests ask "is this document openable".
+ * The canonical way to ask "is this document openable".
  *
- * A `.docx` Word will not open is the failure several of these tests exist for,
- * and the question was being answered in three files, one of which had drifted:
- * two of them read the body with the same six lines, and one of those lost the
- * previous `libxml_use_internal_errors` setting on the way past. It is asked
- * through `TemplateFactory::xmlIsValid()` now, and this is that it still answers
- * both ways.
+ * A `.docx` Word will not open is the failure several tests exist for, and the
+ * question was being answered in several files, which had drifted apart — one of
+ * them lost the previous `libxml_use_internal_errors` setting on the way past.
+ * `TemplateFactory::xmlIsValid()` is the answer, and this is that it works both
+ * ways.
+ *
+ * It is not yet the only one: `raw-html.php`, `escaping.php` and `docx-output.php`
+ * each still parse the document XML themselves. Consolidating them is a change to
+ * those files rather than to this one.
  */
 it('tells a document with a body that parses from one that does not', function () {
     $document = Scratch::path('openable');
@@ -114,10 +117,9 @@ it('tells a document with a body that parses from one that does not', function (
  * One defect in one dependency, filtered by one filter.
  *
  * tests/Support/Upstream used to carry its own copy of the rule, which had already
- * drifted from the library's: the copy also swallowed every diagnostic the runner
- * was not reporting, which with the runner's own error_reporting in force is
- * nearly everything. It delegates now, so the test that matters is that the
- * library's filter is the one in place and it still does its job.
+ * drifted from the library's; that class says what the drift was. It delegates
+ * now, so the test that matters is that the library's filter is the one in place
+ * and it still does its job.
  */
 it('filters the known upstream deprecation with the library\'s own filter', function () {
     Upstream::install();

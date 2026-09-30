@@ -28,8 +28,6 @@ beforeEach(fn () => Upstream::install());
 afterEach(fn () => Upstream::restore());
 
 /**
- * Render Markdown and return the document's XML and its visible text.
- *
  * @param array<string, mixed> $options
  * @return array{xml: string, text: string, docx: string}
  */
