@@ -10,9 +10,9 @@ use RuntimeException;
  * Where the input of a conversion came from.
  *
  * A string that names a file that exists is read from it; anything else is the
- * content itself. That is the same rule the command line works by, where the
- * direction is worked out from the file rather than from its name, so the two do
- * not surprise each other.
+ * content itself. This is central rather than incidental: it is the first thing
+ * both directions do, and the command line's own decision about which way the
+ * data has to go is the same fact asked of a stream.
  *
  * The two formats cannot be told apart the same way, and the difference matters.
  * Any text is Markdown, so a string that is not a file is taken as the content
@@ -27,6 +27,8 @@ final class Input
 
     /**
      * Markdown: the file if the string names one, otherwise the text.
+     *
+     * @throws RuntimeException when the string names a file that cannot be read.
      */
     public static function markdown(string $input): string
     {
@@ -36,15 +38,31 @@ final class Input
     /**
      * A Word document: the file if the string names one, otherwise the bytes —
      * but only if they really are an archive.
+     *
+     * A file that exists but is not a document is reported by name, because
+     * whoever passed it was talking about a file and would not expect to be told
+     * about bytes.
+     *
+     * @throws RuntimeException when the input is neither a document nor one.
      */
     public static function document(string $input): string
     {
+        // Already the bytes, so there is nothing to open and nothing to read.
         if (str_starts_with($input, self::DOCUMENT_MAGIC)) {
             return $input;
         }
 
         if (is_file($input)) {
-            return self::read($input);
+            $bytes = self::read($input);
+
+            if (!str_starts_with($bytes, self::DOCUMENT_MAGIC)) {
+                throw new RuntimeException(sprintf(
+                    '"%s" is not a Word document. A .docx is a zip archive, so its first four bytes are "PK".',
+                    $input,
+                ));
+            }
+
+            return $bytes;
         }
 
         throw new RuntimeException(
@@ -53,9 +71,20 @@ final class Input
         );
     }
 
+    /**
+     * Whether the given bytes begin a Word document.
+     *
+     * The one place that knows what a `.docx` looks like, so that the command
+     * line and the converters cannot come to disagree about it.
+     */
+    public static function looksLikeDocument(string $bytes): bool
+    {
+        return str_starts_with($bytes, self::DOCUMENT_MAGIC);
+    }
+
     private static function read(string $path): string
     {
-        $contents = file_get_contents($path);
+        $contents = @file_get_contents($path);
 
         if ($contents === false) {
             throw new RuntimeException(sprintf('Unable to read "%s".', $path));

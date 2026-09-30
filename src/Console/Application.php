@@ -10,10 +10,11 @@ use MarkdownWord\Console\CommandLine;
 use MarkdownWord\Console\Command\Command;
 use MarkdownWord\Console\Command\ToDocx;
 use MarkdownWord\Console\Command\ToMarkdown;
+use MarkdownWord\Input;
 use MarkdownWord\MarkdownToWord;
 use MarkdownWord\Reverse\Options as ReverseOptions;
-use MarkdownWord\WordToMarkdown;
 use MarkdownWord\Template\MarkdownTemplate;
+use MarkdownWord\WordToMarkdown;
 use Throwable;
 
 /**
@@ -246,7 +247,7 @@ final class Application
             fclose($handle);
         }
 
-        return $magic === "PK\x03\x04" ? 'to-markdown' : 'to-docx';
+        return Input::looksLikeDocument($magic) ? 'to-markdown' : 'to-docx';
     }
 
     /**
