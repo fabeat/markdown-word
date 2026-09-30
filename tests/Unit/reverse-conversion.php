@@ -78,7 +78,7 @@ it('reports being given nothing to convert', function () {
         ->toThrow(RuntimeException::class, 'There is no document to convert');
 });
 
-// ------------------------------------------------------------------ blocks
+// Blocks
 
 it('reads headings at every level', function () {
     $markdown = roundTrip("# One\n\n## Two\n\n###### Six");
@@ -224,7 +224,7 @@ it('takes the images out of the document into a media directory', function () {
     expect(is_file($match[1]))->toBeTrue();
 });
 
-// ----------------------------------------------------------------- options
+// Options
 
 it('reads the block tree a document converts to', function () {
     $blocks = readBack('# Title');
@@ -269,7 +269,7 @@ it('reads another set of heading styles when told to', function () {
     expect((new WordToMarkdown($file))->convert())->toContain('Title');
 });
 
-// --------------------------------------------------------------- escaping
+// Escaping
 
 it('leaves an underscore inside a word alone', function () {
     // CommonMark does not let an underscore between word characters delimit
@@ -346,7 +346,7 @@ it('has no code span for content that spans a blank line', function () {
     expect(Escaping::codeSpan("a\n\nb"))->toBeNull();
 });
 
-// ------------------------------------------------------------ idempotence
+// Idempotence
 
 it('reads a document back to the same Markdown twice', function () {
     $markdown = <<<'MD'

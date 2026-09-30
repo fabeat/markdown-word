@@ -9,12 +9,9 @@ namespace MarkdownWord\Reverse;
  *
  * Word stores emphasis as properties of a run rather than as a nesting of
  * containers, so the tree is deliberately flat: a run carries the four things
- * Markdown can express inline, and the serialiser rebuilds the nesting from them.
- * That is the inverse of {@see \MarkdownWord\Render\InlineRenderer} on the way
- * out, and it preserves exactly what Word recorded, which is not the same thing
- * as preserving the Markdown: a fenced code block comes back without its
- * language, and a table is written with a header whether the document marked one.
- * {@see \MarkdownWord\WordToMarkdown} lists the distinctions Word does not keep.
+ * Markdown can express inline, and the writer rebuilds the nesting from them.
+ * That is the inverse of {@see \MarkdownWord\Render\InlineRenderer} on the way out.
+ * {@see \MarkdownWord\WordToMarkdown} lists what the round trip does not keep.
  */
 final class Inline
 {

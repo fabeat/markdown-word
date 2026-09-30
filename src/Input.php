@@ -66,8 +66,8 @@ final class Input
     }
 
     /**
-     * The one place that knows what a `.docx` looks like, so that the command
-     * line and the converters cannot come to disagree about it.
+     * The one definition of what a `.docx` looks like, so the command line and the
+     * converters cannot come to disagree about it.
      */
     public static function looksLikeDocument(string $bytes): bool
     {

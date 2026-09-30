@@ -21,7 +21,7 @@ use MarkdownWord\Tests\Support\Upstream;
 beforeEach(fn () => Upstream::install());
 afterEach(fn () => Upstream::restore());
 
-// ------------------------------------------------------------ the overwrite guard
+// The overwrite guard
 
 it('refuses an output that is the input under another spelling of its case', function () {
     // On APFS and NTFS — the macOS and Windows defaults — `Notes.md` and
@@ -194,7 +194,7 @@ function documentBody(string $docx): string
     }
 }
 
-// ---------------------------------------------------------------------- run()
+// Run()
 
 it('leaves a deprecation filter the host installed in place', function () {
     // A host that embedded the application and installed the filter itself keeps

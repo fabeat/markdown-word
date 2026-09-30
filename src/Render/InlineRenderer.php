@@ -165,12 +165,14 @@ final class InlineRenderer
         }
 
         // A link whose body is a bare image, as in `[![logo](logo.png)](url)`,
-        // is a hyperlink around a drawing rather than around text.
+        // is a hyperlink around a drawing rather than around text. Taking this
+        // branch is the whole of the decision: `ImageResolver` clears the link
+        // style on `isLink()`, so nothing needs to be told about it.
         if ($this->isOnlyImages($node)) {
             return $this->render(
                 $node->children(),
                 $target,
-                $linked->withImageLabel(),
+                $linked,
                 $onParagraphBreak,
             );
         }
@@ -203,8 +205,8 @@ final class InlineRenderer
     }
 
     /**
-     * A hard break is one the author asked for, so it becomes a real Word line
-     * break by default rather than a collapsed space.
+     * One the author asked for, so a real Word line break by default rather than
+     * a collapsed space.
      *
      * @param  callable():AbstractContainer|null  $onParagraphBreak
      */
@@ -231,8 +233,8 @@ final class InlineRenderer
     }
 
     /**
-     * A soft break is just a source line ending. Browsers collapse it to a
-     * space, so that is the spec-faithful default.
+     * Just a source line ending, which a browser collapses to a space — so that is
+     * the spec-faithful default.
      *
      * @param  callable():AbstractContainer|null  $onParagraphBreak
      */
@@ -263,10 +265,10 @@ final class InlineRenderer
     }
 
     /**
-     * Any whitespace inside the literal is collapsed, because in HTML a browser
-     * collapses it and so must the document. This matters for content that only
-     * looks like ordinary text, such as `foo&#10;&#10;bar`, where the entity
-     * decodes to real newlines but is displayed as a space.
+     * Any whitespace inside the literal is collapsed, because a browser collapses
+     * it and so must the document. This matters for content that only looks like
+     * ordinary text, such as `foo&#10;&#10;bar`, where the entity decodes to real
+     * newlines but is displayed as a space.
      *
      * Code blocks never pass through here, so their whitespace is untouched.
      */

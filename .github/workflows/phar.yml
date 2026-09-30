@@ -24,10 +24,15 @@ concurrency:
   group: phar-${{ github.ref }}
   cancel-in-progress: true
 
-# Read-only by default. The one step that writes is the release below, and it
-# says so itself rather than the whole workflow holding write access it does not
-# need: `contents: write` on a job that only reads a repository is a wider blast
-# radius than the job needs.
+# Read-only by default. The release job below widens this to `contents: write`
+# for itself alone, rather than the whole workflow holding write access it does
+# not need: `contents: write` on a job that only builds an archive is a wider
+# blast radius than the job needs.
+#
+# `permissions` is a workflow-level and job-level key. On a *step* it is not a
+# key at all, and one unrecognised key makes GitHub reject the whole file — the
+# workflow then fails to parse on every push, in zero seconds, having built
+# nothing. That is how the first attempt at this fix took the release out.
 permissions:
   contents: read
 
@@ -120,17 +125,44 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  release:
+    name: publish the release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    # Publishing a release needs `contents: write`, and the workflow-level grant
+    # is only read. The grant belongs here, on the one job that writes.
+    permissions:
+      contents: write
+    steps:
+      # The artifact comes from the build job rather than being rebuilt, so the
+      # bytes that get published are the bytes that were checked. Building again
+      # here would be a second chance for the two to differ.
+      - name: Fetch the built phar
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: mdword-phar
+          path: build
+
+      # The phar's own version is the single source of truth for what this is, so
+      # a tag that disagrees with it is a mistake worth failing on. The archive
+      # built against a branch that has moved on since the last tag would
+      # otherwise publish a `v0.1.0` whose `--version` answers `0.2.0`, and the
+      # build's own self-check would pass — it asserts the archive agrees with the
+      # constant, not that the constant agrees with the tag.
+      - name: The tag and the artifact must agree
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          reported="$(php build/mdword.phar --version | awk '{print $NF}')"
+          echo "tag      $tag"
+          echo "reported $reported"
+          if [ "$tag" != "$reported" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME but the phar reports $reported. Tag a commit whose Application::VERSION is $tag."
+            exit 1
+          fi
+
       - name: Attach the phar to the release
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
-        # Publishing a release needs `contents: write`, and the workflow-level
-        # grant is only read. Without this the first release fails with
-        # "403 Resource not accessible by integration" — which is a good way to
-        # find out about it on the day, and a bad way to find out at all.
-        permissions:
-          contents: write
         with:
           files: build/mdword.phar
-          # The phar's own version is the single source of truth for what this
-          # is, so a tag that disagrees with it is a mistake worth failing on.
           fail_on_unmatched_files: true

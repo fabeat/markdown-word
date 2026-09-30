@@ -20,7 +20,6 @@ final class InlineStyle
         public readonly bool $code = false,
         public readonly ?string $url = null,
         public readonly ?string $linkTitle = null,
-        public readonly bool $imageLabel = false,
         /**
          * Font properties forced onto every run inside this scope, regardless of
          * the Markdown's own emphasis. This is how a table header is made bold and
@@ -67,17 +66,6 @@ final class InlineStyle
     }
 
     /**
-     * Marks a link whose label is a bare image, `[![logo](logo.png)](url)`.
-     *
-     * Nothing reads the flag; the drawing case is actually decided by the inline
-     * renderer's own check.
-     */
-    public function withImageLabel(): self
-    {
-        return $this->derive(imageLabel: true);
-    }
-
-    /**
      * @param  array<string, mixed>  $font
      */
     private function derive(
@@ -87,7 +75,6 @@ final class InlineStyle
         ?bool $code = null,
         ?string $url = null,
         ?string $linkTitle = null,
-        ?bool $imageLabel = null,
         ?array $forcedFont = null,
     ): self {
         return new self(
@@ -97,7 +84,6 @@ final class InlineStyle
             $code ?? $this->code,
             $url ?? $this->url,
             $linkTitle ?? $this->linkTitle,
-            $imageLabel ?? $this->imageLabel,
             $forcedFont ?? $this->forcedFont,
         );
     }

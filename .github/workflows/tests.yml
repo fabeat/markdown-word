@@ -3,6 +3,11 @@ name: tests
 on:
   push:
     branches: [main]
+    # A tag as well as a branch, so cutting a release runs the same suite `main`
+    # does. Without this the tag is the one ref in the repository that is never
+    # tested, and a release could be published from a commit whose 3,089 tests are
+    # red — the release workflow builds the archive and does not test the library.
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
   # The jobs below install what the lock file pins, so nothing upstream can break
@@ -99,16 +104,20 @@ jobs:
       # weak gate: it catches unknown classes, unknown functions, wrong argument
       # counts and types, and methods called on things that do not have them.
       #
-      # Level 2 finds 50 more, and they are worth having. Fourteen are in `src/`
-      # and every one is real: three `@throws` tags naming a
-      # `MarkdownWord\RuntimeException` that does not exist, two `@var` tags
-      # naming a variable the loop does not have, and nine calls to
-      # `getAttribute()`/`setAttribute()` on a `DOMNodeList<DOMNode>` that
-      # really holds `DOMElement`s. The rest are in the tests, where Pest's
-      # dynamic `test()`/`expect()` leave PHPStan nothing to infer from without
-      # the plugin. Fixing the library's fourteen means editing `src/`, so the
-      # level moves when they are fixed rather than the findings being hidden
-      # until then. Nothing here is suppressed to get a green run.
+      # Level 2 finds more, and they are worth having. The ones that were in
+      # `src/` have since been fixed — three `@throws` tags named a
+      # `MarkdownWord\RuntimeException` that does not exist, and correcting them
+      # is what left `src/Writer/DocxWriter.php` documenting the
+      # `\RuntimeException` it really does throw. The rest are in the tests,
+      # where Pest's dynamic `test()`/`expect()` leave PHPStan nothing to infer
+      # from without the plugin.
+      #
+      # The level is deliberately not justified by a count of findings: a number
+      # goes stale the moment one is fixed, which is how the three `@throws` tags
+      # above kept being cited long after they were corrected. Fixing the
+      # library's real findings means editing `src/`, so the level moves when
+      # they are fixed rather than the findings being hidden until then. Nothing
+      # here is suppressed to get a green run.
       - name: Analyse
         run: |
           php tmp/phpstan.phar analyse \
@@ -185,10 +194,13 @@ jobs:
 
       # A coverage report on its own says little; this fails if the reported
       # figure is a placeholder, or if the code stops being covered at all.
-      # 91 rather than 80, which is where it was: the suite measures 93.0%, so
-      # 80 let a thirteen-point regression through without anybody noticing.
+      # 91 rather than 80, which is where it was: the suite sits a little over 93%,
+      # so 80 let a thirteen-point regression through without anybody noticing.
       # Two points is thin but real, and it is the gap between a gate and a
-      # report that only moves when the library changes shape.
+      # report that only moves when the library changes shape. The exact figure
+      # is not written down here on purpose — it moves with the coverage driver
+      # and the PHP version, and a stale number in a comment is the same mistake
+      # as a stale count of static-analysis findings.
       #
       # The JUnit report goes in the same run because the analysis job needs both
       # and would otherwise have to produce the second one again.

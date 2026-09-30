@@ -21,13 +21,16 @@ use MarkdownWord\Reverse\StyleTable;
  * it to Word, back to Markdown, and comparing the text the reader ends up with.
  *
  * The round trip preserves what Word was told to keep and is honest about the
- * rest. The distinctions Word does not record, listed in full on
- * {@see Reverse\Options}:
+ * rest. These are the distinctions Word does not record, and README says each in
+ * full with an example:
  *
- *  - a fenced code block comes back without its language;
- *  - a table is written with a header whether the document marked one or not;
- *  - a quote configured as plain indentation rather than as a style is read as an
- *    indented paragraph.
+ *  - a table's header row comes back bold, and its delimiter row is rewritten,
+ *    though the column alignment itself survives;
+ *  - a fenced code block comes back without its language, and one of a single
+ *    line as an inline span instead;
+ *  - a quote written as plain indentation rather than as a style comes back as a
+ *    plain paragraph;
+ *  - the last line has no newline after it.
  *
  * The document is not this library's: the names in it and the contents of what
  * it names are the sender's to choose. So the result is written from a staged
@@ -220,22 +223,19 @@ final class WordToMarkdown implements Converter
      * Write every image the document uses into the configured media directory.
      *
      * A file is only written when both halves of the document agree about it: the
-     * name it is written under has to be one of the image formats Word embeds, and
-     * the bytes have to be an image. The document chooses both, so either one on
-     * its own is a request to write a file the sender named — a `.php` next to
-     * the Markdown, or an `.htaccess` that makes the server treat every other
-     * file in the directory as one.
+     * name has to be one of the image formats Word embeds, and the bytes have to be
+     * an image. The document chooses both, so either on its own is a request to
+     * write a file the sender named — a `.php` beside the Markdown, or an
+     * `.htaccess` that makes the server treat every other file there as one.
      *
-     * An image whose name is already taken in the directory is left as it is
-     * rather than replaced. The document does not get to overwrite a file that
-     * was there first, which is the one rule that keeps a second conversion of
-     * the same document from replacing what the first one wrote.
+     * A name already taken in the directory is left alone: the document does not
+     * get to overwrite a file that was there first, which is what keeps a second
+     * conversion of the same document from replacing what the first wrote.
      *
-     * @param string        $directory Where the images go. Never null and never
-     *        an empty string: the options turn `''` into null, so a caller who
-     *        passed one takes the branch in {@see self::write()} and never
-     *        reaches here, rather than arriving with a path at the root of the
-     *        filesystem.
+     * @param string        $directory Where the images go. Never empty: the options
+     *        turn `''` into null, so a caller who passed one takes the branch in
+     *        {@see self::write()} and never reaches here with a path at the root of
+     *        the filesystem.
      * @param list<Block>   $blocks
      * @throws FileNotWritable when the directory or a file in it cannot be written.
      */
@@ -299,15 +299,15 @@ final class WordToMarkdown implements Converter
      * Whether a name and the bytes behind it are an image.
      *
      * The extension is checked first because it is free, and because the name is
-     * the half that has to end up on disk. A leading dot is refused along with
-     * it: `.htaccess` has an "extension" in the loose sense that a split on a
-     * dot produces, and it is a configuration file rather than a picture.
+     * the half that has to end up on disk. A leading dot is refused along with it:
+     * `.htaccess` has an "extension" in the loose sense that a split on a dot
+     * produces, and it is a configuration file rather than a picture.
      *
      * The bytes are checked because the name is chosen by the sender, and an
-     * extension is a claim rather than a fact. `getimagesize()` knows the
-     * raster formats and says so by returning false for everything else, which
-     * includes the two vector formats Word embeds: those are recognised by their
-     * own headers instead, or the document would lose a chart.
+     * extension is a claim rather than a fact. `getimagesize()` knows the raster
+     * formats and says so by returning false for everything else, which includes
+     * the two vector formats Word embeds: those are recognised by their own headers
+     * instead, or the document would lose a chart.
      */
     private function isImage(string $name, string $bytes): bool
     {

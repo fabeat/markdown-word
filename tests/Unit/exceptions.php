@@ -78,7 +78,7 @@ function documentWithBrokenXml(string $name = 'broken.docx'): string
     return $path;
 }
 
-// ------------------------------------------------------------------ the paths
+// The paths
 
 it('reports a file that is not an archive as an unreadable document', function () {
     $path = notAnArchive();
@@ -145,7 +145,7 @@ it('reports a media directory it cannot create', function () {
         ->toThrow(MarkdownWord\Exception\FileNotWritable::class, 'Unable to create the media directory');
 });
 
-// ------------------------------------------------- the two writer passes
+// The two writer passes
 //
 // These run over the finished archive, so their failures cannot be reached
 // through a conversion that succeeded — the file they are handed is opened again
@@ -201,7 +201,7 @@ it('reports a numbering part the numbering pass cannot parse', function () {
         ->toThrow(MalformedDocument::class, 'contains invalid XML');
 });
 
-// ------------------------------------------------------- the public surface
+// The public surface
 
 it('converts a document held in memory, as toDocx does the other way', function () {
     $bytes = (new MarkdownToWord())->toDocx("# Through toMarkdown\n");
@@ -218,7 +218,7 @@ it('gives the configuration and the options back', function () {
     expect((new WordToMarkdown(null, $options))->getOptions())->toBe($options);
 });
 
-// ------------------------------------------------------------------ the types
+// The types
 
 it('puts every failure under one type a caller can catch', function () {
     $types = [

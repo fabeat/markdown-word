@@ -27,7 +27,7 @@ use MarkdownWord\Xml;
  * the defect that is why quote nesting is checked structurally here.
  */
 
-// ------------------------------------------------------------------- helpers
+// Helpers
 
 /**
  * A `.docx` written by this library with some of its parts replaced.
@@ -272,7 +272,7 @@ function reverseFixCycledStyles(): string
         . '</w:styles>';
 }
 
-// -------------------------------------------------------------------- quotes
+// Quotes
 
 it('reads a multi-paragraph block quote as one quote', function () {
     // The defect this pins: the second paragraph closed the quote the first one
@@ -369,7 +369,7 @@ it('closes a quote before a paragraph that is not indented into it', function ()
     ]);
 });
 
-// -------------------------------------------------------------- style chains
+// Style chains
 
 it('stops following a basedOn chain at the configured depth', function () {
     $xml = reverseFixStyleChain(100);
@@ -433,7 +433,7 @@ it('converts a document whose basedOn chain is absurdly deep', function () {
     expect($output)->toContain('deep');
 });
 
-// ----------------------------------------------------------------- numbering
+// Numbering
 
 it('reads the outermost level of a numbering definition', function () {
     // `root()` is what a paragraph falls back on when the level it names is not
@@ -580,7 +580,7 @@ it('reads a list whose numbering part is missing altogether', function () {
     ]);
 });
 
-// ------------------------------------------------------------------- inlines
+// Inlines
 
 it('reads a break and a tab written inside a run', function () {
     // This is the form Word writes: the break and the tab are children of the
@@ -646,7 +646,7 @@ it('reads a page break as nothing rather than as a line break', function () {
     expect(reverseFixText((new WordToMarkdown($file))->read($file)[0]))->toBe('onetwo');
 });
 
-// --------------------------------------------------------------------- images
+// Images
 
 it('reads an image written as DrawingML, which is what Word writes', function () {
     // PHPWord only ever emits VML, so this is the shape of picture a real Word

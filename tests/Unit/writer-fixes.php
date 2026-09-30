@@ -44,7 +44,7 @@ afterEach(function (): void {
     $GLOBALS['writerFixesBlocked'] = [];
 });
 
-// ---------------------------------------------------------------- the staging
+// The staging
 
 it('leaves nothing in the temp directory when the document cannot land', function () {
     if (writerFixesIsRoot()) {
@@ -117,7 +117,7 @@ it('does not leave a readable copy of the scratch document behind either', funct
     }
 });
 
-// ------------------------------------------------------------------- the move
+// The move
 
 it('puts the archive in place when it cannot be renamed into it', function () {
     if (writerFixesIsRoot()) {
@@ -199,7 +199,7 @@ it('creates what a symlink points at, rather than the link', function () {
     expect(TemplateFactory::textOf($document))->toContain('New content');
 });
 
-// --------------------------------------------------------------- the numbering
+// The numbering
 
 it('continues a template that already has a list rather than colliding with it', function () {
     $output = writerFixesRenderInto(TemplateFactory::withList(), "- alpha\n- beta");
@@ -285,7 +285,7 @@ it('finds the free relationship identifier without a search per one taken', func
     );
 });
 
-// -------------------------------------------------------------------- helpers
+// Helpers
 
 /**
  * Call a method the writer only uses internally.

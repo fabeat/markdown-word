@@ -45,8 +45,7 @@ final class LinkPayloadCollector
     {
         // The walk starts from the caller's style, which already carries the
         // link's url, its title and the font forced onto the surrounding block.
-        // `InlineStyle` is immutable, so the siblings after this one are
-        // unaffected by what the emphasis inside the label derives.
+        // `InlineStyle` is immutable, so the siblings after this one are unaffected.
         $runs = $this->collectRuns($node->children(), $style);
 
         $placeholder = LinkPlaceholder::forIndex($this->counter++);

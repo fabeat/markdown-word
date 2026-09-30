@@ -161,7 +161,7 @@ function writeFixesList(string $format, int $items, int $start = 1): array
     );
 }
 
-// ------------------------------------------------------- blank lines and code
+// Blank lines and code
 
 it('keeps a blank line inside a fenced code block', function () {
     // Two blank lines in a row are content where they are: the gap in a log
@@ -199,7 +199,7 @@ it('writes one blank line between the blocks of a loose list', function () {
     expect($markdown)->toBe("- one\n\n- two\n\n- three");
 });
 
-// ------------------------------------------------------------------- markers
+// Markers
 
 it('continues a lettered list past the twenty-sixth item', function () {
     // Word does not run out of letters at `z`: it goes on with `aa`, `ab` and so
@@ -266,7 +266,7 @@ it('writes an unknown numbering format as the number itself', function () {
     expect(writeFixesList('ordinal', 3))->toBe(['1.', '2.', '3.']);
 });
 
-// --------------------------------------------------------------------- fence
+// Fence
 
 it('fences a code block with more backticks than it holds', function () {
     // A run of backticks in the content closes the block if the fence is not

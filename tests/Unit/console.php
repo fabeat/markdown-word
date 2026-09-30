@@ -57,7 +57,7 @@ function runCli(array $argv, string $stdin = ''): array
     return $result;
 }
 
-// ------------------------------------------------------------------- basics
+// Basics
 
 it('prints its version', function () {
     $run = runCli(['--version']);
@@ -118,7 +118,7 @@ it('reports an option that is missing its value', function () {
     expect($run['err'])->toContain('The option "output" needs a value');
 });
 
-// ---------------------------------------------------------------- to-docx
+// To-docx
 
 it('converts a file to a document', function () {
     $input = inputFile('notes', "# Notes\n\nSome **bold** text.\n");
@@ -258,7 +258,7 @@ it('reports a configuration file that returns the wrong thing', function () {
     expect($run['err'])->toContain('must return an array or a Configuration');
 });
 
-// -------------------------------------------------------------- templates
+// Templates
 
 it('renders into a template region and substitutes values', function () {
     $template = TemplateFactory::report();
@@ -323,7 +323,7 @@ it('rejects a define that is not a name=value pair', function () {
     expect($run['err'])->toContain('needs a name=value pair');
 });
 
-// ------------------------------------------------------------ to-markdown
+// To-markdown
 
 it('converts a document back to Markdown', function () {
     $document = Scratch::path('back', '.docx');
@@ -399,7 +399,7 @@ it('takes the images out beside the Markdown it writes', function () {
     expect(is_file(dirname($output) . '/' . $match[1]))->toBeTrue();
 });
 
-// -------------------------------------------------------------- direction
+// Direction
 
 it('works the direction out from the file', function () {
     $input = inputFile('detect', "# Detected\n\nSome **bold**.\n");

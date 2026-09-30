@@ -36,20 +36,33 @@ use MarkdownWord\Exception\TemplateNotFound;
 function sourcesWithClaim(string $claim): array
 {
     $found = [];
+    $root = dirname(__DIR__, 2);
 
-    $files = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator(dirname(__DIR__, 2) . '/src')
-    );
+    // `tests/` and `tools/` as well as `src/`: AGENTS.md applies the same rules
+    // to all three, and the dividers it banned were mostly in the two that were
+    // outside the first pass's scope.
+    foreach (['src', 'tests', 'tools'] as $area) {
+        $files = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($root . '/' . $area, FilesystemIterator::SKIP_DOTS)
+        );
 
-    foreach ($files as $file) {
-        if ($file->getExtension() !== 'php') {
-            continue;
-        }
+        foreach ($files as $file) {
+            if ($file->getExtension() !== 'php' || !$file->isFile()) {
+                continue;
+            }
 
-        $source = (string) file_get_contents($file->getPathname());
+            // This file names every phrase it looks for, so it always matches
+            // itself. Scanning for the claims is the exception that proves the
+            // rule, not a counterexample to it.
+            if ($file->getFilename() === basename(__FILE__)) {
+                continue;
+            }
 
-        if (str_contains($source, $claim)) {
-            $found[] = $file->getFilename();
+            $source = (string) file_get_contents($file->getPathname());
+
+            if (str_contains($source, $claim)) {
+                $found[] = $area . '/' . $file->getFilename();
+            }
         }
     }
 
@@ -59,16 +72,44 @@ function sourcesWithClaim(string $claim): array
 }
 
 it('does not claim again what the code does not do', function (string $claim) {
-    // Each of these was a docblock explaining a method that had no caller, and
-    // both were wrong: a code block's shading is a paragraph property, and the
-    // round trip is lossy wherever Word did not record the distinction.
+    // Each of these was a comment asserting something the code does not do. Add
+    // the phrase here when you correct one, so it cannot come back.
     expect(sourcesWithClaim($claim))->toBe([]);
 })->with([
     'code block shading goes through a paragraph style, not a Font' => 'used for code block shading',
     'the round trip loses what Word does not record' => 'the round trip is exact',
+    'a link wrapping a bare image is marked by a flag nothing read' => 'imageLabel',
+    'the version is written down in only one place' => 'The one place the version is written down',
 ]);
 
-// ---------------------------------------------- what outlived the deletion
+it('has no decorative dividers in it', function () {
+    // A rule of dashes above a run of methods says what the method names below it
+    // already say, in seventy characters, on every read of the file. There were
+    // fifty-nine: none left in `src/` after the first pass, and all of the rest
+    // in the two directories that pass did not cover. AGENTS.md bans them; this is
+    // what makes that a rule rather than a note.
+    $dividers = [];
+
+    foreach (['src', 'tests', 'tools'] as $area) {
+        $files = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator(dirname(__DIR__, 2) . '/' . $area, FilesystemIterator::SKIP_DOTS)
+        );
+
+        foreach ($files as $file) {
+            if ($file->getExtension() !== 'php' || !$file->isFile()) {
+                continue;
+            }
+
+            foreach (file($file->getPathname()) as $number => $line) {
+                if (preg_match('#^\s*//\s*[-=*_]{4,}#', $line) === 1) {
+                    $dividers[] = $file->getFilename() . ':' . ($number + 1) . ' ' . trim($line);
+                }
+            }
+        }
+    }
+
+    expect($dividers)->toBe([]);
+});
 
 it('gives a code block its shading as a paragraph property', function () {
     // `StyleResolver::font()` claimed to build the Font that a code block's

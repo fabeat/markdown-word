@@ -5,6 +5,7 @@ declare(strict_types=1);
 use MarkdownWord\Configuration;
 use MarkdownWord\Configuration\Options;
 use MarkdownWord\Configuration\Styles;
+use MarkdownWord\Console\Application;
 use MarkdownWord\MarkdownToWord;
 use MarkdownWord\Parser\CommonMarkParser;
 use MarkdownWord\Reverse\Options as ReverseOptions;
@@ -25,7 +26,7 @@ use MarkdownWord\Tests\Support\Upstream;
 beforeEach(fn () => Upstream::install());
 afterEach(fn () => Upstream::restore());
 
-// ------------------------------------------------- Configuration\Options
+// Configuration\Options
 
 it('offers a setter for every option it takes', function () {
     // The array form is the documented way in, and these are the convenience
@@ -91,7 +92,7 @@ it('ignores an option it does not know rather than refusing the file', function 
     expect(Options::fromArray(['noSuchOption' => true])->tableWidth)->toBe(5000);
 });
 
-// ------------------------------------------------------ Reverse\Options
+// Reverse\Options
 
 it('offers a setter for the media directory and for a batch of options', function () {
     expect((new ReverseOptions())->withMediaDirectory('assets')->mediaDirectory)->toBe('assets')
@@ -99,7 +100,7 @@ it('offers a setter for the media directory and for a batch of options', functio
         ->and((new ReverseOptions())->withAll(['headingSetext' => true])->headingSetext)->toBeTrue();
 });
 
-// ------------------------------------------------------ parser factories
+// Parser factories
 
 it('renders with a parser chosen for the dialect', function () {
     // The extras are what the extended flavours are for: none of these constructs
@@ -149,7 +150,7 @@ it('reads front matter when a YAML implementation is there, and says so when non
         ->toThrow(League\CommonMark\Exception\MissingDependencyException::class, 'symfony/yaml');
 });
 
-// ------------------------------------------------------- StyleResolver
+// StyleResolver
 
 it('uses a style named as a string only when it is the whole of the formatting', function () {
     // A named style cannot be combined with anything else in a run, so a run
@@ -163,4 +164,37 @@ it('uses a style named as a string only when it is the whole of the formatting',
     expect((new StyleResolver($config))->fontFor(new InlineStyle(code: true)))->toBe('CodeChar')
         ->and((new StyleResolver($config))->fontFor(new InlineStyle(code: true, bold: true)))
         ->toBeArray();
+});
+
+// Application
+
+it('reports a version the release tag can be compared against', function () {
+    // The phar stamps this into its own manifest and the release job fails when
+    // it disagrees with the tag, so the one thing worth pinning here is that it is
+    // a version at all — a date, a branch name or a `1.0.0` left over from before
+    // the project was released would all pass a test that asserted the value.
+    //
+    // No pre-release or build metadata: the tag is `v` plus this, and nothing
+    // between them to explain.
+    expect(Application::VERSION)->toMatch('/^\d+\.\d+\.\d+$/')
+        ->and(Application::NAME)->toBe('mdword');
+});
+
+it('says the same version as the changelog does', function () {
+    // Two places now write the version down: the constant, and the heading of the
+    // newest entry in the changelog. They drifted once already — the constant
+    // read `1.0.0` through a period in which the library had never been
+    // released — and nothing in the test suite could see it, because the value
+    // was only ever compared with itself.
+    $changelog = (string) file_get_contents(dirname(__DIR__, 2) . '/CHANGELOG.md');
+    $latest = [];
+
+    // The newest `## [x.y.z]` heading, which Keep a Changelog puts first.
+    if (preg_match('/^## \[(\d+\.\d+\.\d+)\]/m', $changelog, $latest) === 1) {
+        expect(Application::VERSION)->toBe($latest[1]);
+    } else {
+        // No changelog is a choice, not a drift, but it should be a deliberate
+        // one rather than the result of the file having gone missing.
+        expect(is_file(dirname(__DIR__, 2) . '/CHANGELOG.md'))->toBeTrue();
+    }
 });

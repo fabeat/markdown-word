@@ -26,8 +26,8 @@ interface Command
     public static function options(): array;
 
     /**
-     * The long names the parser will accept for the options that take a value,
-     * the on-or-off ones, the repeatable ones, and the short spellings.
+     * The long names the parser will accept: the options that take a value, the
+     * on-or-off ones, the repeatable ones, and the short spellings.
      *
      * @return array{values: list<string>, flags: list<string>, repeated: list<string>, aliases: array<string, string>}
      */

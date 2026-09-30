@@ -10,19 +10,26 @@ use MarkdownWord\Configuration\Styles;
 |------------------------------------------------------------------------------
 |
 | Heading levels reach a style slot through a name, and the name is composed
-| from the level number: `heading.3`. Three places in the library do that
-| composition by hand rather than asking `Styles` for it — `DocumentRenderer`
-| (line 152), `StyleRegistrar` (line 90) and `Configuration` (line 87) — which
-| means the mapping from a level to a slot name is written down four times, and
-| the method that exists to hold it (`Styles::heading()`) is on the side looking
-| in. `StyleResolver::headingStyle()` does call it, but nothing calls
-| `headingStyle()`.
+| from the level number: `heading.3`. Three call sites compose it by hand
+| rather than asking `Styles` for it — `DocumentRenderer::renderHeading()`,
+| `StyleRegistrar::register()` and `Configuration::withBuiltInHeadingStyles()` —
+| which means the mapping from a level to a slot name is written down four
+| times, and the method that exists to hold it (`Styles::heading()`) is on the
+| side looking in: nothing in `src/` calls it. `StyleResolver::headingStyle()`
+| did call it, and had no caller of its own either, so it is gone and the
+| mapping is now read from nowhere.
+|
+| The call sites are named by method rather than by line number on purpose. A
+| line number in a comment is a claim about the very files this one exists to
+| stop drifting from, and the version of this comment that carried three of
+| them had all three wrong — which is the drift arriving through the guard.
 |
 | The duplication cannot be removed from here: `DocumentRenderer` picks the
 | *slot name* and hands it to `emitParagraph()`, which then resolves the style
 | and pushes its character half into the runs. Routing it through
-| `StyleResolver::headingStyle()` instead would lose the slot, and with it the
-| ability to recognise `heading.1` again inside `emitParagraph()`.
+| `Styles::heading()` instead would lose the slot, and with it the ability to
+| recognise the slot again inside `emitParagraph()` — which resolves it twice,
+| once for the paragraph half and once for the character half.
 |
 | What these tests do is make the method the one place the answer is written
 | down, so the three call sites have something to converge on. They pin the two

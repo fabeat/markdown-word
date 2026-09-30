@@ -38,17 +38,16 @@ final class NumberingMerger
     /**
      * The lowest `w:numId` this merger writes into a document.
      *
-     * The document's references have to exist long before the template's
-     * numbering part is read — {@see self::renderElement()} runs during the
-     * insert, {@see self::applyTo()} afterwards — so they start out provisional,
-     * in a range no template uses, and are pointed at real identifiers once the
-     * high-water marks are known.
+     * The document's references have to exist long before the template's numbering
+     * part is read — {@see self::renderElement()} runs during the insert,
+     * {@see self::applyTo()} afterwards — so they start out provisional, in a range
+     * no template uses, and are pointed at real identifiers once the high-water
+     * marks are known.
      */
     private const PROVISIONAL_BASE = 1000000;
 
     /**
-     * Scratch `w:numId` => the `w:numId` the document currently points at,
-     * provisional until {@see self::applyTo()} gives it a real one.
+     * Scratch `w:numId` => the `w:numId` the document currently points at.
      *
      * @var array<int, int>
      */
@@ -93,9 +92,9 @@ final class NumberingMerger
     /**
      * Read the numbering definitions the scratch document currently holds.
      *
-     * Safe to call after every render: definitions already taken are skipped.
-     * The identifiers they are written as are not settled here, because a
-     * template's own numbering part is not read until {@see self::applyTo()}.
+     * Safe to call after every render: definitions already taken are skipped. The
+     * identifiers are left provisional for the reason given on
+     * {@see self::PROVISIONAL_BASE}.
      */
     public function collect(): void
     {
@@ -162,8 +161,7 @@ final class NumberingMerger
     /**
      * Rewrite the numbering references in a fragment of `word/document.xml`.
      *
-     * The identifiers written here are provisional; {@see self::applyTo()} puts
-     * the real ones in once the template's own are known.
+     * {@see self::applyTo()} replaces the provisional values with the real ones.
      */
     public function remap(string $xml): string
     {
@@ -291,10 +289,9 @@ final class NumberingMerger
     /**
      * Give the collected definitions identifiers the template has not taken.
      *
-     * Only possible once the template's numbering part has been read, which is
-     * why {@see self::collect()} settles for provisional identifiers: the
-     * template may already be using 1, and Word resolves a duplicated 1 to
-     * whichever of the two it finds first.
+     * Only possible once the template's numbering part has been read, so a
+     * duplicate `1` is never written: Word resolves a repeated `1` to whichever of
+     * the two it finds first.
      */
     private function assignTemplateIds(): void
     {
