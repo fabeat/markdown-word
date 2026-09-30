@@ -41,6 +41,86 @@ UpstreamDeprecations::install();
 $work = __DIR__ . '/tmp/readme';
 @mkdir($work, 0o777, true);
 
+/**
+ * Every part of a `.docx`, keyed by name, with what a clock changes taken out.
+ *
+ * Two things vary between two correct conversions of the same input, and neither
+ * is a difference in the document:
+ *
+ * - the zip's per-entry timestamps — two seconds of resolution, no sub-second
+ *   part, no time zone — which live in the container and not in the parts;
+ * - `docProps/core.xml`, which records when the document was created and last
+ *   modified, so it differs whenever the two conversions are not in the same
+ *   second.
+ *
+ * What has to match is everything else, so that is what this compares. The
+ * comparison is on the parts rather than on the archive because a check that
+ * compared the bytes failed about three times in four on any machine slow enough
+ * to cross a two-second boundary between the two writes.
+ *
+ * @return array<string, string>
+ */
+function documentParts(string $docx): array
+{
+    $path = tempnam(sys_get_temp_dir(), 'mdword-parts-');
+
+    if ($path === false) {
+        throw new RuntimeException('Unable to create a temporary file.');
+    }
+
+    try {
+        file_put_contents($path, $docx);
+
+        $zip = new ZipArchive();
+
+        if ($zip->open($path) !== true) {
+            throw new RuntimeException('The document is not a readable archive.');
+        }
+
+        $parts = [];
+
+        for ($index = 0; $index < $zip->numFiles; $index++) {
+            $stat = $zip->statIndex($index);
+
+            if ($stat === false || !is_string($stat['name'] ?? null)) {
+                continue;
+            }
+
+            // Every entry is wanted, the empty directories and all, so that a
+            // difference in what is present is a difference here too.
+            $content = (string) $zip->getFromIndex($index);
+
+            $parts[$stat['name']] = $stat['name'] === 'docProps/core.xml'
+                ? withoutTimestamps($content)
+                : $content;
+        }
+
+        $zip->close();
+
+        ksort($parts);
+
+        return $parts;
+    } finally {
+        @unlink($path);
+    }
+}
+
+/**
+ * A document's core properties with the two dates blanked.
+ *
+ * `dcterms:created` and `dcterms:modified` are the only parts of a `.docx` that
+ * say when it was made. Leaving them in makes this comparison a test of the
+ * clock.
+ */
+function withoutTimestamps(string $coreProperties): string
+{
+    return (string) preg_replace(
+        ['#<dcterms:(created|modified)[^>]*>.*?</dcterms:\1>#s', '#<dcterms:(created|modified)[^>]*/>#'],
+        '<dcterms:$1>whenever</dcterms:$1>',
+        $coreProperties,
+    );
+}
+
 $failures = 0;
 $checks = 0;
 
@@ -78,14 +158,29 @@ $check('convert returns the result, save writes it', function () use ($work): vo
     $markdown = $work . '/four-ways-back.md';
 
     $bytes = (new MarkdownToWord($work . '/notes.md'))->convert();
+    usleep(1100000);
     (new MarkdownToWord($work . '/notes.md'))->save($document);
     $back = (new WordToMarkdown($document))->convert();
     (new WordToMarkdown($document))->save($markdown);
 
     assertTrue(str_starts_with($bytes, 'PK'), 'convert() did not return the document');
-    assertTrue((string) file_get_contents($document) === $bytes, 'save() wrote something else');
+
+    // Every part of the archive, not the archive itself. A zip records a
+    // timestamp per entry — two seconds of resolution, no sub-second part, no
+    // time zone — so two correct conversions whose writes fall either side of a
+    // boundary differ in those four bytes and agree in every other. Comparing
+    // the bytes made this check fail roughly three times in four on any machine
+    // slow enough to cross a boundary between the two writes.
+    assertTrue(
+        documentParts($bytes) === documentParts((string) file_get_contents($document)),
+        'save() wrote a different document from the one convert() returned',
+    );
+
     assertTrue(str_contains($back, '**bold**'), 'convert() did not return the Markdown');
-    assertTrue((string) file_get_contents($markdown) === $back, 'save() wrote something else');
+    assertTrue(
+        (string) file_get_contents($markdown) === $back,
+        'save() wrote different Markdown from the one convert() returned',
+    );
 });
 
 $check('a string that names a file is read from it', function () use ($work): void {
