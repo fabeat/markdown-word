@@ -12,44 +12,27 @@ use MarkdownWord\Console\ConsoleException;
 use ZipArchive;
 
 /**
- * `mdword to-docx` — Markdown in, a Word document out.
+ * `md2word to-docx` — Markdown in, a Word document out.
  */
-final class ToDocx implements Command
+final class ToDocx extends BaseCommand
 {
     /** The region a template is expected to have, used when `--region` is not given. */
     public const DEFAULT_REGION = 'body';
-
-    public function __construct(private readonly Application $application)
-    {
-    }
 
     /**
      * @param list<string> $argv
      */
     public function execute(array $argv): int
     {
-        $command = CommandLine::parse(
-            $argv,
-            values: self::spec()['values'],
-            flags: self::spec()['flags'],
-            repeated: self::spec()['repeated'],
-            aliases: self::spec()['aliases'],
-            foreign: Application::specFor(ToMarkdown::class),
-        );
+        $command = $this->parseOptions($argv, 'convert Markdown to a Word document.');
 
-        if ($command->flag('help')) {
-            $this->application->print(Application::commandHelp(self::class, 'convert Markdown to a Word document.'));
-
+        if ($command === null) {
             return Application::SUCCESS;
         }
 
-        self::assertDirection($command);
-
         $input = $command->input();
         $markdown = $this->application->readInput($input);
-        $output = $this->application->outputPath($input, '.docx', $command->value('output'));
-
-        self::assertNotOverwriting($input, $output);
+        $output = $this->outputPath($command, '.docx');
 
         $config = $this->application->configuration(
             $command->value('config'),
@@ -60,67 +43,29 @@ final class ToDocx implements Command
         $template = $command->value('template');
 
         if ($template === null) {
-            // Both of these only mean something to a template, and quietly
-            // ignoring them would leave the person wondering why nothing changed.
             $this->rejectWithoutTemplate($command);
-
-            // `-` is the request for standard output, and there is no way to write
-            // a file called `-`. `convert()` returns the bytes either way and
-            // writes the target when there is one, so the two differ only in
-            // where the result is put.
-            $bytes = $this->application->converter($config, $markdown)->convert(
-                $output === '-' ? null : $output,
-            );
+            $this->application->converter($config, $markdown)->convert($output === '-' ? null : $output);
 
             if ($output === '-') {
-                $this->application->writeResult($output, $bytes);
+                $this->application->writeResult($output, $this->application->converter($config, $markdown)->convert());
             }
         } else {
             $this->intoTemplate($markdown, $template, $command, $config, $output);
         }
 
-        $this->application->report($input, $output);
+        $this->report($input, $output);
 
         return Application::SUCCESS;
     }
 
-    /**
-     * A `--to` that names this direction is redundant, and one that names the
-     * other is a contradiction worth saying so about rather than ignoring.
-     */
-    private static function assertDirection(CommandLine $command): void
+    protected static function other(): string
     {
-        $asked = $command->value('to');
-
-        if ($asked !== null && $asked !== 'docx') {
-            throw new ConsoleException(
-                sprintf('--to %s does not match what this reads: it takes Markdown.', $asked),
-                ['Omit it and let mdword work the direction out from the file.'],
-            );
-        }
+        return ToMarkdown::class;
     }
 
-    /**
-     * Refuse to write the result over the file it was read from.
-     *
-     * Without this a run with no `-o` on a file whose extension is already `.docx`
-     * would destroy its own input, which is a spectacular way to lose work.
-     */
-    private static function assertNotOverwriting(?string $input, string $output): void
+    protected static function formats(): array
     {
-        if ($input === null || $input === '-' || $output === '-') {
-            return;
-        }
-
-        $from = realpath($input);
-        $to = realpath(dirname($output) . '/' . basename($output));
-
-        if ($from !== false && $to !== false && $from === $to) {
-            throw new ConsoleException(
-                sprintf('The result would overwrite the input file "%s".', $input),
-                ['Pass --output to write it somewhere else.'],
-            );
-        }
+        return ['docx', 'word'];
     }
 
     /**
@@ -216,13 +161,16 @@ final class ToDocx implements Command
         string $output,
     ): void {
         $values = [];
-        $region = (string) $command->value('region', self::DEFAULT_REGION);
 
         foreach ($command->repeated('define') as $pair) {
             [$name, $value] = CommandLine::pair($pair, '--define');
             $values[$name] = $value;
         }
 
+        $region = (string) $command->value('region', self::DEFAULT_REGION);
+
+        // Before anything is written, so that a wrong name fails here rather
+        // than leaving a document full of unreplaced `${...}` markers.
         self::assertRegionExists($path, $region);
 
         $template = $this->application->template($path, $config, $values);
@@ -314,7 +262,7 @@ final class ToDocx implements Command
     public static function options(): array
     {
         return [
-            ['-o, --output <file>', 'where the document goes; "-" for standard output'],
+            ['-o, --output <file>', 'where the result goes; "-" for standard output'],
             ['-c, --config <file.php>', 'a file returning the styles and options to use'],
             ['-t, --template <file.docx>', 'render into a Word template rather than a new document'],
             ['--region <name>', 'the template region to fill in (default: body)'],

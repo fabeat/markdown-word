@@ -9,6 +9,7 @@ use DOMElement;
 use DOMXPath;
 use MarkdownWord\Exception\MalformedDocument;
 use MarkdownWord\Exception\UnreadableDocument;
+use MarkdownWord\Xml;
 use ZipArchive;
 
 /**
@@ -74,16 +75,7 @@ final class ImageDescriptionPass
             return $documentXml;
         }
 
-        $dom = new DOMDocument();
-        $previous = libxml_use_internal_errors(true);
-
-        $loaded = $dom->loadXML($documentXml, LIBXML_NOCDATA | LIBXML_NONET);
-        libxml_clear_errors();
-        libxml_use_internal_errors($previous);
-
-        if (!$loaded) {
-            throw new MalformedDocument('word/document.xml is not valid XML.');
-        }
+        $dom = Xml::parseOrFail($documentXml, 'word/document.xml is not valid XML.');
 
         $xpath = new DOMXPath($dom);
         $xpath->registerNamespace('v', self::V_NS);

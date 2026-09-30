@@ -68,5 +68,8 @@
     },
     "bin": [
         "bin/mdword"
-    ]
+    ],
+    "suggest": {
+        "symfony/yaml": "Required by CommonMarkParser::withAllExtensions() to read YAML front matter."
+    }
 }
