@@ -133,12 +133,29 @@ Tests are written with [Pest][pest] 5, against PHPUnit 13.
 | --- | --- |
 | `tests` | `composer validate --strict`, `composer audit`, the README examples and the command line, then the suite on PHP 8.4 and 8.5 with a coverage report |
 | `phar` | builds `mdword.phar`, runs it on its own, uploads it, and attaches it to a release when a tag is pushed |
+| `sonarcloud` (a job in `tests`) | static analysis on [SonarCloud][sonarcloud], failing the build when the quality gate is red |
 
 PHP 8.2 is in the matrix too, but the test suite cannot run there: **Pest 5
 requires PHP 8.4**, while the library itself supports 8.2. That gap is covered by
 `smoke.php`, which uses no test framework and checks that both directions and the
 command line work on whatever PHP it is given. Between the two, every supported
 version is exercised.
+
+Everything installs what `composer.lock` pins, so a build is repeatable. A weekly
+`dependencies` job resolves afresh instead and runs the suite against the result,
+which is how a new release of a dependency still gets tested.
+
+### Static analysis
+
+SonarCloud runs from this repository's own workflow rather than from its GitHub
+integration, so the quality gate can fail a build. What it analyses is set in
+[`sonar-project.properties`](sonar-project.properties) rather than in the workflow,
+so it is visible to anyone reading the repository.
+
+It authenticates with a `SONAR_TOKEN` repository secret, which is never in the
+repository. Create one at [your account's security page][sonar-token] and add it
+under **Settings → Secrets and variables → Actions**. Without it the analysis job
+stops and says so.
 
 ## Word to Markdown
 
@@ -545,6 +562,8 @@ MIT — see [LICENSE](LICENSE). PHPWord, which this library builds on, is
 LGPL-3.0.
 
 [commonmark]: https://github.com/thephpleague/commonmark
+[sonarcloud]: https://sonarcloud.io/summary/new_code?id=fabeat_markdown-word
+[sonar-token]: https://sonarcloud.io/account/security
 [pest]: https://pestphp.com
 [phpword]: https://github.com/PHPOffice/PHPWord
 [cm-spec]: https://spec.commonmark.org/0.31.2/

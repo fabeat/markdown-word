@@ -120,12 +120,16 @@ jobs:
 
       # A coverage report on its own says little; this fails if the reported
       # figure is a placeholder, or if the code stops being covered at all.
+      #
+      # The JUnit report goes in the same run because the analysis job needs both
+      # and would otherwise have to produce the second one again.
       - name: Coverage
         if: matrix.php == '8.5'
         run: |
           vendor/bin/pest --coverage --min=80 \
             --coverage-clover=build/coverage/clover.xml \
-            --coverage-html=build/coverage/html
+            --coverage-html=build/coverage/html \
+            --log-junit build/coverage/junit.xml
 
       - name: Upload the coverage report
         if: matrix.php == '8.5'
@@ -134,6 +138,66 @@ jobs:
           name: coverage
           path: build/coverage
           retention-days: 7
+
+  # Static analysis on SonarCloud.
+  #
+  # Its own job rather than a step in the test matrix, so that a finding and a
+  # failing test are two different lines on a pull request instead of one red
+  # cross. It needs the test job to have passed: analysing a commit whose suite
+  # does not run would report on code nobody has checked.
+  sonar:
+    name: sonarcloud
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_HOST_URL: https://sonarcloud.io
+    steps:
+      # A missing token otherwise surfaces as an authentication failure several
+      # steps later, which says nothing about what to do about it. This says it.
+      - name: Is there a token?
+        if: env.SONAR_TOKEN == ''
+        run: |
+          echo "::error::SONAR_TOKEN is not set, so there is nothing to authenticate with."
+          echo "::error::Create one at https://sonarcloud.io/account/security, then add it"
+          echo "::error::under Settings -> Secrets and variables -> Actions."
+          exit 1
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # SonarCloud needs the full history to attribute new code, which a
+          # shallow clone would not have.
+          fetch-depth: 0
+
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.5'
+          # pcov rather than xdebug: the suite runs once more here, and xdebug is
+          # roughly an order of magnitude slower.
+          coverage: pcov
+          tools: composer:v2
+
+      - name: Install
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      # Both reports the analysis reads, produced in one run rather than the
+      # second one being repeated. The HTML report is skipped; Sonar wants the
+      # machine-readable one.
+      - name: Coverage and test results for the analysis
+        run: |
+          vendor/bin/pest --coverage --min=80 \
+            --coverage-clover=build/coverage/clover.xml \
+            --log-junit build/coverage/junit.xml
+
+      - name: Analyse
+        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8
+
+      # Fails the pull request when the quality gate is red, which is the whole
+      # point of running the analysis here rather than letting SonarCloud do it
+      # on the side.
+      - name: Quality gate
+        uses: SonarSource/sonarqube-quality-gate-action@7a5fffe8e523c40e0c740b6bc2712ab503e52efa # v1
 
   # Everything above installs what the lock file pins, so a build is repeatable.
   # The cost of that is hearing nothing when a dependency publishes something
