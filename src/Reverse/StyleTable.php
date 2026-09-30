@@ -13,12 +13,9 @@ namespace MarkdownWord\Reverse;
  * without resolving it the nesting depth cannot be recovered at all.
  *
  * Properties are inherited through `w:basedOn`, and a paragraph's own direct
- * formatting wins over both, which is the same precedence Word applies.
+ * formatting wins over both, which is the precedence Word applies.
  *
- * A `basedOn` chain is bounded by {@see self::__construct()}'s `$maxStyleDepth`.
- * The default is the cap `Options` is expected to expose as `maxStyleDepth`, and
- * the caller in `WordToMarkdown::reader()` is expected to pass it through; until
- * it does, the default stands and the bound still holds. Nothing here throws when
+ * A `basedOn` chain is bounded by `$maxStyleDepth`, and nothing here throws when
  * the cap is reached: a chain deeper than anything Word writes is legal, so the
  * answer is the neutral one rather than a refusal to convert.
  */
@@ -50,11 +47,11 @@ final class StyleTable
     /**
      * @param \DOMDocument|null $styles        `word/styles.xml`.
      * @param int               $maxStyleDepth How many styles in a `basedOn`
-     *        chain contribute their own properties. Past the cap a chain
-     *        resolves to the safe default rather than being followed, so a
-     *        document that nests styles absurdly deeply still converts instead
-     *        of exhausting memory. Word itself nests a handful deep, so the
-     *        default leaves a very wide margin.
+     *        chain contribute their own properties. Past the cap a chain resolves
+     *        to the safe default rather than being followed, so a document that
+     *        nests styles absurdly deeply still converts instead of exhausting
+     *        memory. Word itself nests a handful deep, so the default leaves a
+     *        very wide margin.
      */
     public function __construct(?\DOMDocument $styles, private readonly int $maxStyleDepth = 32)
     {
@@ -73,11 +70,6 @@ final class StyleTable
                 $this->styles[$id] = $style;
             }
         }
-    }
-
-    public function has(string $id): bool
-    {
-        return isset($this->styles[$id]);
     }
 
     /**
@@ -109,16 +101,14 @@ final class StyleTable
             return $this->resolved[$id];
         }
 
-        // Three ways of stopping. A style that refers to itself, directly or
-        // through a chain, would otherwise recurse forever. A chain longer than
-        // the cap is legal but is not something Word writes, and following it
-        // all the way is what turns a small styles part into an unbounded amount
-        // of work. A style id that is not in the part at all is a dangling
-        // reference, which is what a document edited by hand or by a tool that
-        // only wrote half of what it changed contains.
-        //
-        // All three answer the same way: no indentation and no alignment, which
-        // is what a style that says neither of those things contributes.
+        // Three ways of stopping: a style that refers to itself, directly or
+        // through a chain, would otherwise recurse forever; a chain longer than
+        // the cap is legal but is not something Word writes, and following it all
+        // the way is what turns a small styles part into unbounded work; and an
+        // id that is not in the part is a dangling reference, which is what a
+        // document edited by hand contains. All three answer the same way: no
+        // indentation and no alignment, which is what a style that says neither
+        // contributes.
         if (
             isset($this->resolving[$id])
             || $depth >= $this->maxStyleDepth

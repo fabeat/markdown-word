@@ -11,8 +11,8 @@ use RuntimeException;
  *
  * Thrown for a bad command, a missing file, a nonsensical option — everything
  * where the right response is a sentence rather than a stack trace. The
- * application catches it, prints the sentence and stops. Anything that is *not*
- * caught is a defect in this library and is left to surface as one.
+ * application catches it, prints the sentence and stops. Anything else is a
+ * defect in this library and is left to surface as one.
  */
 final class ConsoleException extends RuntimeException
 {

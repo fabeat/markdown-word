@@ -6,14 +6,11 @@ namespace MarkdownWord\Render;
 
 use MarkdownWord\Configuration;
 use MarkdownWord\Configuration\Styles;
-use PhpOffice\PhpWord\Style\Font;
 
 /**
- * Translates renderer concerns into concrete Word styles.
- *
- * Keeping this in one place means the rest of the renderer never has to think
- * about style names, defaults or the "does the template already define this?"
- * question.
+ * Translates renderer concerns into concrete Word styles, so the rest of the
+ * renderer never has to think about style names, defaults, or the "does the
+ * template already define this?" question.
  */
 final class StyleResolver
 {
@@ -21,14 +18,14 @@ final class StyleResolver
     {
     }
 
-    public function styles(): Styles
+    private function styles(): Styles
     {
         return $this->config->getStyles();
     }
 
     /**
-     * The raw value configured for a slot, whether it is a Word style name, an
-     * inline style array, or nothing at all.
+     * The raw value configured for a slot: a Word style name, an inline style
+     * array, or nothing at all.
      */
     public function slot(string $name): mixed
     {
@@ -36,8 +33,8 @@ final class StyleResolver
     }
 
     /**
-     * The font style (an inline array, or the name of a registered style) for a
-     * run with the given inline formatting.
+     * The font style — an inline array, or the name of a registered style — for
+     * a run with the given inline formatting.
      *
      * @return array<string, mixed>|string|null
      */
@@ -110,13 +107,6 @@ final class StyleResolver
         return is_string($value) || is_array($value) || $value === null ? $value : null;
     }
 
-    public function headingStyle(int $level): string|array|null
-    {
-        $value = $this->styles()->heading($level);
-
-        return is_string($value) || is_array($value) ? $value : null;
-    }
-
     public function softBreakMode(): string
     {
         return $this->config->getOptions()->softBreak;
@@ -135,8 +125,13 @@ final class StyleResolver
     }
 
     /**
-     * Turn the loose `color`/shading shorthand used in the default style
-     * definitions into the exact keys PHPWord's Font style understands.
+     * Translate the shorthand a style definition may use into the keys PHPWord's
+     * Font style understands.
+     *
+     * Only `shading` needs translating: it is spelled `bgColor` there, and a key
+     * Font has no setter for is silently dropped by `setStyleByArray()`. Paragraph
+     * shading is a different thing entirely and never reaches this — it is a
+     * paragraph property, added by the renderer.
      *
      * @param  array<string, mixed>  $font
      * @return array<string, mixed>
@@ -147,17 +142,6 @@ final class StyleResolver
             $font['bgColor'] = $font['shading'];
         }
         unset($font['shading']);
-
-        return $font;
-    }
-
-    /**
-     * Build a Font style object, used for code block shading.
-     */
-    public static function font(array $definition): Font
-    {
-        $font = new Font();
-        $font->setStyleByArray($definition);
 
         return $font;
     }

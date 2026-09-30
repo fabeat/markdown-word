@@ -8,12 +8,10 @@ use MarkdownWord\Exception\UnreadableDocument;
 use MarkdownWord\Exception\UnreadableFile;
 
 /**
- * Where the input of a conversion came from.
+ * Where a conversion's input came from.
  *
- * A string that names a file that exists is read from it; anything else is the
- * content itself. This is central rather than incidental: it is the first thing
- * both directions do, and the command line's own decision about which way the
- * data has to go is the same fact asked of a stream.
+ * A string naming a file that exists is read from it; anything else is the
+ * content itself.
  *
  * The two formats cannot be told apart the same way, and the difference matters.
  * Any text is Markdown, so a string that is not a file is taken as the content
@@ -27,8 +25,6 @@ final class Input
     public const DOCUMENT_MAGIC = "PK\x03\x04";
 
     /**
-     * Markdown: the file if the string names one, otherwise the text.
-     *
      * @throws UnreadableFile when the string names a file that cannot be read.
      */
     public static function markdown(string $input): string
@@ -37,18 +33,15 @@ final class Input
     }
 
     /**
-     * A Word document: the file if the string names one, otherwise the bytes —
-     * but only if they really are an archive.
-     *
      * A file that exists but is not a document is reported by name, because
      * whoever passed it was talking about a file and would not expect to be told
      * about bytes.
      *
-     * @throws UnreadableDocument when the input is neither a document nor one.
+     * @throws UnreadableDocument when the input is neither a document nor the
+     *         name of one.
      */
     public static function document(string $input): string
     {
-        // Already the bytes, so there is nothing to open and nothing to read.
         if (str_starts_with($input, self::DOCUMENT_MAGIC)) {
             return $input;
         }
@@ -73,8 +66,6 @@ final class Input
     }
 
     /**
-     * Whether the given bytes begin a Word document.
-     *
      * The one place that knows what a `.docx` looks like, so that the command
      * line and the converters cannot come to disagree about it.
      */

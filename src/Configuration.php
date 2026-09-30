@@ -8,13 +8,9 @@ use MarkdownWord\Configuration\Options;
 use MarkdownWord\Configuration\Styles;
 
 /**
- * Entry point for configuring the Markdown to Word renderer.
- *
- * ```php
- * $config = Configuration::create()
- *     ->withStyles(['heading.1' => 'MD Title', 'bulletList' => 'MD Bullet'])
- *     ->withOptions(['images' => Options::IMAGE_PLACEHOLDER, 'softBreak' => 'lineBreak']);
- * ```
+ * Entry point for configuring the renderer, pairing a {@see Styles} with an
+ * {@see Options}. Both can be built from a plain array, which makes it trivial to
+ * keep the look of your documents in a `config.php` file.
  */
 final class Configuration
 {
@@ -30,16 +26,6 @@ final class Configuration
     }
 
     /**
-     * Build a configuration from a plain array, which makes it trivial to keep
-     * the look of your documents in a `config.php` file.
-     *
-     * ```php
-     * Configuration::fromArray([
-     *     'styles' => ['heading.1' => 'Title', 'codeFont' => ['name' => 'Fira Code']],
-     *     'options' => ['tableBorders' => false],
-     * ]);
-     * ```
-     *
      * @param array{styles?: array<string, mixed>, options?: array<string, mixed>} $config
      */
     public static function fromArray(array $config): self
@@ -76,10 +62,6 @@ final class Configuration
         );
     }
 
-    /**
-     * Point every heading level at the matching built-in Word style, and switch
-     * the quote and list slots to the built-in list styles.
-     */
     public function withBuiltInHeadingStyles(): self
     {
         $headings = [];
@@ -95,9 +77,9 @@ final class Configuration
     }
 
     /**
-     * Render without any of the aesthetic defaults (no code colouring, no quote
-     * style, no table borders). Everything still lands in the document, it just
-     * looks like plain text. Useful for feeding into a heavily pre-styled template.
+     * Without any of the aesthetic defaults. Everything still lands in the
+     * document, it just looks like plain text — which is the point when it is
+     * going into a heavily pre-styled template.
      */
     public function withoutDecoration(): self
     {

@@ -12,9 +12,9 @@ use PhpOffice\PhpWord\PhpWord;
  * Creates and caches the Word numbering definitions used by Markdown lists.
  *
  * Word ties a list to a numbering definition, and a definition carries both the
- * bullet/decimal format and the starting value. A document containing `1.`,
- * `5.` and `a)` lists therefore needs three definitions, which is what this
- * registry hands out — while two consecutive `1.` lists share one.
+ * bullet/decimal format and the starting value. A document containing `1.`, `5.`
+ * and `a)` lists therefore needs three definitions, while two consecutive `1.`
+ * lists share one.
  */
 final class NumberingRegistry
 {
@@ -89,7 +89,6 @@ final class NumberingRegistry
     private function isDefault(bool $ordered, int $start, string $delimiter): bool
     {
         if (!$ordered) {
-            // Bullets are the only unordered form CommonMark defines.
             return true;
         }
 

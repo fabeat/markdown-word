@@ -58,9 +58,9 @@ final class ToDocx extends BaseCommand
      * The conversion itself, exactly once whichever way the result is going.
      *
      * The two are exclusive because a run's worth of work asked for twice is
-     * still twice the work: `-o -` used to convert the whole document, throw
-     * the bytes away and build a second converter to do it all again, on the one
-     * path the usage text advertises for `| pbcopy`.
+     * still twice the work: `-o -` would otherwise convert the whole document,
+     * throw the bytes away and build a second converter to do it all again, on
+     * the one path the usage text advertises for `| pbcopy`.
      */
     private function convert(Configuration $config, string $markdown, ?string $input, string $output): void
     {
@@ -102,10 +102,9 @@ final class ToDocx extends BaseCommand
             $overrides['images'] = self::imageMode((string) $command->value('images'));
         }
 
-        // A relative image path in a file means "next to the file", which is what
-        // a Markdown renderer in an editor would do, so that is the default here
-        // too. Reading from standard input has no such anchor, and there the
-        // working directory is the only thing to go on.
+        // A relative image path in a file means "next to the file", as a Markdown
+        // renderer in an editor would treat it. Standard input has no such
+        // anchor, and there the working directory is the only thing to go on.
         $base = $command->value('image-base') ?? Application::directoryOf($input) ?? getcwd();
 
         if (is_string($base) && $base !== '') {
@@ -215,7 +214,7 @@ final class ToDocx extends BaseCommand
      * Filling a region that is not there leaves the `${name}` markers in the
      * finished document, so a wrong name would otherwise produce a file that
      * looks fine and is full of placeholders. Failing here says which regions
-     * the template does have, which is the thing the person needs to know.
+     * the template does have.
      *
      * @throws ConsoleException when the region is not in the template.
      */

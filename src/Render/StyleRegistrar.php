@@ -12,22 +12,17 @@ use PhpOffice\PhpWord\Style\Paragraph;
 /**
  * Writes the style *definitions* a freshly generated document needs.
  *
- * A document that merely references `Heading1` is not enough: PHPWord's
- * `styles.xml` is almost empty, so anything that does not know Word's built-in
- * styles draws the paragraph as body text. Defining them keeps a standalone
- * document self-contained while still using the styleIds Word recognises, which
- * is what preserves the outline levels behind the navigation pane and any table
- * of contents the user inserts later.
+ * PHPWord's `styles.xml` is almost empty in a fresh document, so a paragraph that
+ * merely references `Heading1` is drawn as body text by anything that does not
+ * know Word's built-ins. Defining them keeps a standalone document self-contained
+ * while still using the styleIds Word recognises, which is what preserves outline
+ * levels and any table of contents inserted later.
  *
- * This deliberately does *not* run when rendering into a template, where the
- * template is the authority on what a style looks like.
+ * Not run when rendering into a template, which is the authority there.
  */
 final class StyleRegistrar
 {
-    /**
-     * Word's built-in heading styles, closely following what Word applies to a
-     * document with the default theme.
-     */
+    /** Word's built-in heading styles, following the default theme. */
     private const HEADINGS = [
         'Heading1' => [
             'bold' => true, 'size' => 16, 'color' => '2F5496',
@@ -134,14 +129,10 @@ final class StyleRegistrar
             }
         }
 
-        // A paragraph style in OOXML carries both `w:pPr` and `w:rPr`, and PHPWord
-        // writes that combination from a font style with a paragraph attached.
-        //
-        // The font properties have to be passed as an array rather than as a Font
-        // object: given an object of the same class, PHPWord's style registry
-        // adopts it in place of its own and the paragraph binding is lost, which
-        // leaves a character style with no `w:styleId` and no `w:pPr` — headings
-        // then render as ordinary body text.
+        // The font properties go in as an array, never as a Font object: given an
+        // object of the same class PHPWord's style registry adopts it in place of
+        // its own, the paragraph binding is lost, and the style is written with
+        // no `w:styleId` and no `w:pPr` — headings then render as body text.
         $phpWord->addFontStyle($id, $font, $paragraph);
     }
 }

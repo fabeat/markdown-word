@@ -5,57 +5,44 @@ declare(strict_types=1);
 namespace MarkdownWord\Reverse;
 
 /**
- * Switches for reading a Word document back into Markdown.
- *
- * These are the points where Word and Markdown genuinely do not agree, so each
- * one records a decision rather than a preference.
+ * Switches for reading a Word document back into Markdown: the points where
+ * Word and Markdown genuinely do not agree.
  */
 final class Options
 {
     /**
-     * @param list<string> $headingStyles Paragraph style ids to read as ATX
-     *        headings. Word's built-in ids are `Heading1` to `Heading6`; the ids
-     *        are matched case-insensitively and a trailing level is optional, so
-     *        `Heading` also matches.
-     * @param list<string> $quoteStyles Paragraph style ids to read as block
-     *        quotes. Detection is by style, not by indentation, because an
-     *        indented paragraph is just an indented paragraph and a list inside a
-     *        quote carries the quote's indent without being one.
-     * @param list<string> $monospaceFonts Typefaces treated as a code span. A
-     *        run in one of these becomes inline code; two or more such paragraphs
-     *        in a row become a fenced code block.
-     * @param int          $quoteIndent The indentation of one level of block
-     *        quote in twips, used to recover how deeply a quote is nested.
-     * @param bool         $fenceCodeBlocks Whether two or more consecutive
-     *        monospaced paragraphs are written as a fenced code block rather than
-     *        as separate paragraphs of inline code.
-     * @param bool         $tableHeader Whether the first row of a table is
-     *        written as the header. A Word table marks a repeating header with
-     *        `w:trPr/w:tblHeader`, which both Word and PHPWord write; the reader
-     *        here does not look for it, so the first row is the header on the
-     *        assumption that is usually right. Turning this off writes the rows
-     *        as they are and leaves GFM an empty header, which is what a table
-     *        with no header looks like in Markdown.
+     * @param list<string> $headingStyles Paragraph style ids read as ATX
+     *        headings, matched case-insensitively with an optional trailing
+     *        level, so `Heading` and `Heading1` to `Heading6` both match.
+     * @param list<string> $quoteStyles Paragraph style ids read as block quotes.
+     *        Detection is by style, not by indentation, because an indented
+     *        paragraph is just an indented paragraph and a list inside a quote
+     *        carries the quote's indent without being one.
+     * @param list<string> $monospaceFonts Typefaces treated as a code span: one
+     *        run becomes inline code, two or more paragraphs in a row a fenced
+     *        block.
+     * @param int          $quoteIndent Twips per level of quote nesting, used both
+     *        to recover a quote's depth and to step out of one.
+     * @param bool         $tableHeader Whether the first row of a table is the
+     *        header; see {@see MarkdownWriter::table()} for why the document
+     *        cannot be asked.
      * @param bool         $headingSetext Whether a first- or second-level heading
-     *        is written in the underlined form. Markdown has only two of those, so
-     *        deeper headings keep their hashes.
+     *        is underlined. Markdown has only two of those, so deeper headings
+     *        keep their hashes.
      * @param string|null  $mediaDirectory A directory, relative to the Markdown,
-     *        the images are taken out of the document into. Null keeps the
-     *        reference pointing at the name the image has inside the archive,
-     *        which documents the file but is not a path any reader can open. An
-     *        empty string is read as null rather than as the root of the
-     *        filesystem.
-     * @param string       $lineEnding What the output file uses between lines.
-     * @param int          $maxPartBytes The largest a single part of the archive
-     *        may be once it is decompressed. A `.docx` is somebody else's file,
-     *        and a few kilobytes of a highly compressible part can be as much as
-     *        the process has left; the size is read from the archive's own
-     *        directory and checked before the part is inflated.
+     *        the images are taken out into. Null keeps the reference pointing at
+     *        the name the image has inside the archive, which documents the file
+     *        but is not a path any reader can open. An empty string is read as
+     *        null, not as the root of the filesystem.
+     * @param int          $maxPartBytes The largest one part of the archive may
+     *        be once decompressed; {@see Package::read()} applies it. A `.docx`
+     *        is somebody else's file, and a zip says nothing about how much room
+     *        its contents will take up.
      * @param int          $maxEntries The largest number of parts the archive may
-     *        have, which is in its central directory and costs nothing to read.
+     *        have, read from its central directory and costing no decompression.
      * @param int          $maxStyleDepth How far a `basedOn` chain of styles is
-     *        followed. The chain is in the document, and a document is free to
-     *        make it a loop.
+     *        followed; the chain is in the document, and a document is free to
+     *        make it a loop. See {@see StyleTable::__construct()}.
      */
     public function __construct(
         public readonly array $headingStyles = ['Heading', 'Title'],
@@ -200,14 +187,21 @@ final class Options
         return $this->with('maxStyleDepth', $depth);
     }
 
+    /**
+     * Change one option and leave the rest as they are.
+     *
+     * Merging through `withAll()` is the whole point: the archive limits live on
+     * this object too, so replacing it wholesale would quietly undo a tightened
+     * `maxPartBytes` or `maxStyleDepth` on the next unrelated call.
+     */
     private function with(string $property, mixed $value): self
     {
-        return self::fromArray([$property => $value]);
+        return $this->withAll([$property => $value]);
     }
 
     /**
-     * Coerce loosely typed configuration values (typically coming from a PHP,
-     * JSON or YAML config file) into the exact types the constructor demands.
+     * Coerce loosely typed configuration values from a config file into the exact
+     * types the constructor demands.
      *
      * @param  array<string, mixed>  $options
      * @return array<string, mixed>
@@ -221,9 +215,9 @@ final class Options
             }
         }
 
-        // Every one of these is a count, an offset or a limit, and every one of
-        // them is meaningless — or wrong in a way that is hard to see — below
-        // one. `quoteIndent` in particular is a divisor when a quote is nested.
+        // Every one of these is a count, an offset or a limit, and every one is
+        // meaningless — or wrong in a way that is hard to see — below one.
+        // `quoteIndent` in particular is a divisor when a quote is nested.
         foreach (['quoteIndent', 'maxPartBytes', 'maxEntries', 'maxStyleDepth'] as $key) {
             if (isset($options[$key])) {
                 $options[$key] = max(1, (int) $options[$key]);
@@ -231,9 +225,9 @@ final class Options
         }
 
         if (array_key_exists('mediaDirectory', $options) && $options['mediaDirectory'] === '') {
-            // An empty string is not a directory. Taken as one, it is the root of
-            // the filesystem: the images are written to `/name`, and the Markdown
-            // refers to `/name` as an absolute path.
+            // An empty string is not a directory. Taken as one it is the root of
+            // the filesystem: the images go to `/name`, and the Markdown refers
+            // to `/name` as an absolute path.
             $options['mediaDirectory'] = null;
         }
 

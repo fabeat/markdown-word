@@ -7,8 +7,8 @@ namespace MarkdownWord\Render;
 /**
  * The formatting that applies to a single run of text.
  *
- * Word has no notion of nested emphasis, so this is a flat set of flags. That
- * is enough to express every inline construct in CommonMark and GFM, including
+ * Word has no notion of nested emphasis, so this is a flat set of flags — enough
+ * to express every inline construct in CommonMark and GFM, including
  * combinations such as bold inside a link inside italic.
  */
 final class InlineStyle
@@ -67,9 +67,10 @@ final class InlineStyle
     }
 
     /**
-     * A link whose label is a bare image, such as `[![logo](logo.png)](url)`.
-     * The label is the image, so the hyperlink contains a drawing rather than
-     * text.
+     * Marks a link whose label is a bare image, `[![logo](logo.png)](url)`.
+     *
+     * Nothing reads the flag; the drawing case is actually decided by the inline
+     * renderer's own check.
      */
     public function withImageLabel(): self
     {
@@ -77,12 +78,7 @@ final class InlineStyle
     }
 
     /**
-     * Word has no notion of nested emphasis, so the formatting is a flat set of
-     * flags; a copy with a few of them changed is the whole state transition
-     * this class needs.
-     */
-    /**
-     * @param  array<string, mixed>  $forcedFont
+     * @param  array<string, mixed>  $font
      */
     private function derive(
         ?bool $bold = null,

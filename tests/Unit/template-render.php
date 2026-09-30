@@ -5,7 +5,7 @@ declare(strict_types=1);
 use MarkdownWord\Configuration;
 use MarkdownWord\Configuration\Styles;
 use MarkdownWord\Template\MarkdownTemplate;
-use MarkdownWord\TemplateNotFound;
+use MarkdownWord\Exception\TemplateNotFound;
 use MarkdownWord\Tests\Support\Scratch;
 use MarkdownWord\Tests\Support\Upstream;
 use MarkdownWord\Tests\Support\TemplateFactory;

@@ -7,13 +7,12 @@ namespace MarkdownWord\Reverse;
 /**
  * Escapes text read out of a Word document so it survives a Markdown parser.
  *
- * Everything here has one rule behind it: escaping must never change what the
- * reader sees, but leaving a character unescaped can. The rule is applied
- * conservatively — where a character is only ambiguous in some position, it is
- * escaped only there, which is what keeps the output readable. `a < b` stays as
- * it is, while `<div>` becomes `\<div>`; `snake_case` is left alone, because
- * CommonMark does not let an underscore inside a word delimit anything, while
- * `_emphasis_` is escaped.
+ * One rule is behind all of it: escaping must never change what the reader sees,
+ * but leaving a character unescaped can. It is applied conservatively — where a
+ * character is only ambiguous in some position, it is escaped only there, which
+ * is what keeps the output readable. `a < b` stays as it is while `<div>` becomes
+ * `\<div>`, and `snake_case` is left alone because CommonMark does not let an
+ * underscore inside a word delimit anything.
  */
 final class Escaping
 {
@@ -68,24 +67,15 @@ final class Escaping
     }
 
     /**
-     * Escape a run that is already inside a Markdown span, such as the label of
-     * a link. Only the characters that would end the span early matter.
-     */
-    public static function insideSpan(string $text): string
-    {
-        return self::text($text, lineStart: false, inTable: false);
-    }
-
-    /**
      * Wrap a code span's content in a backtick fence that cannot occur inside it.
      *
      * The specification strips one space from each end of a code span when both
      * are present, so content that genuinely starts or ends with whitespace is
      * padded once more to keep it. Content that begins or ends with a backtick
-     * needs the same padding, because otherwise the fence would not be the
-     * longest run and the span would end at the wrong place.
+     * needs the same padding, or the fence would not be the longest run and the
+     * span would end at the wrong place.
      *
-     * Returns null when the content cannot be written as a code span at all. A
+     * Returns null when the content cannot be written as a code span at all: a
      * span may not contain a blank line, and there is then nothing to fall back
      * on but writing the characters as they are.
      */
@@ -155,8 +145,8 @@ final class Escaping
      * nothing, because an underscore between two word characters cannot delimit
      * anything. `__ foo bar__` needs nothing either: the opening run is followed
      * by a space so it cannot open, and the closing run has nothing to close.
-     * When no run in the text can open, none of them can pair up, so the text is
-     * left exactly as it stands.
+     * When no run can open, none of them can pair up, so the text is left as it
+     * stands.
      */
     private static function escapeUnderscores(string $text): string
     {
@@ -206,9 +196,9 @@ final class Escaping
     /**
      * Whether a delimiter run could open emphasis, by the specification's rules.
      *
-     * A run opens when it is left-flanking and, unless it is preceded by
-     * punctuation, is not also right-flanking. That last clause is the one that
-     * makes `snake_case` inert.
+     * A run opens when it is left-flanking and, unless preceded by punctuation,
+     * is not also right-flanking. That last clause is what makes `snake_case`
+     * inert.
      */
     private static function canOpen(string $before, string $after): bool
     {
@@ -262,11 +252,10 @@ final class Escaping
      * The length of the longest run of a character in the text.
      *
      * Markdown delimits a code span or fences a code block with a run of
-     * backticks, and the run has to be one longer than any the content holds or
-     * the span or block would end at the wrong place. Finding that run is a
-     * single pass over the text: growing a candidate and searching the text
-     * again for each of them costs a search per character and time quadratic in
-     * the size of the text, which a document with a long run in it would feel.
+     * backticks, and the fence has to be one longer than any the content holds or
+     * the span or block would end at the wrong place. One pass finds that run:
+     * searching the text again for each candidate is a search per character and
+     * time quadratic in the size of the text.
      *
      * @param string $text      The text to look through.
      * @param string $character The character to count. It has to be a single

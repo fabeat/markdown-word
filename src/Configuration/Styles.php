@@ -5,22 +5,16 @@ declare(strict_types=1);
 namespace MarkdownWord\Configuration;
 
 /**
- * Immutable registry of named style slots.
+ * Immutable registry of named style slots. Every visual decision the renderer
+ * makes is routed through a slot name (for example `heading.1`, `codeFont` or
+ * `bulletList`), which holds either a **styleId**, an inline style definition as
+ * an array, or `null` for no styling.
  *
- * Every visual decision the renderer makes is routed through a slot name (for
- * example `heading.1`, `codeFont` or `bulletList`). A slot holds either
- *
- *  - a string: the **styleId** of a style, which is how Word references styles
- *    and what a template must define. Note that a styleId has no spaces even
- *    though the style's display name in the Word UI does: the built-in heading
- *    styles are `Heading1`…`Heading6`, not `Heading 1`.
- *  - an array: an inline style definition applied directly to the runs and
- *    paragraphs that use it.
- *  - `null`: no styling.
- *
- * Because slots are plain names, you can point the renderer at the styleIds of
- * your own corporate template and get a pixel-perfect result without touching a
- * line of code.
+ * A styleId has no spaces even though the style's display name in the Word UI
+ * does: the built-in heading styles are `Heading1`…`Heading6`, not
+ * `Heading 1`. Because slots are plain names, you can point the renderer at the
+ * styleIds of your own corporate template and get a pixel-perfect result without
+ * touching a line of code.
  */
 final class Styles
 {
@@ -68,9 +62,9 @@ final class Styles
     public static function defaults(): array
     {
         return [
-            // Paragraph styles. These are the styleIds of the built-in Word
-            // styles, which is what Word resolves a `w:pStyle` against. Using the
-            // display names ("Heading 1") would leave the text unstyled.
+            // The styleIds of the built-in Word styles, which is what Word
+            // resolves a `w:pStyle` against. Using the display names ("Heading
+            // 1") would leave the text unstyled.
             self::HEADING_1 => 'Heading1',
             self::HEADING_2 => 'Heading2',
             self::HEADING_3 => 'Heading3',
@@ -84,7 +78,6 @@ final class Styles
             self::HTML_FALLBACK => null,
             self::LIST_PARAGRAPH => null,
 
-            // Font styles.
             self::CODE_FONT => [
                 'name' => 'Consolas',
                 'size' => 9,
@@ -99,7 +92,6 @@ final class Styles
             self::BULLET_LIST => 'MarkdownWord-Bullet',
             self::ORDERED_LIST => 'MarkdownWord-Ordered',
 
-            // Table styling.
             self::TABLE => null,
             self::TABLE_HEADER_ROW => null,
             self::TABLE_CELL => null,
@@ -115,8 +107,23 @@ final class Styles
     }
 
     /**
-     * Resolve the style for a heading level, falling back to the paragraph style
-     * when that level has not been configured.
+     * Resolve the style for a heading level.
+     *
+     * This is the one place the level-to-slot-name mapping is written down. Three
+     * call sites compose it by hand instead, because each of them needs the name
+     * rather than a resolved style (`DocumentRenderer::renderHeading()`,
+     * `StyleRegistrar::register()` and `Configuration::withBuiltInHeadingStyles()`);
+     * `tests/Unit/styles-fixes.php` pins the constants to the composed names so
+     * the two sides cannot drift apart unnoticed in the meantime.
+     *
+     * A level explicitly set to `null` resolves to the paragraph style, so that a
+     * heading can be given up without the heading's own default spacing and size.
+     * Only an explicit `null`: the constructor merges the defaults in, so a level
+     * nobody mentioned always has a slot of its own, and treating "not
+     * configured" as "not mentioned" would resolve every heading to the paragraph
+     * style under the default configuration.
+     *
+     * @param int $level A heading level; anything outside 1-6 is clamped into it.
      */
     public function heading(int $level): mixed
     {

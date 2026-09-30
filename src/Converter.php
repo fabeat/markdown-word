@@ -5,63 +5,36 @@ declare(strict_types=1);
 namespace MarkdownWord;
 
 /**
- * A conversion in one direction.
+ * A conversion in one direction. {@see MarkdownToWord} and {@see WordToMarkdown}
+ * are the same operation with the ends swapped, so one interface describes both.
  *
- * The two directions are the same operation with the ends swapped, so they are
- * described by one interface. Before this they shared a shape by agreement,
- * which is worth nothing: a method could be renamed on one side and every caller
- * using the other would be the only thing to notice.
- *
- * ```php
- * function convert(Converter $converter, string $target): void
- * {
- *     $converter->save($target);   // Markdown in, or a document in — either works
- * }
- * ```
- *
- * ## What the subject is
- *
- * An implementation is given the thing it converts in its constructor, as the
- * first argument: a path, or the content itself. A string naming a file that
- * exists is read from it, and anything else is taken as the content — the rule
- * {@see Input} applies, and the same one the command line works by.
- *
- * The second argument is what configures the conversion, and it differs by
- * direction: {@see MarkdownToWord} takes a {@see Configuration}, and
- * {@see WordToMarkdown} takes a {@see Reverse\Options}. That is why the
- * constructor is not part of this contract: there is no signature both could
- * honour. Pass `null` to skip it.
- *
- * ```php
- * new MarkdownToWord('notes.md');                          // the defaults
- * new MarkdownToWord('notes.md', Configuration::create()); // configured
- * new WordToMarkdown('report.docx');
- * new WordToMarkdown($bytes, Options::fromArray([...]));
- * ```
+ * The constructor is deliberately not in the contract: the second argument is a
+ * {@see Configuration} one way and a {@see Reverse\Options} the other, and no
+ * signature covers both. A string source is a path when it names a file and the
+ * content otherwise ({@see Input}); {@see WordToMarkdown} also insists on the
+ * `PK\x03\x04` of a zip archive, which is how the command line tells them apart.
  */
 interface Converter
 {
     /**
-     * Convert whatever the converter was given.
+     * Written to `$target` when there is one and returned either way.
      *
-     * Written to `$target` when there is one, and returned either way, so the
-     * same call serves a string and a file.
+     * @param string|null $target Null returns the result and writes nothing. A
+     *        target of `-` means nothing here; that is the command line's
+     *        shorthand, and what to do with a path is the caller's business.
      *
-     * @param string|null $target Where to write the result. Null returns it and
-     *        writes nothing. A path of `-` is not special here; that is the
-     *        command line's shorthand, and the caller decides what to do with a
-     *        path.
-     * @return string The converted document or Markdown.
-     *
-     * @throws \RuntimeException when the converter was given nothing to convert.
+     * @throws Exception\NothingToConvert   when the converter was built without a source.
+     * @throws Exception\UnreadableFile     when the source names a file that cannot be read.
+     * @throws Exception\UnreadableDocument when the source is not a document that can be opened.
+     * @throws Exception\MalformedDocument  when a part of one is missing or does not parse.
+     * @throws Exception\FileNotWritable    when there is a target and it cannot be written.
      */
     public function convert(?string $target = null): string;
 
     /**
-     * Convert whatever the converter was given and write the result to a file.
-     *
      * The counterpart of {@see self::convert()} for when the result is wanted on
-     * disk and its value is not.
+     * disk and its value is not. Throws what {@see self::convert()} throws, and
+     * never less.
      *
      * @param string $target Where to write the result.
      */

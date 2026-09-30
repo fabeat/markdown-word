@@ -18,15 +18,12 @@ use ZipArchive;
  * PHPWord has no API for it: a document this library writes carries its pictures
  * as VML — `w:pict/v:shape/v:imagedata` — and the writer emits the description
  * of each one as a literal `o:title=""`. A DrawingML picture, which is what a
- * template authored in Word already contains, keeps its description on the
- * non-visual properties of `wp:docPr` and is handled here for the same reason.
- * An image without alternative text is in the document and its meaning is not,
- * so the text the Markdown supplied is put back.
+ * template authored in Word already contains, keeps its description on
+ * `wp:docPr` and is handled here for the same reason.
  *
- * The images are matched in document order against the order they were added in,
- * which is the same order the renderer walks the syntax tree. Doing it with the
- * DOM rather than by string replacement means content that happens to look like
- * an image element cannot confuse it.
+ * The images are matched in document order against the order they were added
+ * in, and the DOM is used rather than string replacement so content that happens
+ * to look like an image element cannot confuse it.
  */
 final class ImageDescriptionPass
 {
@@ -113,9 +110,8 @@ final class ImageDescriptionPass
      * The elements that carry an image's description, in document order.
      *
      * A DrawingML picture keeps the description on its non-visual properties and
-     * a VML one on the image data. A document uses one shape or the other, and
-     * the VML one is preferred when both are present because that is what this
-     * library writes for an inline picture.
+     * a VML one on the image data. The VML one wins when both are present,
+     * because that is what this library writes for an inline picture.
      *
      * @return list<array{0: DOMElement, 1: string, 2: string}>
      */

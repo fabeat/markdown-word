@@ -9,10 +9,12 @@ namespace MarkdownWord\Reverse;
  *
  * Word stores emphasis as properties of a run rather than as a nesting of
  * containers, so the tree is deliberately flat: a run carries the four things
- * Markdown can express inline, and the serialiser rebuilds the nesting from
- * them. That is the inverse of what {@see \MarkdownWord\Render\InlineRenderer} does
- * on the way out, and the round trip is exact because neither side loses a
- * distinction the other needs.
+ * Markdown can express inline, and the serialiser rebuilds the nesting from them.
+ * That is the inverse of {@see \MarkdownWord\Render\InlineRenderer} on the way
+ * out, and it preserves exactly what Word recorded, which is not the same thing
+ * as preserving the Markdown: a fenced code block comes back without its
+ * language, and a table is written with a header whether the document marked one.
+ * {@see \MarkdownWord\WordToMarkdown} lists the distinctions Word does not keep.
  */
 final class Inline
 {
@@ -22,19 +24,15 @@ final class Inline
     public const LINK = 'link';
 
     /**
-     * @param string                $kind     One of the `KIND` constants.
-     * @param string                $text     The literal characters, for a text run.
-     * @param bool                  $bold     Whether the run is bold.
-     * @param bool                  $italic   Whether the run is italic.
-     * @param bool                  $strike   Whether the run is struck through.
-     * @param bool                  $code     Whether the run is set in a monospaced
-     *        face, which is how Word represents an inline code span.
-     * @param string                $url      The destination of a link.
-     * @param string|null           $title    The tooltip of a link, if it has one.
-     * @param string                $alt      The alternative text of an image.
-     * @param string                $target   Where an image can be found, relative to
-     *        the Markdown document being written.
-     * @param list<Inline>          $children The label of a link, which may itself
+     * @param string        $kind  One of the `TEXT`, `BREAK`, `IMAGE` or `LINK`
+     *        constants.
+     * @param string        $text  The literal characters, for a text run.
+     * @param bool          $code  Whether the run is set in a monospaced face,
+     *        which is how Word represents an inline code span.
+     * @param string|null   $title The tooltip of a link, if it has one.
+     * @param string        $target Where an image can be found, relative to the
+     *        Markdown document being written.
+     * @param list<Inline>  $children The label of a link, which may itself
      *        contain formatting.
      */
     public function __construct(
@@ -79,18 +77,6 @@ final class Inline
     public static function link(string $url, ?string $title, array $children): self
     {
         return new self(self::LINK, url: $url, title: $title, children: $children);
-    }
-
-    /**
-     * Whether this run carries any of the formatting Markdown can express.
-     *
-     * Runs without it are merged with their neighbours, so a paragraph written
-     * as twenty runs by Word comes back out as one line of text rather than
-     * twenty fragments.
-     */
-    public function formatted(): bool
-    {
-        return $this->bold || $this->italic || $this->strike || $this->code;
     }
 
     public function is(string ...$kinds): bool

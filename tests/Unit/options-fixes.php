@@ -1,0 +1,302 @@
+<?php
+
+declare(strict_types=1);
+
+use MarkdownWord\Configuration\Options;
+
+/*
+|------------------------------------------------------------------------------
+| What a fluent options object has to promise
+|------------------------------------------------------------------------------
+|
+| `Options` is an immutable value object reached through a chain:
+|
+|     Configuration::create()->withTableBorders(false)->withMaxHeadingLevel(3)
+|
+| Every link in that chain is handed the result of the last one, so a setter
+| that drops the other fifteen options is not a slightly wrong answer — it is
+| silent data loss, and the caller has no way to see it. Each test below is
+| built so that it cannot pass for the wrong reason:
+|
+|  - The base is configured with a value that is different from the default for
+|    *every* property. A setter that quietly reverts to the defaults therefore
+|    changes the answer, and a test that only compared against the defaults
+|    would not notice. That is the trap the setter tests in tests/Unit/public-api.php
+|    fell into: calling each setter on a fresh `new Options()` and asserting the
+|    one property it set cannot fail on this bug by construction, whatever the
+|    setter actually did to the other fifteen.
+|  - The expected value is built from the base, so the assertion is about
+|    preservation — "the thing I set changed, and nothing else did" — which is
+|    the contract a value object actually has.
+|
+| The last group is about `cast()`, which is the same concern seen from the
+| config-file side: a number read out of JSON as the string "2500" has to reach
+| the renderer as an int, because a wrong number changes the document instead of
+| being noticed.
+|
+*/
+
+/**
+ * An options object in which every single property differs from its default, so
+ * that "the other properties were preserved" and "the other properties were
+ * reset" are distinguishable.
+ */
+function configuredAwayFromTheDefaults(): Options
+{
+    return Options::fromArray([
+        'softBreak' => Options::SOFT_BREAK_PARAGRAPH,
+        'hardBreak' => Options::BREAK_REMOVE,
+        'html' => Options::HTML_DROP,
+        'images' => Options::IMAGE_PLACEHOLDER,
+        'imageBasePath' => '/srv/pics',
+        'imageMaxWidth' => 8.5,
+        'maxHeadingLevel' => 3,
+        'orderedListFormat' => 'lowerRoman',
+        'orderedListSuffix' => 'space',
+        'tableBorders' => false,
+        'tableHeaderBold' => false,
+        'tableWidth' => 2500,
+        'codeBlockShading' => false,
+        'linkTarget' => '_self',
+        'thematicBreak' => 'text',
+        'deferredHyperlinks' => true,
+    ]);
+}
+
+// ---------------------------------------------------------------- the setters
+
+it('changes one option without disturbing the other fifteen', function (string $method, mixed $argument, string $property) {
+    $base = configuredAwayFromTheDefaults();
+    $changed = $base->{$method}($argument);
+
+    expect($changed)->not->toBe($base)
+        ->and($changed->{$property})->toBe($argument)
+        // The whole point: every other property came through untouched. Had the
+        // setter rebuilt the object from the defaults, the other fifteen entries
+        // of this array would all differ.
+        ->and($changed->toArray())
+        ->toBe(array_replace($base->toArray(), [$property => $argument]));
+})->with([
+    'soft break' => ['withSoftBreak', Options::SOFT_BREAK_SPACE, 'softBreak'],
+    'hard break' => ['withHardBreak', Options::BREAK_PARAGRAPH, 'hardBreak'],
+    'html' => ['withHtml', Options::HTML_PRESERVE, 'html'],
+    'heading depth' => ['withMaxHeadingLevel', 5, 'maxHeadingLevel'],
+    'table borders' => ['withTableBorders', true, 'tableBorders'],
+    'table width' => ['withTableWidth', 4000, 'tableWidth'],
+    'code shading' => ['withCodeBlockShading', true, 'codeBlockShading'],
+]);
+
+it('changes the image settings without disturbing the other thirteen', function () {
+    $base = configuredAwayFromTheDefaults();
+    $changed = $base->withImages(Options::IMAGE_SKIP, '/opt/assets', 4.5);
+
+    expect($changed->toArray())->toBe(array_replace($base->toArray(), [
+        'images' => Options::IMAGE_SKIP,
+        'imageBasePath' => '/opt/assets',
+        'imageMaxWidth' => 4.5,
+    ]));
+});
+
+it('keeps every option set earlier in a chain', function () {
+    // The reported shape: three setters in a row, and the first one is the only
+    // one whose value the caller can still see in the result.
+    $options = (new Options())
+        ->withTableBorders(false)
+        ->withMaxHeadingLevel(3)
+        ->withTableWidth(2500);
+
+    expect($options->tableBorders)->toBeFalse()
+        ->and($options->maxHeadingLevel)->toBe(3)
+        ->and($options->tableWidth)->toBe(2500);
+});
+
+it('keeps a non-default starting point through a whole chain', function () {
+    // The same chain, started from a configured object rather than from the
+    // defaults — so a chain cannot pass by accidentally reproducing them.
+    $options = configuredAwayFromTheDefaults()
+        ->withTableBorders(true)
+        ->withMaxHeadingLevel(5)
+        ->withTableWidth(4000);
+
+    expect($options->toArray())->toBe(array_replace(configuredAwayFromTheDefaults()->toArray(), [
+        'tableBorders' => true,
+        'maxHeadingLevel' => 5,
+        'tableWidth' => 4000,
+    ]));
+});
+
+it('leaves the receiver of a setter alone', function () {
+    $original = configuredAwayFromTheDefaults();
+    $before = $original->toArray();
+
+    $original->withSoftBreak(Options::SOFT_BREAK_LINE);
+    $original->withTableWidth(1);
+    $original->withImages(Options::IMAGE_SKIP, '/nowhere');
+
+    expect($original->toArray())->toBe($before)
+        ->and($original->softBreak)->toBe(Options::SOFT_BREAK_PARAGRAPH)
+        ->and($original->tableWidth)->toBe(2500)
+        ->and($original->imageBasePath)->toBe('/srv/pics');
+});
+
+// ------------------------------------------------------------- the array forms
+
+it('merges withAll over the current state', function () {
+    $changed = configuredAwayFromTheDefaults()->withAll([
+        'tableBorders' => false,
+        'tableWidth' => 100,
+    ]);
+
+    expect($changed->toArray())->toBe(array_replace(configuredAwayFromTheDefaults()->toArray(), [
+        'tableBorders' => false,
+        'tableWidth' => 100,
+    ]));
+});
+
+it('treats a null in withImages as "not mentioned"', function () {
+    // The null filter is deliberate: `withImages($mode)` must not wipe a base
+    // path and a width that were configured earlier. It is the one place a
+    // fluent setter treats null as a value, so it is worth pinning down.
+    $base = configuredAwayFromTheDefaults();
+    $changed = $base->withImages(Options::IMAGE_SKIP);
+
+    expect($changed->images)->toBe(Options::IMAGE_SKIP)
+        ->and($changed->imageBasePath)->toBe('/srv/pics')
+        ->and($changed->imageMaxWidth)->toBe(8.5)
+        ->and($changed->toArray())->toBe(array_replace($base->toArray(), ['images' => Options::IMAGE_SKIP]));
+});
+
+it('leaves a null base path null rather than turning it into an empty string', function () {
+    $options = (new Options())->withImages(Options::IMAGE_SKIP);
+
+    expect($options->imageBasePath)->toBeNull()
+        ->and($options->toArray()['imageBasePath'])->toBeNull();
+});
+
+it('round trips through the array form', function () {
+    $options = configuredAwayFromTheDefaults();
+
+    expect(Options::fromArray($options->toArray())->toArray())->toBe($options->toArray());
+});
+
+// -------------------------------------------------------------------- casting
+
+it('gives every option the type the constructor promises', function () {
+    // Fed as the strings a JSON or YAML config file produces, and read back as
+    // the exact values the constructor declares. A single `toBe` on the whole
+    // array says both things: the numbers came back as numbers, and nothing was
+    // left holding the string it arrived as.
+    $options = Options::fromArray([
+        'softBreak' => Options::SOFT_BREAK_LINE,
+        'hardBreak' => Options::BREAK_LINE,
+        'html' => Options::HTML_STRIP,
+        'images' => Options::IMAGE_EMBED,
+        'imageBasePath' => '/srv/pics',
+        'imageMaxWidth' => '12.5',
+        'maxHeadingLevel' => '3',
+        'orderedListFormat' => 'decimal',
+        'orderedListSuffix' => 'tab',
+        'tableBorders' => '1',
+        'tableHeaderBold' => '0',
+        'tableWidth' => '2500',
+        'codeBlockShading' => 1,
+        'linkTarget' => '_blank',
+        'thematicBreak' => 'border',
+        'deferredHyperlinks' => '0',
+    ]);
+
+    expect($options->toArray())->toBe([
+        'softBreak' => Options::SOFT_BREAK_LINE,
+        'hardBreak' => Options::BREAK_LINE,
+        'html' => Options::HTML_STRIP,
+        'images' => Options::IMAGE_EMBED,
+        'imageBasePath' => '/srv/pics',
+        'imageMaxWidth' => 12.5,
+        'maxHeadingLevel' => 3,
+        'orderedListFormat' => 'decimal',
+        'orderedListSuffix' => 'tab',
+        'tableBorders' => true,
+        'tableHeaderBold' => false,
+        'tableWidth' => 2500,
+        'codeBlockShading' => true,
+        'linkTarget' => '_blank',
+        'thematicBreak' => 'border',
+        'deferredHyperlinks' => false,
+    ]);
+});
+
+it('holds no string in any property that is not a string', function () {
+    // The general form of the test above: a config file that hands every option
+    // over as a string must not leave one of the numbers or the switches as a
+    // string, because PHPWord would then be handed a number where it wants one
+    // and the document would come out wrong rather than raise.
+    $given = [];
+
+    foreach (array_keys((new Options())->toArray()) as $property) {
+        $given[$property] = $property === 'imageMaxWidth' ? '7.5' : '1';
+    }
+
+    $options = Options::fromArray($given);
+
+    foreach (['maxHeadingLevel', 'tableWidth', 'imageMaxWidth', 'tableBorders', 'tableHeaderBold', 'codeBlockShading', 'deferredHyperlinks'] as $numericOrSwitch) {
+        expect($options->{$numericOrSwitch})
+            ->not->toBeString()
+            ->and(get_debug_type($options->{$numericOrSwitch}))
+            ->toBe(in_array($numericOrSwitch, ['imageMaxWidth'], true) ? 'float' : (in_array($numericOrSwitch, ['maxHeadingLevel', 'tableWidth'], true) ? 'int' : 'bool'));
+    }
+});
+
+it('clamps the numbers that have a range', function () {
+    expect(Options::fromArray(['tableWidth' => '99999'])->tableWidth)->toBe(5000)
+        ->and(Options::fromArray(['tableWidth' => '-4'])->tableWidth)->toBe(0)
+        ->and(Options::fromArray(['tableWidth' => 0])->tableWidth)->toBe(0)
+        ->and(Options::fromArray(['maxHeadingLevel' => '99'])->maxHeadingLevel)->toBe(6)
+        ->and(Options::fromArray(['maxHeadingLevel' => '0'])->maxHeadingLevel)->toBe(1)
+        ->and(Options::fromArray(['imageMaxWidth' => '-1'])->imageMaxWidth)->toBe(0.0);
+});
+
+it('clamps through the setters too, not only through the array form', function () {
+    // The setters go through the same cast, so an out-of-range number handed to
+    // one of them is bounded rather than written into the document.
+    expect((new Options())->withTableWidth(99999)->tableWidth)->toBe(5000)
+        ->and((new Options())->withMaxHeadingLevel(0)->maxHeadingLevel)->toBe(1);
+});
+
+it('reads the switches from the spellings a config file uses', function () {
+    expect(Options::fromArray(['tableBorders' => '1'])->tableBorders)->toBeTrue()
+        ->and(Options::fromArray(['tableBorders' => '0'])->tableBorders)->toBeFalse()
+        ->and(Options::fromArray(['tableBorders' => 0])->tableBorders)->toBeFalse()
+        ->and(Options::fromArray(['tableBorders' => ''])->tableBorders)->toBeFalse()
+        ->and(Options::fromArray(['deferredHyperlinks' => 1])->deferredHyperlinks)->toBeTrue();
+});
+
+it('reads an empty base path as "no base path"', function () {
+    expect(Options::fromArray(['imageBasePath' => ''])->imageBasePath)->toBeNull()
+        ->and(Options::fromArray(['imageBasePath' => 'assets'])->imageBasePath)->toBe('assets');
+});
+
+it('treats a key spelled out with no value as unconfigured', function () {
+    // A JSON config that says `"tableBorders": null`, or a PHP config array
+    // merged over another that set the option, hands over a null. Two of these
+    // are outright data loss — `tableWidth` becomes 0, which is the documented
+    // "let Word size it" value rather than the 5000 that was configured, and
+    // that is a document that comes out wrong with nothing to show for it.
+    $defaults = (new Options())->toArray();
+
+    foreach (array_keys($defaults) as $property) {
+        $configured = Options::fromArray([$property => null]);
+
+        // `imageBasePath` and `orderedListSuffix` are nullable by design, so a
+        // null is what they mean. Every other property takes the default.
+        $expected = in_array($property, ['imageBasePath', 'orderedListSuffix'], true)
+            ? null
+            : $defaults[$property];
+
+        expect($configured->{$property})->toBe($expected, "options['{$property}'] = null");
+    }
+});
+
+it('ignores a key it does not know', function () {
+    expect(Options::fromArray(['noSuchOption' => true, 'tableWidth' => 1000])->toArray())
+        ->toBe(array_replace((new Options())->toArray(), ['tableWidth' => 1000]));
+});

@@ -77,10 +77,8 @@ final class InlineRenderer
             return $target;
         }
 
-        // A soft line break. Browsers collapse it to a space, so that is the
-        // spec-faithful default; it can be reconfigured.
+        // One node type for both break kinds.
         if ($node instanceof Newline) {
-            // CommonMark uses one node type for both break kinds.
             return $node->getType() === Newline::HARDBREAK
                 ? $this->renderHardBreak($target, $style, $onParagraphBreak)
                 : $this->renderSoftBreak($target, $style, $onParagraphBreak);
@@ -103,8 +101,8 @@ final class InlineRenderer
         }
 
         if ($node instanceof Code) {
-            // Code spans are already stripped of their delimiters by the parser,
-            // including the leading/trailing space normalisation from the spec.
+            // Already stripped of its delimiters by the parser, including the
+            // leading/trailing space normalisation from the spec.
             $this->addText($node->getLiteral(), $target, $style->withCode());
 
             return $target;
@@ -129,7 +127,7 @@ final class InlineRenderer
         }
 
         if ($node instanceof HtmlInline) {
-            // Handled by the block layer, which knows the configured HTML mode.
+            // The block layer, which knows the configured HTML mode.
             $this->html->renderInline($node->getLiteral(), $target, $style);
 
             return $target;
@@ -161,8 +159,8 @@ final class InlineRenderer
         $linked = $style->withLink($url, $title);
 
         if ($url === '') {
-            // A link with an empty destination (`<>` or an unresolvable
-            // reference) is not a hyperlink; render just its label.
+            // `<>` or an unresolvable reference is not a hyperlink; render the
+            // label alone.
             return $this->render($node->children(), $target, $style, $onParagraphBreak);
         }
 
@@ -177,11 +175,11 @@ final class InlineRenderer
             );
         }
 
-        // A link whose body is plain text is expressible with PHPWord's own Link
-        // element, which produces a real w:hyperlink — unless the elements are
-        // destined for another document, in which case the relationship it refers
-        // to would not travel with them, or unless it has a title, which that
-        // element has nowhere to put. Both go through the writer instead.
+        // A plain-text label is expressible with PHPWord's own Link element, which
+        // produces a real w:hyperlink — unless the elements are destined for
+        // another document, where the relationship it refers to would not travel
+        // with them, or unless it has a title, which that element has nowhere to
+        // put. Both go through the writer instead.
         if (!$this->hasFormatting($node) && !$this->deferredHyperlinks && ($title === null || $title === '')) {
             $label = $this->collectText($node);
             if ($label !== '') {
@@ -192,11 +190,10 @@ final class InlineRenderer
         }
 
         // Otherwise the label contains emphasis. Word models that as a
-        // w:hyperlink wrapping several runs, which PHPWord cannot express, so
-        // the runs are collected and swapped in by the writer afterwards.
-        //
-        // The placeholder stands in for the link's text, so the element tree
-        // still reports the document's real content in the meantime.
+        // w:hyperlink wrapping several runs, which PHPWord cannot express, so the
+        // runs are collected and swapped in by the writer afterwards. The
+        // placeholder stands in for the link's text, so the element tree still
+        // reports the document's real content in the meantime.
         return $this->links->render($node, $target, $linked);
     }
 
@@ -266,8 +263,6 @@ final class InlineRenderer
     }
 
     /**
-     * Emit a run of text.
-     *
      * Any whitespace inside the literal is collapsed, because in HTML a browser
      * collapses it and so must the document. This matters for content that only
      * looks like ordinary text, such as `foo&#10;&#10;bar`, where the entity
@@ -286,10 +281,6 @@ final class InlineRenderer
         $target->addText($text, $this->styles->fontFor($style));
     }
 
-    /**
-     * Whether a node's content consists only of images, optionally wrapped in
-     * emphasis, with no text of its own.
-     */
     private function isOnlyImages(Node $node): bool
     {
         $hasImage = false;

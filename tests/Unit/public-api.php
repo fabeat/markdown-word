@@ -12,7 +12,6 @@ use MarkdownWord\Render\InlineStyle;
 use MarkdownWord\Render\StyleResolver;
 use MarkdownWord\Text\TextExtractor;
 use MarkdownWord\Tests\Support\Upstream;
-use PhpOffice\PhpWord\Style\Font;
 
 /*
  * The smaller public surface: the fluent setters, the parser factories and the
@@ -151,27 +150,6 @@ it('reads front matter when a YAML implementation is there, and says so when non
 });
 
 // ------------------------------------------------------- StyleResolver
-
-it('hands back the style a level is configured with', function () {
-    $resolver = new StyleResolver(new Configuration());
-
-    expect($resolver->headingStyle(1))->toBe('Heading1')
-        ->and($resolver->headingStyle(2))->toBe('Heading2')
-        // Beyond the six levels there are, the last one is the answer: there is
-        // no seventh heading style, and a caller asking for one wants the
-        // deepest rather than nothing.
-        ->and($resolver->headingStyle(9))->toBe('Heading6')
-        ->and($resolver->headingStyle(0))->toBe('Heading1');
-});
-
-it('turns a style given as an array into a font', function () {
-    $resolver = new StyleResolver(new Configuration());
-    $font = $resolver->font(['name' => 'Fira Code', 'size' => 10, 'bold' => true]);
-
-    expect($font)->toBeInstanceOf(Font::class)
-        ->and($font->getName())->toBe('Fira Code')
-        ->and($font->isBold())->toBeTrue();
-});
 
 it('uses a style named as a string only when it is the whole of the formatting', function () {
     // A named style cannot be combined with anything else in a run, so a run

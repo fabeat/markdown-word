@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace MarkdownWord\Configuration;
 
 /**
- * Immutable set of behavioural switches.
+ * Behavioural switches for the cases where Markdown and Word do not map onto
+ * each other one-to-one; {@see Styles} decides how things look.
  *
- * While {@see Styles} decides *how things look*, these options decide *what
- * gets rendered* in situations where Markdown and Word do not map onto each
- * other one-to-one.
+ * Every `with*()` returns a new instance and is called on the result of the last
+ * one in a chain, so each has to carry the rest of the configuration forward
+ * rather than just the property it was given. See {@see self::with()}, which is
+ * where that is arranged.
  */
 final class Options
 {
@@ -40,24 +42,24 @@ final class Options
     public const IMAGE_SKIP = 'skip';
 
     /**
-     * @param string          $softBreak           How to render a CommonMark soft line break.
-     * @param string          $hardBreak           How to render a hard line break (two spaces, backslash or `<br>`).
-     * @param string          $html                Handling of raw HTML blocks and inline HTML.
-     * @param string          $images              Handling of images: embed into the document, emit alt-text placeholder, or omit.
-     * @param string|null     $imageBasePath       Base directory used to resolve relative image paths.
-     * @param float           $imageMaxWidth       Maximum image width in centimetres. `0` disables scaling.
+     * The properties where `null` is a value in its own right rather than the
+     * absence of one; everywhere else it means "not configured" and the default
+     * applies.
+     *
+     * @var list<string>
+     */
+    private const NULLABLE = ['imageBasePath', 'orderedListSuffix'];
+
+    /**
+     * @param float           $imageMaxWidth       Maximum image width in centimetres; `0` disables scaling.
      * @param int             $maxHeadingLevel     Headings deeper than this are rendered as paragraphs.
      * @param string          $orderedListFormat   `w:numFmt` value used for ordered lists (decimal, lowerLetter, ...).
      * @param string|null     $orderedListSuffix   Separator between the number and the text: `tab`, `space` or `nothing`.
-     * @param bool            $tableBorders        Draw borders around table cells.
-     * @param bool            $tableHeaderBold     Render the first table row in bold.
      * @param int             $tableWidth          Table width in fiftieths of a percent of the text column.
      *        `5000` — the default — is the full width, which is what a table read
      *        as a table rather than as a fragment of one should be. `0` leaves the
      *        width to Word's automatic sizing.
-     * @param bool            $codeBlockShading    Give code blocks a light background.
-     * @param string          $linkTarget          `w:hyperlink` target: `_blank` or `_self`.
-     * @param string          $thematicBreak       Horizontal rule rendering: `border` (paragraph rule) or `text` (a row of dashes).
+     * @param string          $thematicBreak       `border` (paragraph rule) or `text` (a row of dashes).
      * @param bool            $deferredHyperlinks   Write every link as a placeholder and resolve it while
      *        the file is written, instead of letting PHPWord emit `w:hyperlink` directly. Needed when the
      *        rendered elements are copied into another document — as the template renderer does — because
@@ -91,8 +93,22 @@ final class Options
         // Unknown keys are dropped rather than passed on, so a config file may
         // carry extra entries without breaking the renderer.
         $known = (new self())->toArray();
+        $given = array_intersect_key($options, $known);
 
-        return new self(...self::cast(array_merge($known, array_intersect_key($options, $known))));
+        // A key spelled out with no value — `"tableBorders": null` in a JSON
+        // config, or a null in a PHP config array merged over one that had set
+        // the option — means "not configured", so the default below fills it
+        // back in. The alternative is worse than a type error: the cast clamps
+        // `tableWidth`, and `(int) null` is 0, which is the documented "let Word
+        // size it" value rather than the 5000 that was configured. That is a
+        // document that comes out wrong with nothing to show for having asked.
+        foreach (array_keys($given) as $property) {
+            if ($given[$property] === null && !in_array($property, self::NULLABLE, true)) {
+                unset($given[$property]);
+            }
+        }
+
+        return new self(...self::cast(array_merge($known, $given)));
     }
 
     public function withSoftBreak(string $mode): self
@@ -129,10 +145,6 @@ final class Options
         return $this->with('tableBorders', $borders);
     }
 
-    /**
-     * @param int $width Fiftieths of a percent of the text column, so `5000` is
-     *                   the full width and `0` hands the sizing back to Word.
-     */
     public function withTableWidth(int $width): self
     {
         return $this->with('tableWidth', $width);
@@ -176,14 +188,42 @@ final class Options
         ];
     }
 
+    /**
+     * Return a copy with one property changed, leaving this one alone.
+     *
+     * The copy is built by merging over `$this`, never by starting from the
+     * defaults: `fromArray()` fills in every property it is not given, so
+     * rebuilding from it alone would quietly reset the other fifteen options to
+     * their defaults. That is silent data loss rather than a visible mistake —
+     * `withTableBorders(false)->withMaxHeadingLevel(3)` would hand back
+     * `tableBorders: true` — and it is why this goes through `withAll()`, which
+     * already merges, rather than straight to `fromArray()`.
+     *
+     * The value still goes through the cast, so a setter cannot be the way round
+     * a range check that `fromArray()` applies.
+     */
     private function with(string $property, mixed $value): self
     {
-        return self::fromArray([$property => $value]);
+        return $this->withAll([$property => $value]);
     }
 
     /**
-     * Coerce loosely typed configuration values (typically coming from a PHP,
-     * JSON or YAML config file) into the exact types the constructor demands.
+     * Coerce loosely typed values (typically from a PHP, JSON or YAML config
+     * file) into the exact types the constructor demands.
+     *
+     * Every numeric and every boolean property is listed here, and a new one has
+     * to be added: a number the renderer puts into the document has to reach it
+     * as a number, and a wrong one changes the document rather than raising, so
+     * a value that is neither cast nor bounded silently becomes whatever `(int)`
+     * or `(bool)` makes of it.
+     *
+     * The string properties are deliberately not cast: a mode that is not one of
+     * the constants is a mistake in the config file, and casting it would mean
+     * inventing a fallback mode, which is a decision this class does not get to
+     * make.
+     *
+     * The array handed in has already been merged over the defaults, so every
+     * property is present and any `null` has already been resolved.
      *
      * @param  array<string, mixed>  $options
      * @return array<string, mixed>

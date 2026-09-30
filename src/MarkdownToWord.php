@@ -22,26 +22,10 @@ use PhpOffice\PhpWord\Element\AbstractContainer;
 use PhpOffice\PhpWord\PhpWord;
 
 /**
- * Converts Markdown into a Word document.
- *
- * ```php
- * // Markdown in a string, a document out.
- * $converter = new MarkdownToWord();
- * $phpWord = $converter->toPhpWord('# Hello *World*');
- *
- * // A file in, a file out.
- * (new MarkdownToWord('notes.md'))->save('notes.docx');
- *
- * // A file in, bytes out.
- * $bytes = (new MarkdownToWord('notes.md'))->convert();
- * ```
- *
- * The parser is `league/commonmark`, so CommonMark and GitHub-Flavored Markdown
- * are both fully supported — the renderer walks the syntax tree directly instead
- * of going through HTML, which is what keeps the output faithful.
- *
- * The other direction is {@see WordToMarkdown}, and the two implement the same
- * {@see Converter} interface so that either can stand in for the other.
+ * Converts Markdown into a Word document. CommonMark and GitHub-Flavored
+ * Markdown are both fully supported, because the renderer walks the syntax tree
+ * directly instead of going through HTML. See {@see Converter} for what this and
+ * {@see WordToMarkdown} share.
  */
 final class MarkdownToWord implements Converter
 {
@@ -50,8 +34,9 @@ final class MarkdownToWord implements Converter
     private ?ImageDescriptionCollector $images = null;
 
     /**
-     * @param string|null $source The Markdown to convert: a path, or the text
-     *        itself. Null leaves the choice to {@see self::toDocx()} and friends.
+     * @param string|null $source Markdown: a path, or the text itself, read as
+     *        {@see Input} reads a string. Null leaves the choice to
+     *        {@see self::toDocx()} and friends.
      */
     public function __construct(
         private readonly ?string $source = null,
@@ -65,17 +50,12 @@ final class MarkdownToWord implements Converter
         return $this->config;
     }
 
-    /**
-     * Parse Markdown into a CommonMark document tree.
-     */
     public function parse(string $markdown): Document
     {
         return ($this->parser ?? new CommonMarkParser())->parse($markdown);
     }
 
     /**
-     * Render Markdown into a new `PhpWord` document.
-     *
      * The document is made self-contained: the style definitions the renderer
      * references are written into it, so it looks the same everywhere.
      */
@@ -95,11 +75,9 @@ final class MarkdownToWord implements Converter
 
     /**
      * Render Markdown into an existing container — a section, a table cell, a
-     * header or a footer.
-     *
-     * No style definitions are written: the destination document — a template,
-     * most likely — is the authority on what its styles look like, and defining
-     * them here would override the author's design.
+     * header or a footer. No style definitions are written: the destination
+     * document — a template, most likely — is the authority on what its styles
+     * look like, and defining them here would override the author's design.
      */
     public function renderIntoContainer(
         string $markdown,
@@ -115,12 +93,11 @@ final class MarkdownToWord implements Converter
     }
 
     /**
-     * Convert the source given to the constructor.
-     *
-     * Written to `$target` when there is one, and returned either way, so the
-     * same call serves a string and a file.
-     *
-     * @throws NothingToConvert when no source was given.
+     * @throws NothingToConvert          when the converter was built without a source.
+     * @throws Exception\UnreadableFile  when the source names a file that cannot be read.
+     * @throws Exception\FileNotWritable when the document cannot be written.
+     * @throws Exception\UnreadableDocument when the finished archive cannot be reopened.
+     * @throws Exception\MalformedDocument  when a part of it is not XML.
      */
     public function convert(?string $target = null): string
     {
@@ -146,9 +123,6 @@ final class MarkdownToWord implements Converter
         return DocxWriter::write($phpWord, $target, $this->links, $this->images);
     }
 
-    /**
-     * Convert the source and write the document to a file.
-     */
     public function save(string $target): void
     {
         $this->convert($target);
@@ -189,8 +163,8 @@ final class MarkdownToWord implements Converter
         }
 
         // The collector is kept across renders so its placeholder indices stay
-        // unique, which matters when several documents are rendered through the
-        // same converter, as the template renderer does.
+        // unique, which matters when several documents go through the same
+        // converter, as the template renderer does.
         $this->links ??= new LinkPayloadCollector($styles);
 
         $html = new HtmlFragmentRenderer($this->config->getOptions(), $styles);
