@@ -319,7 +319,7 @@ dataset('gfmExamples', fn (): array => specExamples(__DIR__ . '/fixtures/spec/gf
 |
 */
 
-const NUMBERING_LEVELS = 9;
+/** Word supports nine levels of list nesting; the registry names it. */
 
 /**
  * Assert that both specification corpora are really there.

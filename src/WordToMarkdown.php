@@ -25,8 +25,9 @@ use MarkdownWord\Reverse\StyleTable;
  * // File to file.
  * (new WordToMarkdown('report.docx'))->save('report.md');
  *
- * // Bytes already in hand.
- * echo (new WordToMarkdown($bytes))->toMarkdown();
+ * // Bytes already in hand. `toMarkdown()` takes them; the constructor takes
+ * // the source, which is a path or a document to read.
+ * echo (new WordToMarkdown())->toMarkdown($bytes);
  * ```
  *
  * This is the inverse of {@see \MarkdownWord\MarkdownToWord}, and the two together

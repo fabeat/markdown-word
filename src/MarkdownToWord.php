@@ -120,7 +120,7 @@ final class MarkdownToWord implements Converter
      * Written to `$target` when there is one, and returned either way, so the
      * same call serves a string and a file.
      *
-     * @throws RuntimeException when no source was given.
+     * @throws NothingToConvert when no source was given.
      */
     public function convert(?string $target = null): string
     {
