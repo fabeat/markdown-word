@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MarkdownWord\Template;
 
 use MarkdownWord\Configuration;
+use MarkdownWord\Exception\FileNotWritable;
 use MarkdownWord\MarkdownToWord;
 use MarkdownWord\TemplateNotFound;
 use MarkdownWord\Writer\DocxWriter;
@@ -40,6 +41,17 @@ use PhpOffice\PhpWord\TemplateProcessor;
  * A plain `${name}` macro is for single-line values ({@see self::set()}). A
  * region whose slot is named differently, such as `${line}`, repeats once per
  * row of data instead ({@see self::repeat()}).
+ *
+ * Only a template that is not there is a {@see TemplateNotFound}. Every other
+ * way this can fail is something to do with the disk — a staging file that
+ * cannot be created, a directory that cannot be made, a document that cannot be
+ * written — and those are a {@see FileNotWritable}, which is the difference
+ * between the caller being told what is wrong with the template and being told
+ * what is wrong with the machine.
+ *
+ * Note that the staged document is moved into place rather than written there,
+ * so the template on disk is never opened for writing: a path that is a hard
+ * link to it would otherwise empty it.
  */
 final class MarkdownTemplate
 {
@@ -59,6 +71,7 @@ final class MarkdownTemplate
 
     /**
      * @param array<string, string|int|float> $values Values substituted into single-line `${name}` placeholders.
+     * @throws TemplateNotFound when the template is not a file.
      */
     public function __construct(
         string $template,
@@ -100,6 +113,9 @@ final class MarkdownTemplate
 
     /**
      * Substitute a single-line value.
+     *
+     * @throws FileNotWritable when the document cannot be written, which the
+     *         processor reports by refusing to touch the template.
      */
     public function set(string $name, string $value): self
     {
@@ -118,6 +134,9 @@ final class MarkdownTemplate
      *
      * The region must contain a `${slot}` paragraph, which is where the content
      * lands; see the class docblock for the shape of the template.
+     *
+     * @throws FileNotWritable when the region cannot be resolved into the
+     *         document, or the document cannot be written.
      */
     public function insert(string $region, string $markdown): self
     {
@@ -150,6 +169,8 @@ final class MarkdownTemplate
      * `${price}` in the first copy, the second copy, and so on.
      *
      * @param list<array<string, string|int|float>> $rows
+     * @throws FileNotWritable when the region cannot be resolved into the
+     *         document, or the document cannot be written.
      */
     public function repeat(string $region, array $rows): self
     {
@@ -170,13 +191,15 @@ final class MarkdownTemplate
         return $this;
     }
 
+    /**
+     * Write the filled-in document to a file.
+     *
+     * @throws FileNotWritable when the document cannot be staged, its directory
+     *         cannot be made, or the result cannot be written.
+     */
     public function save(string $path): void
     {
-        $temp = tempnam(sys_get_temp_dir(), 'mdword_tpl_');
-
-        if ($temp === false) {
-            throw new TemplateNotFound('Unable to create a temporary file for the template output.');
-        }
+        $temp = self::stage();
 
         try {
             Escaping::enabled(function () use ($temp): void {
@@ -203,14 +226,12 @@ final class MarkdownTemplate
 
     /**
      * The raw bytes of the resulting document.
+     *
+     * @throws FileNotWritable when the document cannot be staged or read back.
      */
     public function toString(): string
     {
-        $temp = tempnam(sys_get_temp_dir(), 'mdword_tpl_');
-
-        if ($temp === false) {
-            throw new TemplateNotFound('Unable to create a temporary file for the template output.');
-        }
+        $temp = self::stage();
 
         try {
             Escaping::enabled(function () use ($temp): void {
@@ -220,7 +241,7 @@ final class MarkdownTemplate
             $contents = file_get_contents($temp);
 
             if ($contents === false) {
-                throw new TemplateNotFound('Unable to read the generated document.');
+                throw new FileNotWritable(sprintf('Unable to read the document staged in "%s".', $temp));
             }
 
             return $contents;
@@ -244,16 +265,39 @@ final class MarkdownTemplate
         return array_values($section->getElements());
     }
 
+    /**
+     * A file to build the document in, which both output paths need.
+     *
+     * PHPWord writes a document through a file rather than to a string, so there
+     * is one whether the caller wants the bytes or the file; it is removed by
+     * the caller on the way out.
+     *
+     * @throws FileNotWritable when no such file can be made.
+     */
+    private static function stage(): string
+    {
+        $temp = tempnam(sys_get_temp_dir(), 'mdword_tpl_');
+
+        if ($temp === false) {
+            throw new FileNotWritable(
+                'Unable to create a temporary file for the template output in "'
+                . sys_get_temp_dir() . '".',
+            );
+        }
+
+        return $temp;
+    }
+
     private static function move(string $from, string $to): void
     {
         $directory = \dirname($to);
 
         if (!is_dir($directory) && !@mkdir($directory, 0o777, true) && !is_dir($directory)) {
-            throw new TemplateNotFound(sprintf('Unable to create the directory "%s".', $directory));
+            throw new FileNotWritable(sprintf('Unable to create the directory "%s".', $directory));
         }
 
         if (!rename($from, $to)) {
-            throw new TemplateNotFound(sprintf('Unable to write the document to "%s".', $to));
+            throw new FileNotWritable(sprintf('Unable to write the document to "%s".', $to));
         }
     }
 }
