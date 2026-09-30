@@ -2,12 +2,17 @@
 
 declare(strict_types=1);
 
+use MarkdownWord\Console\UpstreamDeprecations;
+use MarkdownWord\Tests\Support\Scratch;
+use MarkdownWord\Tests\Support\TemplateFactory;
+use MarkdownWord\Tests\Support\Upstream;
+
 /*
  * The test harness itself.
  *
- * Nothing here is about the library; it is about the two things about the
- * harness that fail silently rather than loudly, so a regression shows up as a
- * test rather than as a slowly filling disk.
+ * Nothing here is about the library; it is about the things about the harness
+ * that fail silently rather than loudly, so a regression shows up as a test
+ * rather than as a slowly filling disk or a vanished file.
  */
 
 /*
@@ -17,22 +22,129 @@ declare(strict_types=1);
  * to the suite. Nothing complains: the tests all pass, the temporary files are
  * all written, and they are simply never removed. Reading the source is the only
  * way to notice, so the rule is pinned here.
+ *
+ * Only the negative half is asserted. A test that greps its own bootstrap for the
+ * literal text `pest()->afterEach(` fails the moment anybody reformats the line
+ * or writes it as `pest()->afterEach (` — a suite broken by whitespace, over
+ * something that still works. The check that matters is the one below: a hook
+ * that is not reached through `pest()` is the defect, and it has several
+ * spellings, so all of them are excluded.
  */
-it('registers the scratch clean-up as a suite-wide hook', function () {
+it('registers the scratch clean-up through the suite rather than to the bootstrap file', function () {
     $bootstrap = (string) file_get_contents(dirname(__DIR__) . '/Pest.php');
 
-    expect($bootstrap)->toContain('pest()->afterEach(');
-    expect($bootstrap)->not->toMatch('/^\s*afterEach\(/m');
+    // Comments are dropped first, since the bootstrap explains this very rule in
+    // prose and naming the call there must not count as calling it.
+    $code = '';
+    foreach (token_get_all($bootstrap) as $token) {
+        if (is_array($token) && ($token[0] === T_COMMENT || $token[0] === T_DOC_COMMENT)) {
+            continue;
+        }
+
+        $code .= is_array($token) ? $token[1] : $token;
+    }
+
+    // `afterEach(`, `afterEach (`, `Pest\afterEach()` and a namespaced
+    // `\Pest\afterEach(`: everything that would bind the hook to the file rather
+    // than to the suite. A call reached through `->` is left alone, which is the
+    // form the rule requires.
+    expect($code)->not->toMatch('/(?<![>\\\\\\w])afterEach\s*\(/');
+});
+
+it('empties the directory the suite owns', function () {
+    $document = Scratch::path('harness');
+    $media = Scratch::directory() . '/assets';
+    mkdir($media);
+    file_put_contents($media . '/logo.png', 'not really a png');
+
+    Scratch::cleanUp();
+
+    expect(is_file($document))->toBeFalse();
+    // A media directory and everything in it: a test cannot know every file it
+    // caused to be written, so the whole directory goes rather than what was
+    // remembered.
+    expect(is_dir($media))->toBeFalse();
+    expect(glob(Scratch::directory() . '/*'))->toBe([]);
+});
+
+it('leaves the output of a check running beside it alone', function () {
+    // `tmp` is shared: the checks at the root of the repository write their own
+    // directories into it, and `composer check` runs them in this tree. A suite
+    // that emptied `tmp` would take their output with it, which is a real way to
+    // lose the evidence of a passing check.
+    $beside = dirname(Scratch::directory()) . '/harness-marker-' . bin2hex(random_bytes(6));
+
+    file_put_contents($beside, 'written by a check that is not the test suite');
+
+    try {
+        Scratch::cleanUp();
+
+        expect(is_file($beside))->toBeTrue();
+    } finally {
+        @unlink($beside);
+    }
 });
 
 /*
- * And the suite-wide hooks the project needs are only global in Pest 5 through
- * `pest()`. `afterAll` is not one of them — it needs a scope — so a clean-up
- * that has to run once at the end has to be reached another way.
+ * The one place the tests ask "is this document openable".
+ *
+ * A `.docx` Word will not open is the failure several of these tests exist for,
+ * and the question was being answered in three files, one of which had drifted:
+ * two of them read the body with the same six lines, and one of those lost the
+ * previous `libxml_use_internal_errors` setting on the way past. It is asked
+ * through `TemplateFactory::xmlIsValid()` now, and this is that it still answers
+ * both ways.
  */
-it('keeps its own hooks inside a single test file where they apply to that file', function () {
-    $file = (string) file_get_contents(__DIR__ . '/escaping.php');
+it('tells a document with a body that parses from one that does not', function () {
+    $document = Scratch::path('openable');
+    saveMarkdown('# One', $document);
 
-    // Documenting the file-level usage; the global one is asserted above.
-    expect($file)->toContain('beforeEach(fn () => Upstream::install())');
+    expect(TemplateFactory::xmlIsValid($document))->toBeTrue();
+
+    $zip = new ZipArchive();
+    $zip->open($document);
+    $zip->deleteName('word/document.xml');
+    $zip->addFromString('word/document.xml', '<w:document><this is not xml');
+    $zip->close();
+
+    expect(TemplateFactory::xmlIsValid($document))->toBeFalse();
+});
+
+/*
+ * One defect in one dependency, filtered by one filter.
+ *
+ * tests/Support/Upstream used to carry its own copy of the rule, which had already
+ * drifted from the library's: the copy also swallowed every diagnostic the runner
+ * was not reporting, which with the runner's own error_reporting in force is
+ * nearly everything. It delegates now, so the test that matters is that the
+ * library's filter is the one in place and it still does its job.
+ */
+it('filters the known upstream deprecation with the library\'s own filter', function () {
+    Upstream::install();
+
+    try {
+        // Whatever sits on the stack above the runner's own handler is the
+        // filter, and `set_error_handler()` hands it back. It has to be a closure
+        // the library declared: a copy here would look the same and answer
+        // differently, which is what the two used to do.
+        $onTop = set_error_handler(static fn (): bool => false);
+        restore_error_handler();
+
+        expect($onTop)->toBeInstanceOf(Closure::class)
+            ->and((new ReflectionFunction($onTop))->getFileName())
+            ->toBe((new ReflectionClass(UpstreamDeprecations::class))->getFileName());
+
+        // And it answers for the one known defect, and for nothing else: the
+        // message from that file, the message from anywhere else, and the same
+        // message at a severity that is not a deprecation.
+        $style = dirname(__DIR__, 2) . '/vendor/phpoffice/phpword/src/PhpWord/Style.php';
+        $known = 'Using null as an array offset';
+
+        expect($onTop(E_DEPRECATED, $known, $style))->toBeTrue()
+            ->and($onTop(E_DEPRECATED, $known, __FILE__))->toBeFalse()
+            ->and($onTop(E_DEPRECATED, 'A defect nobody has heard of', $style))->toBeFalse()
+            ->and($onTop(E_WARNING, $known, $style))->toBeFalse();
+    } finally {
+        Upstream::restore();
+    }
 });

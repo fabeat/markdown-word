@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 use MarkdownWord\Configuration;
 use MarkdownWord\MarkdownToWord;
+use MarkdownWord\Template\MarkdownTemplate;
 use MarkdownWord\Text\TextExtractor;
+use MarkdownWord\Tests\Support\MarkdownText;
+use MarkdownWord\Tests\Support\Scratch;
+use MarkdownWord\Tests\Support\Upstream;
 use PhpOffice\PhpWord\Element\AbstractContainer;
 use PhpOffice\PhpWord\Element\AbstractElement;
 use PhpOffice\PhpWord\Element\Text;
@@ -273,14 +277,7 @@ function renderRunText(AbstractElement $element): string
  */
 function normaliseDocumentText(string $text): string
 {
-    $lines = array_map(
-        static fn (string $line): string => rtrim(trim((string) preg_replace('/[ \t]+/', ' ', $line)), " \t"),
-        explode("\n", $text),
-    );
-
-    $lines = array_values(array_filter($lines, static fn (string $line): bool => $line !== ''));
-
-    return implode("\n", $lines);
+    return MarkdownText::normalise($text);
 }
 
 /*
@@ -302,6 +299,45 @@ dataset('gfmExamples', fn (): array => specExamples(__DIR__ . '/fixtures/spec/gf
 
 /*
 |--------------------------------------------------------------------------
+| The number of levels a Word list definition carries
+|--------------------------------------------------------------------------
+|
+| A nested list points at a level of the same numbering definition, so a
+| definition missing a level makes Word fall back to a different list — which is
+| how a sub-list of bullets comes out numbered. The renderer writes this many
+| levels, and the tests that count them say so here rather than writing the number
+| out five times.
+|
+| `it('writes a level for every level Word supports')` in
+| tests/Unit/style-definition.php reads the count back off the renderer, so a
+| change to it fails as one test whose name says what changed, rather than as five
+| that only say a number moved.
+|
+| The constant belongs on `NumberingRegistry` next to the loops that use it, which
+| is a change in `src/`; this is the same number under the name the tests can
+| reach.
+|
+*/
+
+const NUMBERING_LEVELS = 9;
+
+/**
+ * Assert that both specification corpora are really there.
+ *
+ * A silently empty corpus — a parser that stopped recognising the example
+ * markers, a fixture that failed to copy — would leave 1300 tests passing for
+ * the wrong reason, so their size is asserted. Both corpus suites need it, and
+ * the sizes are stated here once so that a corpus which changes is changed in one
+ * place rather than in two that are easy to update unevenly.
+ */
+function expectSpecificationCorpora(): void
+{
+    expect(specExamples(__DIR__ . '/fixtures/spec/commonmark-spec.txt', 'commonmark'))->toHaveCount(654);
+    expect(specExamples(__DIR__ . '/fixtures/spec/gfm-spec.txt', 'gfm'))->toHaveCount(646);
+}
+
+/*
+|--------------------------------------------------------------------------
 | Known upstream issues
 |--------------------------------------------------------------------------
 |
@@ -313,7 +349,7 @@ dataset('gfmExamples', fn (): array => specExamples(__DIR__ . '/fixtures/spec/gf
 
 function withoutUpstreamDeprecations(callable $work): mixed
 {
-    return MarkdownWord\Tests\Support\Upstream::quietly($work);
+    return Upstream::quietly($work);
 }
 
 /**
@@ -342,8 +378,48 @@ function toDocx(string $markdown, ?Configuration $config = null): string
 */
 
 pest()->afterEach(function (): void {
-    MarkdownWord\Tests\Support\Scratch::cleanUp();
+    Scratch::cleanUp();
 });
+
+/**
+ * A file in the scratch directory with the given contents, and its path.
+ *
+ * Every test that needs an input file needs the same two things: a name nobody
+ * else's test is using, and something in it. The name may carry its own extension
+ * — the command line derives an output name from it, and a few tests are about
+ * the name rather than only the bytes — and a suffix is added to make it unique
+ * without changing what it is called. Where the input is a document to be
+ * rendered, {@see saveDocument()} writes one in a single call.
+ */
+function inputFile(string $name, string $contents, ?string $extension = null): string
+{
+    $given = pathinfo($name, PATHINFO_EXTENSION);
+
+    $path = Scratch::path(
+        pathinfo($name, PATHINFO_FILENAME),
+        $extension ?? ($given === '' ? '.md' : '.' . $given),
+    );
+
+    file_put_contents($path, $contents);
+
+    return $path;
+}
+
+/**
+ * Skip a test that cannot say anything about a file's permissions.
+ *
+ * Running as root, every file is readable however its mode is set and every
+ * directory is writable, so a test about an unreadable file or an uncreatable one
+ * has nothing left to check. It is reported as skipped rather than passed:
+ * `expect(true)->toBeTrue()` in a root container is a green tick for a check that
+ * never ran, and a build full of them is a build that says nothing.
+ */
+function skipWithoutPermissions(string $what): void
+{
+    if (function_exists('posix_geteuid') && posix_geteuid() === 0) {
+        PHPUnit\Framework\Assert::markTestSkipped($what . ' — running as root, which can do it anyway');
+    }
+}
 
 /**
  * Write a `.docx` file.
@@ -381,7 +457,7 @@ function writePhpWordDocument(PhpWord $phpWord, string $path): void
  * Write a filled-in template out. The wrapper is only here for the upstream
  * deprecation described in tests/Support/Upstream.
  */
-function saveTemplateDocument(MarkdownWord\Template\MarkdownTemplate $template, string $path): void
+function saveTemplateDocument(MarkdownTemplate $template, string $path): void
 {
     withoutUpstreamDeprecations(static function () use ($template, $path): void {
         $template->save($path);

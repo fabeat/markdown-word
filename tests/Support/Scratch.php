@@ -9,13 +9,26 @@ use RuntimeException;
 /**
  * A place for the files a test creates, and their removal.
  *
- * Everything lands in the project's own `tmp` directory rather than the system
+ * Everything lands in `tmp/pest` inside the project rather than in the system
  * temp directory, so a failing test leaves its documents where they can be opened
  * and looked at instead of somewhere that gets swept away. The directory is
  * ignored by git.
+ *
+ * The subdirectory is the whole point of it. `tmp` is shared: the checks at the
+ * root of the repository write `tmp/readme`, `tmp/smoke` and `tmp/stress` into
+ * it, and `composer check` runs them in the same tree as the suite. A test run
+ * that emptied `tmp` would delete their output as it went — which is what used
+ * to happen, and why a `composer check` in one terminal could lose the files a
+ * `pest` run in another had just written. Each side now cleans up after itself
+ * and nothing cleans up after anybody else.
  */
 final class Scratch
 {
+    /**
+     * The directory the suite owns, relative to the project's own `tmp`.
+     */
+    private const SUBDIRECTORY = 'pest';
+
     /** @var array<string, true> Paths created since the last clean-up. */
     private static array $paths = [];
 
@@ -24,7 +37,7 @@ final class Scratch
      */
     public static function directory(): string
     {
-        $directory = dirname(__DIR__, 2) . '/tmp';
+        $directory = dirname(__DIR__, 2) . '/tmp/' . self::SUBDIRECTORY;
 
         if (!is_dir($directory) && !mkdir($directory, 0o777, true) && !is_dir($directory)) {
             throw new RuntimeException(sprintf('Unable to create the scratch directory "%s".', $directory));
@@ -57,14 +70,17 @@ final class Scratch
     }
 
     /**
-     * Empty the scratch directory.
+     * Empty the scratch directory, and nothing outside it.
      *
-     * The whole directory rather than only the paths that were remembered,
+     * The whole of `tmp/pest` rather than only the paths that were remembered,
      * because a test cannot know every file it caused to be written: a converter
      * that names its output after its input creates a path nobody asked for, and
      * a media directory appears out of nowhere. A run that leaked those would
      * fill the disk quietly, which is worse than losing a scratch file after a
      * failure — the names are random either way, so there is little to look at.
+     *
+     * Nothing outside that one directory is touched, so a check running beside
+     * the suite keeps the output it was writing.
      */
     public static function cleanUp(): void
     {
