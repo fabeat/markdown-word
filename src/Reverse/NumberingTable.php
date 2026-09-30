@@ -10,8 +10,8 @@ namespace MarkdownWord\Reverse;
  * A Word list is a reference to a numbering definition rather than a marker in
  * the text, so `1.` is not stored anywhere in the document. Recovering it takes
  * three hops: the paragraph names a `w:numId` and a level, the `w:num` points at
- * an abstract definition, and the level inside that definition carries the
- * format, the marker text and the start value.
+ * an abstract definition, and the level inside that carries the format, the
+ * marker text and the start value.
  */
 final class NumberingTable
 {
@@ -73,12 +73,12 @@ final class NumberingTable
     }
 
     /**
-     * The format of the outermost level, which is what decides the marker style
-     * of the whole list.
+     * The format of the outermost level, which decides the marker style of the
+     * whole list.
      *
      * A definition that declares no levels has no outermost one, which is not the
-     * same as a definition that declares them out of order: the sort below is
-     * what tells the two apart, and it has nothing to say about an empty list.
+     * same as declaring them out of order: the sort below tells the two apart,
+     * and it has nothing to say about an empty list.
      *
      * @return array{format: string, text: string, start: int}|null
      */

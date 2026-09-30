@@ -7,23 +7,18 @@ namespace MarkdownWord\Reverse;
 /**
  * Turns the block tree back into Markdown.
  *
- * The tree keeps the structure that Word preserved and drops what it did not,
- * so the writer's job is mostly mechanical. The two places it does real work
- * are the escaping of literal text — delegated to {@see Escaping} — and the
- * marker of a list item, which has to reproduce the numbering definition the
- * document carried, including a start value other than one.
+ * The two places the writer does real work are the escaping of literal text —
+ * delegated to {@see Escaping} — and the marker of a list item, which has to
+ * reproduce the numbering definition the document carried, including a start
+ * value other than one.
  *
- * Nothing here throws: a block tree goes in and Markdown comes out, and every
- * construct the writer can be handed has a string it can be written as. The
- * exceptions a conversion raises come from the package around it — opening one
- * and parsing its parts — so they belong to {@see Package}, which raises
- * {@see \MarkdownWord\Exception\UnreadableDocument} for bytes that are not a zip
- * archive, {@see \MarkdownWord\Exception\MalformedDocument} for a required part
- * that is missing or will not parse, and
+ * Nothing here throws: every construct the writer can be handed has a string it
+ * can be written as. The exceptions a conversion raises come from the package
+ * around it — {@see \MarkdownWord\Exception\UnreadableDocument} for bytes that
+ * are not a zip archive, {@see \MarkdownWord\Exception\MalformedDocument} for a
+ * required part that is missing or will not parse, and
  * {@see \MarkdownWord\Exception\FileNotWritable} when the scratch file a package
- * held in memory needs cannot be written. The middle of those three is the one
- * {@see \MarkdownWord\Xml::parseOrFail()} raises in the other direction, when it
- * is asked to load a part of a document it is rewriting rather than reading.
+ * held in memory needs cannot be written.
  */
 final class MarkdownWriter
 {
@@ -46,13 +41,10 @@ final class MarkdownWriter
      * The blocks, one after another, separated by the blank line that makes a
      * list loose again after it has been interrupted.
      *
-     * The blocks are kept apart until here rather than joined first and tidied
-     * afterwards, because the space between two blocks and the space inside one
-     * are different things. A blank line inside a verbatim block is content — the
-     * gap in a log excerpt, the paragraph break in a fixture — while a run of
-     * them between two blocks is only ever a way of writing a blank line.
-     * Tidying the finished document could not tell the two apart and lost the
-     * first; keeping the blocks apart until they are joined cannot.
+     * The blocks are kept apart until here rather than joined and tidied
+     * afterwards: a blank line inside a verbatim block is content, while a run of
+     * them between two blocks is only ever a way of writing a blank line, and
+     * tidying the finished document cannot tell the two apart.
      *
      * @param list<Block> $blocks
      * @param string       $separator What goes between the blocks, which is a
@@ -66,10 +58,8 @@ final class MarkdownWriter
             $part = $this->block($block);
 
             if ($part !== '') {
-                // A block never begins or ends with a line break of its own, and
-                // saying so here means the separator alone decides how far apart
-                // two blocks stand: whatever the reader left between them, the
-                // Markdown has one blank line.
+                // A block never begins or ends with a line break of its own, so
+                // the separator alone decides how far apart two blocks stand.
                 $parts[] = trim($part, "\n");
             }
         }
@@ -129,10 +119,8 @@ final class MarkdownWriter
         $info = (string) $block->attr('info', '');
 
         // A run of backticks in the content has to be shorter than the fence, or
-        // it would close the block early. The longest run is found in one pass
-        // rather than by looking for three backticks and then four and then five:
-        // that is a search of the whole content per backtick, and time quadratic
-        // in its length, which a document with a long run in it would feel.
+        // it would close the block early; {@see Escaping::longestRun()} finds the
+        // longest in a single pass.
         $length = max(3, Escaping::longestRun($text, '`') + 1);
 
         $fence = str_repeat('`', $length);
@@ -284,10 +272,9 @@ final class MarkdownWriter
      * The letters of a spreadsheet column, which is how Word goes on numbering a
      * list past the twenty-sixth item: `a` to `z`, then `aa`, `ab` and so on.
      *
-     * The count has no zero in it, which is what makes the run continue instead
-     * of starting again. One off the number is the letter to write, and it is
-     * never over `z`, so what is left of the count is written in front of it and
-     * the twenty-seventh item is `aa` rather than `a` a second time.
+     * The count carries no zero in it, which is what makes the run continue
+     * rather than start again; what is left of the count goes in front of the
+     * letter, so the twenty-seventh item is `aa` rather than `a` a second time.
      */
     private function alphabet(int $number, bool $upper): string
     {
@@ -360,12 +347,12 @@ final class MarkdownWriter
 
         $width = max(array_map('count', $cells));
 
-        // GFM tables always have a header row and a delimiter row. A Word table
-        // records neither: the delimiter row is a row of dashes Markdown invents
-        // and there is nothing in the document to derive it from, and a header is
-        // marked with `w:trPr/w:tblHeader`, which both PHPWord and Word write and
-        // the reader here does not look for. So the first row becomes the header
-        // on the assumption that is usually right.
+        // GFM tables always have a header row and a delimiter row, and a Word
+        // table records neither: the delimiter row is a row of dashes Markdown
+        // invents and there is nothing to derive it from, and a header is marked
+        // with `w:trPr/w:tblHeader`, which both Word and PHPWord write and this
+        // reader does not look for. So the first row becomes the header on the
+        // assumption that is usually right. See {@see Options::$tableHeader}.
         [$header, $body] = $this->options->tableHeader
             ? [array_shift($cells), $cells]
             : [[], $cells];
@@ -433,18 +420,15 @@ final class MarkdownWriter
         return implode('<br>', $parts);
     }
 
-    // ----------------------------------------------------------------- inlines
-
     /**
      * Write a run of inlines as Markdown.
      *
      * The emphasis delimiters are held open across runs rather than opened and
      * closed one run at a time. A bold run followed by a bold italic one then
-     * comes out as `**a*b***`: the `**` opened by the first run is still open
-     * when the second one adds its `*`, so the two spans meet rather than
-     * beginning and ending twice over. Closing each run on its own would give
-     * `**a*****b***`, where the run of five asterisks in the middle is ambiguous
-     * and a parser may not agree on where the spans start and stop.
+     * comes out as `**a*b***`, because the `**` the first run opened is still
+     * open when the second adds its `*`, so the two spans meet. Closing each run
+     * on its own would give `**a*****b***`, whose run of five asterisks in the
+     * middle is ambiguous and a parser may not agree on where the spans stop.
      *
      * @param list<Inline> $inlines
      * @param bool         $inTable  Whether the runs sit inside a table cell,
@@ -540,11 +524,10 @@ final class MarkdownWriter
 
         $text = $this->hardenNewlines(Escaping::text($inline->text, $lineStart, $inTable));
 
-        // A delimiter has to sit against the text it delimits. Whitespace that
-        // opens or closes a run goes outside the markers, because a `*` followed
-        // by a space cannot open anything and a `*` preceded by one cannot close
-        // anything. Writing `*foo* ` rather than `*foo *` is both correct and what
-        // a person would have written.
+        // A delimiter has to sit against the text it delimits, so whitespace that
+        // opens or closes a run is written outside the markers: a `*` followed by
+        // a space cannot open anything, and a `*` preceded by one cannot close
+        // anything.
         $leading = '';
         if ($text !== '' && preg_match('/^(\s+)(.*)$/s', $text, $matches) === 1) {
             [$leading, $text] = [$matches[1], $matches[2]];
@@ -568,9 +551,9 @@ final class MarkdownWriter
      * Turn the newlines inside a run into hard line breaks.
      *
      * A newline in a run's text is a line break Word held inside one paragraph,
-     * not a boundary between two. A hard break is what keeps it a line break on
-     * the way back; a soft one would collapse to a space and quietly join two
-     * lines of a `<pre>` block into one.
+     * not a boundary between two. A hard break keeps it a line break on the way
+     * back; a soft one would collapse to a space and quietly join two lines of a
+     * `<pre>` block into one.
      */
     private function hardenNewlines(string $text): string
     {
@@ -663,8 +646,9 @@ final class MarkdownWriter
     }
 
     /**
-     * Join neighbouring runs that differ only in emphasis, so that a paragraph
-     * split into fifty runs by Word comes out as a handful of spans.
+     * Join neighbouring runs that are formatted identically, as
+     * {@see DocumentReader::merge()} does: a paragraph Word split into fifty
+     * runs then comes out as a handful of spans.
      *
      * @param list<Inline> $inlines
      * @return list<Inline>

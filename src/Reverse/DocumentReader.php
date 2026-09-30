@@ -11,25 +11,22 @@ use DOMXPath;
  * Reads a `.docx` package into the block tree {@see MarkdownWriter} turns back
  * into Markdown.
  *
- * Word's document is a flat list of paragraphs and tables, so three grouping
- * passes reconstruct the structure Markdown has. They run in a fixed order,
- * because each one needs the previous to have finished:
- *
- *  1. every paragraph and table becomes a flat *unit*;
- *  2. runs of monospaced paragraphs become code blocks;
- *  3. units carrying a numbering reference become lists;
- *  4. units drawn with a quote style become nested quotes.
+ * Word's document is a flat list of paragraphs and tables, so the structure
+ * Markdown has is rebuilt by grouping passes that run in a fixed order, each
+ * needing the previous to have finished: paragraphs and tables first become flat
+ * *units*, then runs of monospaced paragraphs become code blocks, units
+ * carrying a numbering reference become lists, and units drawn with a quote
+ * style become nested quotes.
  *
  * Lists are grouped before quotes so that a list inside a quote is one list
- * that then lands inside the quote, rather than a quote interrupted by stray
- * paragraphs. A unit without a quote style never opens a quote, which is what
- * stops an indented list from being mistaken for one.
+ * which then lands inside the quote, rather than a quote interrupted by stray
+ * paragraphs. Only a quote style opens a quote, which is what stops an indented
+ * list from being mistaken for one.
  *
- * A *unit* is one entry of the flat sequence the grouping passes rearrange. The
- * type is `Block` throughout, because a unit is a block: a paragraph, a table,
- * or a list once the lists have been grouped. "Unit" is used for the sequence
- * and its entries because it says what the passes do to them, which "block" does
- * not.
+ * A *unit* is one entry of that flat sequence, and its type is `Block`
+ * throughout: a paragraph, a table, or — once the lists are grouped — a list.
+ * "Unit" is the word for the sequence and its entries because it says what the
+ * passes do to them, which "block" does not.
  */
 final class DocumentReader
 {
@@ -85,8 +82,6 @@ final class DocumentReader
         return $this->nestQuotes($units);
     }
 
-    // ------------------------------------------------------------------- units
-
     /**
      * @return list<Block>
      */
@@ -135,11 +130,6 @@ final class DocumentReader
     /**
      * The block properties the grouping passes need.
      *
-     * The style and the effective indentation decide what a unit is and how
-     * deeply a quote around it nests; the alignment, the numbering reference and
-     * the list level decide how the serialiser writes it; `tight` says whether
-     * the spacing between list items was suppressed.
-     *
      * @return array{style: string, indent: int, alignment: string, level: ?int,
      *               numId: ?int, listLevel: int, tight: bool}
      */
@@ -153,10 +143,10 @@ final class DocumentReader
 
         $level = $this->headingLevel($style);
 
-        // Direct formatting wins; otherwise the referenced style decides. The
-        // outermost block quote has no indentation of its own, because it
-        // inherits one from the style, so the style has to be consulted for the
-        // nesting depth to be recoverable at all.
+        // Direct formatting wins; otherwise the style decides. The outermost
+        // block quote carries no indentation of its own because it inherits one,
+        // so the style has to be consulted for the nesting depth to be
+        // recoverable at all.
         $indent = 0;
         $indentation = $xpath->query('./w:pPr/w:ind', $paragraph)?->item(0);
         if ($indentation instanceof DOMElement) {
@@ -201,7 +191,7 @@ final class DocumentReader
             'numId' => $numId,
             'listLevel' => $listLevel,
             // A tight list has its items run together, which Word records as
-            // paragraphs with no space above or below. A loose one leaves the
+            // paragraphs with no space above or below; a loose one leaves the
             // spacing alone, so the difference is visible.
             'tight' => $this->isTight($xpath, $paragraph),
         ];
@@ -287,8 +277,6 @@ final class DocumentReader
         return $xpath->query('./w:pPr/w:pBdr/w:bottom', $paragraph)?->length > 0;
     }
 
-    // ------------------------------------------------------------------ tables
-
     private function readTable(DOMXPath $xpath, DOMElement $table): Block
     {
         $rows = [];
@@ -329,8 +317,6 @@ final class DocumentReader
 
         return $alignment->getAttributeNS(self::W_NS, 'val');
     }
-
-    // ----------------------------------------------------------------- inlines
 
     /**
      * @return list<Inline>
@@ -432,8 +418,6 @@ final class DocumentReader
     }
 
     /**
-     * A run contributes text, a line break, or an image.
-     *
      * @return list<Inline>
      */
     private function readRun(DOMXPath $xpath, DOMElement $run): array
@@ -465,8 +449,7 @@ final class DocumentReader
             }
 
             // `w:br` is a line break the author asked for; a break with a type
-            // is a column or page break, which is a layout concern rather than
-            // content.
+            // is a column or page break, which is layout rather than content.
             if ($child->localName === 'br' && $child->getAttributeNS(self::W_NS, 'type') === '') {
                 $inlines[] = Inline::break();
 
@@ -522,9 +505,9 @@ final class DocumentReader
 
     private function readImage(DOMXPath $xpath, DOMElement $run): ?Inline
     {
-        // Two shapes describe an image in OOXML. DrawingML is what Word writes
-        // today; VML is the older form that PHPWord emits for a plain inline
-        // picture, and a document written by this library is full of them.
+        // Two shapes describe an image in OOXML: DrawingML, which is what Word
+        // writes today, and VML, the older form PHPWord emits for a plain inline
+        // picture and a document written by this library is full of.
         $blip = $xpath->query('.//a:blip', $run)?->item(0);
         $id = $blip instanceof DOMElement
             ? $blip->getAttributeNS(self::R_NS, 'embed')
@@ -534,8 +517,8 @@ final class DocumentReader
 
         if ($id !== '') {
             // The description is the alt text, which is also the fallback a reader
-            // with no image support sees — the same value the forward converter
-            // prefers to embed.
+            // with no image support sees — the value the forward converter prefers
+            // to embed.
             $properties = $xpath->query('.//wp:docPr', $run)?->item(0);
             if ($properties instanceof DOMElement) {
                 $alt = $properties->getAttribute('descr');
@@ -555,12 +538,8 @@ final class DocumentReader
     }
 
     /**
-     * Where an image should be referenced from in the Markdown that comes out.
-     *
-     * Without a media directory the reference names the image as it sits inside
-     * the archive, which documents the file without being a path any reader can
-     * open. With one, it is the path the image is extracted to, so that the
-     * Markdown and the files beside it agree.
+     * Where an image is referenced from in the Markdown, per
+     * {@see Options::$mediaDirectory}.
      */
     private function mediaPath(string $target): string
     {
@@ -610,8 +589,6 @@ final class DocumentReader
 
         return $merged;
     }
-
-    // ------------------------------------------------------------- code blocks
 
     /**
      * Join runs of monospaced paragraphs into a single verbatim block.
@@ -708,8 +685,6 @@ final class DocumentReader
         return $text;
     }
 
-    // ------------------------------------------------------------------ lists
-
     /**
      * Turn units that reference a numbering definition into nested lists.
      *
@@ -717,7 +692,7 @@ final class DocumentReader
      * guessed at from indentation. A run of paragraphs sharing a definition at
      * the same level is one list; a different definition starts a new one, which
      * is how two adjacent Markdown lists stay two lists. Two adjacent lists that
-     * happen to share a definition cannot be told apart and come back as one.
+     * share a definition cannot be told apart and come back as one.
      *
      * @param list<Block> $units
      * @return list<Block>
@@ -749,9 +724,8 @@ final class DocumentReader
             if ($this->depth($stack) !== $level) {
                 $list = Block::list([], $this->listAttributes($numId, $level) + [
                     // A list inside a block quote is only recorded as an indented
-                    // numbered paragraph. The indentation is what keeps it inside
-                    // the quote, and what tells it apart from the same list
-                    // outside the quote.
+                    // numbered paragraph; the indentation is what keeps it inside
+                    // the quote and tells it from the same list outside it.
                     'indent' => $indent,
                     'tight' => (bool) $unit->attr('tight', false),
                 ]);
@@ -818,13 +792,12 @@ final class DocumentReader
      * Close every open list the paragraph that follows ends.
      *
      * A list is identified by its numbering definition, its level and its
-     * indentation. The last of those is what separates two lists that share a
-     * definition — the list inside a block quote and the same list outside it,
-     * say, or two lists whose only difference was the blank line between them.
+     * indentation; the last of those is what separates two lists that share a
+     * definition.
      *
      * A list is not handed to the document when it opens but when it closes,
-     * because it is still growing at that point. A nested one has already been
-     * attached to the item it belongs to; a top-level one lands here.
+     * because it is still growing then. A nested one has already been attached
+     * to the item it belongs to; a top-level one lands here.
      *
      * @param list<array{numId: int, level: int, indent: int, list: Block, parent: int, item: ?int}> $stack
      * @param list<Block>                                                                            $result
@@ -905,9 +878,6 @@ final class DocumentReader
         return $stack === [] ? null : $stack[count($stack) - 1]['level'];
     }
 
-
-    // ------------------------------------------------------------------ quotes
-
     /**
      * Nest the units that are drawn with a quote style.
      *
@@ -915,12 +885,12 @@ final class DocumentReader
      * class docblock for why depth comes from the indentation and why only a
      * quote style opens a quote.
      *
-     * A quote ends only when the unit that follows is *deeper* than it, and a
+     * A quote ends only when the unit that follows is *shallower* than it, and a
      * unit at a depth that is already open lands in the quote that is already
-     * there. Both halves matter: closing a quote at the depth that has just been
-     * entered would turn the second paragraph of a two-paragraph quote into a
-     * quote of its own, and a block quote spanning two paragraphs is about the
-     * most ordinary one there is.
+     * there. Closing a quote at the depth that has just been entered would turn
+     * the second paragraph of a two-paragraph quote into a quote of its own, and
+     * a block quote spanning two paragraphs is about the most ordinary one there
+     * is.
      *
      * @param list<Block> $units
      * @return list<Block>
@@ -938,8 +908,8 @@ final class DocumentReader
             if ($depth === null) {
                 $result = $this->closeDeeperQuotes($frames, $result, $unit);
             } else {
-                // Only the quotes this unit is not inside of close, and then only
-                // if this depth has nothing open at it yet.
+                // Only frames deeper than this unit's depth close; a depth that is
+                // not already the innermost open one starts a new quote.
                 while ($frames !== [] && $frames[count($frames) - 1]['depth'] > $depth) {
                     $result = $this->closeQuote($frames, $result);
                 }
@@ -960,8 +930,6 @@ final class DocumentReader
     }
 
     /**
-     * The depth of the innermost open quote, or null when none is open.
-     *
      * @param list<array{depth: int, blocks: list<Block>}> $frames
      */
     private function openQuoteDepth(array $frames): ?int
@@ -1004,9 +972,6 @@ final class DocumentReader
     }
 
     /**
-     * Add a block to the innermost open quote, or to the document, and return the
-     * document so far.
-     *
      * @param list<array{depth: int, blocks: list<Block>}> $frames
      * @param list<Block>                                    $result
      * @return list<Block>
@@ -1026,8 +991,6 @@ final class DocumentReader
     }
 
     /**
-     * Wrap the innermost open quote's contents and hand it to the level above.
-     *
      * @param list<array{depth: int, blocks: list<Block>}> $frames
      * @param list<Block>                                    $result
      * @return list<Block>

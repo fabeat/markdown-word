@@ -16,16 +16,16 @@ use ZipArchive;
  * A `.docx` is a zip of XML parts. The reverse converter needs four of them —
  * the document itself, the relationship part that resolves hyperlinks and
  * images, the style definitions that say what a `w:pStyle` means, and the
- * numbering definitions that say what a `w:numId` means — and this class
- * hands them over as parsed documents without leaking the archive into the
- * rest of the code.
+ * numbering definitions that say what a `w:numId` means — and this class hands
+ * them over as parsed documents without leaking the archive into the rest of the
+ * code.
  *
- * The archive is not this library's, and a zip is a container format that says
- * how its contents are laid out and nothing about how much room they will take
- * up: forty kilobytes of a document part is forty megabytes of paragraph, and
- * the entry count is whatever the writer felt like. So what is read is bounded
- * by {@see Options} before it is inflated, and the archive is opened
- * consistently rather than as far as the bytes happen to stretch.
+ * The archive is not this library's, and a zip says how its contents are laid out
+ * and nothing about how much room they will take up: forty kilobytes of a
+ * document part is forty megabytes of paragraph, and the entry count is whatever
+ * the writer felt like. So what is read is bounded by {@see Options} before it is
+ * inflated, and the archive is opened consistently rather than as far as the
+ * bytes happen to stretch.
  */
 final class Package
 {
@@ -52,9 +52,6 @@ final class Package
         return self::openArchive(new ZipArchive(), $path, $options);
     }
 
-    /**
-     * Open a document held in memory rather than in a file.
-     */
     public static function fromString(string $bytes, Options $options = new Options()): self
     {
         $path = self::writeScratchFile($bytes);
@@ -78,7 +75,7 @@ final class Package
      * Release the archive, removing the scratch file if one was needed.
      *
      * Safe to call more than once: the destructor calls it after the caller has
-     * already closed the package on the way out.
+     * already closed the package.
      */
     public function close(): void
     {
@@ -114,9 +111,7 @@ final class Package
     }
 
     /**
-     * The relationship targets of the document part, keyed by relationship id.
-     *
-     * A relationship is how Word refers to something that is not inline text: a
+     * The relationship targets of the document part, keyed by relationship id: a
      * hyperlink's destination, an image's file.
      *
      * @return array<string, string>
@@ -186,8 +181,10 @@ final class Package
      * The size is the one the archive's own central directory declares, which
      * costs one lookup and no decompression. A part that lies about it downward
      * does not get past the check the archive was opened with: `CHECKCONS` reads
-     * the central directory against the entries and refuses the archive before
-     * a part of it is read, so what is measured here is what comes back.
+     * the central directory against the entries and refuses the archive before a
+     * part of it is read, so what is measured here is what comes back.
+     *
+     * @throws UnreadableDocument When the part declares more than `maxPartBytes`.
      */
     private function read(string $name): string|false
     {
