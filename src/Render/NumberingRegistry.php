@@ -11,15 +11,14 @@ use PhpOffice\PhpWord\PhpWord;
 /**
  * Creates and caches the Word numbering definitions used by Markdown lists.
  *
- * Word ties a list to a numbering definition, and a definition carries both the
- * bullet/decimal format and the starting value. A document containing `1.`, `5.`
- * and `a)` lists therefore needs three definitions, while two consecutive `1.`
- * lists share one.
+ * A Word list is tied to a numbering definition, and a definition carries both
+ * the format and the starting value, so `1.`, `5.` and `1)` in one document need
+ * three of them where two `1.` lists share one.
  */
 final class NumberingRegistry
 {
     /**
-     * CommonMark names the delimiter of an ordered list; Word wants the character
+     * CommonMark names an ordered list's delimiter; Word wants the character
      * itself, since it is baked into the numbering text.
      */
     private const DELIMITERS = [
@@ -46,9 +45,8 @@ final class NumberingRegistry
     }
 
     /**
-     * @param bool        $ordered   Whether the list is ordered.
-     * @param int|null    $start     The list's start value, if it is not 1.
-     * @param string|null $delimiter `period` or `paren`, as CommonMark reports it.
+     * `$delimiter` is CommonMark's `period` or `paren`, as the parser reports it;
+     * null is read as `period`.
      */
     public function styleFor(bool $ordered, ?int $start, ?string $delimiter): string
     {
@@ -64,8 +62,8 @@ final class NumberingRegistry
         $base = (string) $this->config->getStyles()->get($ordered ? Styles::ORDERED_LIST : Styles::BULLET_LIST);
         $this->ensureDefined($base, $ordered);
 
-        // The base style already encodes the common case, so only the variants
-        // (a custom start value, a `)` delimiter) get their own definition.
+        // The base style covers the default list; a custom start, a `)` delimiter
+        // or a non-decimal format needs a definition of its own.
         if ($this->isDefault($ordered, $start, $delimiter)) {
             return $this->cache[$cacheKey] = $base;
         }
@@ -97,9 +95,6 @@ final class NumberingRegistry
             && $this->config->getOptions()->orderedListFormat === 'decimal';
     }
 
-    /**
-     * @return list<array<string, mixed>>
-     */
     private function orderedLevels(int $start, string $delimiter): array
     {
         $options = $this->config->getOptions();
@@ -138,17 +133,13 @@ final class NumberingRegistry
     }
 
     /**
-     * A bullet character for each nesting level.
-     *
-     * Every level has to be defined, not just the first: a nested list refers to
-     * level 1 of the same numbering, and an undefined level makes Word fall back
-     * to a different list — which is how a sub-list of bullets ends up numbered.
+     * A bullet character for each nesting level; every level is defined, because
+     * a nested list refers to level 1 of the same numbering, and a level left out
+     * is one Word has no formatting for — which is how a sub-list of bullets
+     * ends up numbered.
      */
     private const BULLETS = ["\u{2022}", 'o', "\u{25AA}"];
 
-    /**
-     * @return list<array<string, mixed>>
-     */
     private function bulletLevels(): array
     {
         $levels = [];

@@ -8,9 +8,9 @@ namespace MarkdownWord\Render;
  * Collects the alt text of the images added during a render.
  *
  * PHPWord has nowhere to put it — the writer emits an empty `o:title` on every
- * image — so the list is handed to {@see \MarkdownWord\Writer\ImageDescriptionPass},
- * which fills it in once the file has been written. Images are matched in the
- * order they were added, which is the order the renderer walks the syntax tree.
+ * image — so {@see \MarkdownWord\Writer\ImageDescriptionPass} fills it in once
+ * the file is written, matching the images in the order the renderer walked the
+ * syntax tree.
  *
  * The collector outlives a single document, as the hyperlink collector does, so
  * several documents rendered through one converter stay in step.
@@ -28,10 +28,8 @@ final class ImageDescriptionCollector
     }
 
     /**
-     * The alt texts added since the last call, and the start of the next batch.
-     *
-     * A document is written as soon as its elements are complete, so a batch is
-     * one document's images.
+     * One document's images: the document is written as soon as its elements are
+     * complete, so a batch ends there.
      *
      * @return list<string>
      */

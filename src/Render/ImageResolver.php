@@ -10,8 +10,7 @@ use PhpOffice\PhpWord\Element\AbstractContainer;
 use Throwable;
 
 /**
- * Resolves Markdown image nodes to embedded images, alt-text placeholders, or
- * nothing at all.
+ * Resolves Markdown image nodes to embedded images, alt text, or nothing at all.
  */
 final class ImageResolver
 {
@@ -28,8 +27,8 @@ final class ImageResolver
         }
 
         // A hyperlink around an image cannot be expressed with PHPWord's Link
-        // element, which holds only a string of text. The image is still
-        // rendered; the link is simply not attached to it.
+        // element, which holds one string of text. The image is still rendered;
+        // the link is not attached to it.
         $style = $style->isLink() ? new InlineStyle() : $style;
 
         $url = $node->getUrl();
@@ -42,8 +41,9 @@ final class ImageResolver
             return;
         }
 
-        // Placeholder mode, or an image that cannot be embedded: the alt text and
-        // the source are shown so nothing is silently dropped.
+        // Placeholder mode, or an image that could not be embedded because it is
+        // remote or unreadable. The alt text stands in either way, so nothing is
+        // dropped silently, and placeholder mode adds the source after it.
         if ($alt !== '') {
             $target->addText($alt, $style->withItalic());
         }
@@ -56,10 +56,10 @@ final class ImageResolver
     /**
      * Add the image, reporting whether it could be embedded.
      *
-     * PHPWord validates the file in the element constructor and throws for
-     * anything it cannot handle, so the decision is delegated to it: an
-     * unreadable or unsupported file then falls back to the alt text instead of
-     * aborting the whole document.
+     * PHPWord validates in the element constructor and throws for anything it
+     * cannot handle, so the decision is delegated to it: an unreadable or
+     * unsupported file falls back to the alt text rather than aborting the
+     * document.
      */
     private function embed(string $path, AbstractContainer $target): bool
     {
@@ -73,8 +73,8 @@ final class ImageResolver
     }
 
     /**
-     * The local path a Markdown image URL refers to, or null when it is remote,
-     * missing, or cannot be reached.
+     * The local path a Markdown image URL refers to, or null when it is remote or
+     * missing.
      */
     private function resolvePath(string $url): ?string
     {
@@ -97,9 +97,6 @@ final class ImageResolver
         return is_file($candidate) ? $candidate : null;
     }
 
-    /**
-     * @return array<string, mixed>
-     */
     private function imageStyle(): array
     {
         $style = ['alignment' => 'left'];

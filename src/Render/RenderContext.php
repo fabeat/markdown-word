@@ -7,9 +7,9 @@ namespace MarkdownWord\Render;
 /**
  * Immutable per-block rendering state.
  *
- * Block quoting and list nesting are the only two pieces of state that survive
- * across recursion levels, so they live here rather than in a dozen method
- * signatures.
+ * Quote depth and list depth are the only two pieces of state that survive
+ * recursion, which is what keeps them out of the signatures of every method that
+ * walks the tree.
  */
 final class RenderContext
 {
