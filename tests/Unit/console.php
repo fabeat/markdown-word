@@ -23,6 +23,41 @@ use MarkdownWord\Tests\Support\Upstream;
 beforeEach(fn () => Upstream::install());
 afterEach(fn () => Upstream::restore());
 
+/*
+ * The entry script reads `$argv` guarded.
+ *
+ * This file is the phar's stub as well as the installed command, so it has to be
+ * safe to include, and `$argv` is defined by the CLI SAPI and by nothing else.
+ * PHPStan cannot see that the guard is there unless the file is named on its
+ * command line — PHPStan takes its input by the `.php` suffix — so this is the
+ * only thing holding the guard in place. It found the gap when `bin/mdword` was
+ * added to the analysis, and reported `$argv might not be defined`.
+ *
+ * Only the negative half is asserted, and for the reason the bootstrap's own check
+ * gives: a grep for the literal text would break on whitespace and on a
+ * reformatting that still works. Every unguarded spelling has to be excluded
+ * instead, which a negative regex does whether the code reads `$argv[1]`,
+ * `$argv [1]` or `count($argv)`.
+ */
+it('reads the arguments of the entry script through a guard', function () {
+    $entry = (string) file_get_contents(dirname(__DIR__, 2) . '/bin/mdword');
+
+    // Comments are dropped first, since the file explains this very rule in prose
+    // and naming the variable there must not count as reading it.
+    $code = '';
+    foreach (token_get_all($entry) as $token) {
+        if (is_array($token) && ($token[0] === T_COMMENT || $token[0] === T_DOC_COMMENT)) {
+            continue;
+        }
+
+        $code .= is_array($token) ? $token[1] : $token;
+    }
+
+    // A `$argv` that is not immediately coalesced. The `??` has to be allowed to
+    // have whitespace around it, or the check is a formatting rule.
+    expect($code)->not->toMatch('/\$argv\b(?!\s*\?\?)/');
+});
+
 // Basics
 
 it('prints its version', function () {
@@ -294,7 +329,7 @@ it('rejects a define that is not a name=value pair', function () {
 
 it('converts a document back to Markdown', function () {
     $document = Scratch::path('back', '.docx');
-    saveMarkdown("# Round trip\n\nSome **bold** text.\n", $document);
+    saveDocument("# Round trip\n\nSome **bold** text.\n", $document);
     $output = Scratch::path('back', '.md');
 
     $run = runCli(['to-markdown', $document, '-o', $output]);
@@ -306,7 +341,7 @@ it('converts a document back to Markdown', function () {
 
 it('reads a document from standard input', function () {
     $document = Scratch::path('piped', '.docx');
-    saveMarkdown("# Piped back\n", $document);
+    saveDocument("# Piped back\n", $document);
 
     $run = runCli(['to-markdown', '-', '-o', '-'], (string) file_get_contents($document));
 
@@ -316,7 +351,7 @@ it('reads a document from standard input', function () {
 
 it('writes underlined headings when told to', function () {
     $document = Scratch::path('setext', '.docx');
-    saveMarkdown("# One\n\n## Two\n", $document);
+    saveDocument("# One\n\n## Two\n", $document);
 
     $run = runCli(['to-markdown', $document, '--setext', '-o', '-']);
 
@@ -326,7 +361,7 @@ it('writes underlined headings when told to', function () {
 
 it('writes CRLF line endings when told to', function () {
     $document = Scratch::path('crlf', '.docx');
-    saveMarkdown("# One\n\nText.\n", $document);
+    saveDocument("# One\n\nText.\n", $document);
 
     $run = runCli(['to-markdown', $document, '--line-ending', 'crlf', '-o', '-']);
 
@@ -383,7 +418,7 @@ it('works the direction out from the file', function () {
 
 it('works the direction out from a Word document too', function () {
     $document = Scratch::path('detect', '.docx');
-    saveMarkdown("# Detected\n", $document);
+    saveDocument("# Detected\n", $document);
 
     $run = runCli([$document]);
 
@@ -408,7 +443,7 @@ it('goes by what the file is, not what it is called', function () {
 
 it('takes the direction from standard input when it is a document', function () {
     $document = Scratch::path('piped', '.docx');
-    saveMarkdown("# Piped back\n", $document);
+    saveDocument("# Piped back\n", $document);
 
     $run = runCli(['-', '-o', '-'], (string) file_get_contents($document));
 
@@ -427,7 +462,7 @@ it('needs --to for Markdown on standard input', function () {
 
 it('refuses a --to that contradicts the file', function () {
     $document = Scratch::path('real', '.docx');
-    saveMarkdown("# A document\n", $document);
+    saveDocument("# A document\n", $document);
 
     $run = runCli([$document, '--to', 'docx', '-o', Scratch::path('elsewhere')]);
 
@@ -446,7 +481,7 @@ it('refuses a format it does not know', function () {
 it('refuses to write the result over the file it read', function () {
     // A `.md` in, a `.md` out: without this the run would destroy its own input.
     $document = Scratch::path('keep', '.docx');
-    saveMarkdown("# Keep me\n", $document);
+    saveDocument("# Keep me\n", $document);
 
     $run = runCli([$document, '-o', $document]);
 

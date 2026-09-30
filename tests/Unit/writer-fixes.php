@@ -62,7 +62,7 @@ it('leaves nothing in the temp directory when the document cannot land', functio
     $marker = 'mdword-leak-' . bin2hex(random_bytes(8));
     $since = time();
 
-    expect(fn () => saveMarkdown("# {$marker}\n\n- one\n- two\n", $blocked . '/out.docx'))
+    expect(fn () => saveDocument("# {$marker}\n\n- one\n- two\n", $blocked . '/out.docx'))
         ->toThrow(RuntimeException::class);
 
     $leaked = [];
@@ -88,7 +88,7 @@ it('reports a document it could not put in place as a failure of its own', funct
     // A directory that cannot be written to is not the caller's input being
     // wrong, so it belongs with the other things this side gets wrong: the type
     // a caller can catch every failure with.
-    expect(fn () => saveMarkdown('# Unwritable', $blocked . '/out.docx'))
+    expect(fn () => saveDocument('# Unwritable', $blocked . '/out.docx'))
         ->toThrow(FileNotWritable::class);
 });
 
@@ -173,7 +173,7 @@ it('writes through a symlink rather than replacing it', function () {
     file_put_contents($document, 'ORIGINAL');
     symlink($document, $alias);
 
-    saveMarkdown("# New content\n", $alias);
+    saveDocument("# New content\n", $alias);
 
     // `rename()` replaces a link with a regular file, so the link is gone and
     // the file it pointed at still holds what it always did: two files, one of
@@ -190,7 +190,7 @@ it('creates what a symlink points at, rather than the link', function () {
     // document goes; the document is what should appear.
     symlink($document, $alias);
 
-    saveMarkdown("# New content\n", $alias);
+    saveDocument("# New content\n", $alias);
 
     expect(is_link($alias))->toBeTrue();
     expect(is_file($document))->toBeTrue();

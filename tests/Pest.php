@@ -371,11 +371,6 @@ function saveDocument(string $markdown, string $path, ?Configuration $config = n
     });
 }
 
-function saveMarkdown(string $markdown, string $path): void
-{
-    saveDocument($markdown, $path);
-}
-
 /**
  * Write a `PhpWord` document out with PHPWord's own writer.
  */

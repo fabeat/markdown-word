@@ -41,7 +41,7 @@ use MarkdownWord\Xml;
 function reverseFixArchive(array $overrides, string $markdown = 'seed'): string
 {
     $source = Scratch::path('reverse-fix-seed');
-    saveMarkdown($markdown, $source);
+    saveDocument($markdown, $source);
 
     $in = new ZipArchive();
     if ($in->open($source) !== true) {
@@ -161,7 +161,7 @@ function reverseFixText(Block $block): string
 function reverseFixTree(string $markdown): array
 {
     $file = Scratch::path('reverse-fix');
-    saveMarkdown($markdown, $file);
+    saveDocument($markdown, $file);
 
     return (new WordToMarkdown($file))->read($file);
 }
@@ -169,7 +169,7 @@ function reverseFixTree(string $markdown): array
 function reverseFixMarkdown(string $markdown): string
 {
     $file = Scratch::path('reverse-fix');
-    saveMarkdown($markdown, $file);
+    saveDocument($markdown, $file);
 
     return (new WordToMarkdown($file))->convert();
 }

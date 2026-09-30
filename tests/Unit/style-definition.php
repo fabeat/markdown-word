@@ -58,7 +58,7 @@ it('leaves a custom style name to the template', function () {
 
 it('defines every bullet level', function () {
     $file = Scratch::path('bullets');
-    saveMarkdown("- one\n  - two\n    - three", $file);
+    saveDocument("- one\n  - two\n    - three", $file);
 
     // A nested list points at level 1 of the same numbering. If that level is
     // undefined the renderer falls back to a different list, and a sub-list of
@@ -86,7 +86,7 @@ it('writes a level for every level Word supports', function () {
 
 it('gives nested bullets distinct characters', function () {
     $file = Scratch::path('nested-bullets');
-    saveMarkdown('- one
+    saveDocument('- one
   - two', $file);
 
     $numbering = TemplateFactory::xmlOf($file, 'word/numbering.xml');
@@ -97,7 +97,7 @@ it('gives nested bullets distinct characters', function () {
 
 it('defines every level of an ordered list', function () {
     $file = Scratch::path('ordered');
-    saveMarkdown("1. one\n   1. two", $file);
+    saveDocument("1. one\n   1. two", $file);
 
     $numbering = TemplateFactory::xmlOf($file, 'word/numbering.xml');
 

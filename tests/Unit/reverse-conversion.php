@@ -41,14 +41,14 @@ function roundTrip(string $markdown, ?Configuration $config = null, ?ReverseOpti
 function readBack(string $markdown, ?ReverseOptions $options = null): array
 {
     $file = Scratch::path('reverse');
-    saveMarkdown($markdown, $file);
+    saveDocument($markdown, $file);
 
     return (new WordToMarkdown(null, $options ?? new ReverseOptions()))->read($file);
 }
 
 it('writes a file as Markdown', function () {
     $file = Scratch::path('reverse');
-    saveMarkdown('# Title', $file);
+    saveDocument('# Title', $file);
     $target = Scratch::path('read-back', '.md');
 
     (new WordToMarkdown($file))->save($target);

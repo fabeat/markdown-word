@@ -122,7 +122,7 @@ it('reports a media directory it cannot create', function () {
     skipWithoutPermissions('A path whose parent is a file is still usable as root');
 
     $document = Scratch::path('media', '.docx');
-    saveMarkdown("# Real\n", $document);
+    saveDocument("# Real\n", $document);
 
     // A path whose parent is a file, not a directory: the directory can neither
     // be found nor made.
@@ -179,7 +179,7 @@ it('reports a numbering part the numbering pass cannot parse', function () {
     // The archive is opened, the list definitions are there to write, and the
     // numbering part it has to extend does not parse.
     $document = Scratch::path('numbering-broken', '.docx');
-    saveMarkdown("- one\n- two\n", $document);
+    saveDocument("- one\n- two\n", $document);
 
     $zip = new ZipArchive();
     $zip->open($document);
