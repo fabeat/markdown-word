@@ -24,6 +24,10 @@ concurrency:
   group: phar-${{ github.ref }}
   cancel-in-progress: true
 
+# Read-only by default. The one step that writes is the release below, and it
+# says so itself rather than the whole workflow holding write access it does not
+# need: `contents: write` on a job that only reads a repository is a wider blast
+# radius than the job needs.
 permissions:
   contents: read
 
@@ -43,6 +47,13 @@ jobs:
           coverage: none
           tools: composer:v2
 
+      # The archive says when it was built, and the whole point of that is that
+      # the answer is the commit rather than the runner. `SOURCE_DATE_EPOCH` is
+      # what tools/build-phar.php stamps every entry with, and the commit's own
+      # date is the most meaningful instant a build could be given.
+      - name: Stamp the archive with the commit's date
+        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)" >> "$GITHUB_ENV"
+
       # The build script drives the tool's own class to read its name and version,
       # so it needs the autoloader even though the archive's dependencies are
       # resolved separately below. Runtime only: the test framework needs PHP 8.4
@@ -56,13 +67,48 @@ jobs:
         # composer.json is only needed when it is called directly.
         run: composer build:phar
 
+      # What the archive will actually be asked to run on, asked of the manifest
+      # and lock file that produced it rather than of the project's own. The
+      # test matrix reports what the library works on; this reports what the
+      # artifact needs, which is a different question and the one a user hitting
+      # a missing extension actually asks. It also says which package wanted
+      # what, so a platform failure names its cause instead of leaving it to be
+      # inferred.
+      - name: The artifact's floor
+        run: |
+          php -v
+          composer check-platform-reqs --no-dev --working-dir=build/deps
+
+      # Built twice and compared, because a build that says it is reproducible
+      # and is not is worse than one that says nothing: the checksum in the
+      # release notes is a claim about the artifact, and this is where the claim
+      # is checked. The two builds share a runner, a PHP and a zlib, so what this
+      # proves is that the build script introduces nothing of its own — a
+      # difference between two different PHP builds would be zlib's, not this
+      # repository's.
+      - name: The build is reproducible
+        run: |
+          first=$(sha256sum build/mdword.phar | cut -d' ' -f1)
+          composer build:phar
+          second=$(sha256sum build/mdword.phar | cut -d' ' -f1)
+          echo "first  $first"
+          echo "second $second"
+          if [ "$first" != "$second" ]; then
+            echo "::error::Two builds of the same commit produced different bytes."
+            exit 1
+          fi
+
+      # Everything the checks write goes in `tmp/`, which is the project's rule
+      # for scratch files. Writing them into the repository root leaves an
+      # untracked `check.md` and `check.docx` behind on every run.
       - name: Run the phar on its own
         run: |
+          mkdir -p tmp
           ./build/mdword.phar --version
-          printf '# Built\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n' > check.md
-          ./build/mdword.phar to-docx check.md -o check.docx
-          ./build/mdword.phar to-markdown check.docx -o - | tee round-trip.md
-          grep -q '# Built' round-trip.md
+          printf '# Built\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n' > tmp/check.md
+          ./build/mdword.phar to-docx tmp/check.md -o tmp/check.docx
+          ./build/mdword.phar to-markdown tmp/check.docx -o tmp/round-trip.md
+          grep -q '# Built' tmp/round-trip.md
 
       # One file, and nothing else beside it. A `build/` full of staging
       # directories would turn the download into a tarball and defeat the point.
@@ -77,6 +123,12 @@ jobs:
       - name: Attach the phar to the release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        # Publishing a release needs `contents: write`, and the workflow-level
+        # grant is only read. Without this the first release fails with
+        # "403 Resource not accessible by integration" — which is a good way to
+        # find out about it on the day, and a bad way to find out at all.
+        permissions:
+          contents: write
         with:
           files: build/mdword.phar
           # The phar's own version is the single source of truth for what this

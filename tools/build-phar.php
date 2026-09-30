@@ -12,13 +12,22 @@ declare(strict_types=1);
  * ```
  *
  * The archive carries the library and its two runtime dependencies and nothing
- * else. The development dependencies are left out, which is most of why it is a
- * few hundred kilobytes rather than a few megabytes: the test suite is several
- * times the size of the library.
+ * else. The development dependencies are left out, which is most of why it is
+ * around a megabyte rather than the tens of megabytes the test suite brings
+ * with it — and the dependencies' own test suites, documentation and static
+ * analysis configuration are pruned before they go in, so the archive is the
+ * code that runs and nothing else.
  *
  * The dependencies are installed into a directory of their own rather than into
  * the project, because `composer install --no-dev` in the project would delete
  * the test tools from `vendor/` and the next `composer test` would fail.
+ *
+ * The build is reproducible: the same source tree produces the same bytes, so
+ * two machines — or two runs on one — can be compared by checksum. See
+ * `resolveEpoch()` and `normaliseTimestamps()` for what that costs; the short
+ * version is that PHP's Phar extension stamps every entry with the time the
+ * archive was written and offers no way to say otherwise, so the timestamps are
+ * rewritten afterwards.
  *
  * `phar.readonly` is `On` in most PHP installations, which is the right default
  * and cannot be changed at runtime. Rather than refuse, this script re-runs
@@ -35,7 +44,7 @@ if (ini_get('phar.readonly')) {
         '%s -d phar.readonly=0 %s %s',
         escapeshellarg(PHP_BINARY),
         escapeshellarg(__FILE__),
-        implode(' ', array_map('escapeshellarg', array_slice($argv, 1))),
+        implode(' ', array_map('escapeshellarg', array_slice($argv ?? [], 1))),
     );
 
     passthru($command, $status);
@@ -101,6 +110,19 @@ function run(string $command, string $what): void
     fwrite(STDOUT, "ok\n");
 }
 
+/**
+ * Run a command for its output, with standard input closed.
+ *
+ * Every other way of shelling out in this script redirects from `/dev/null`.
+ * An inherited standard input is how a build that should have taken four
+ * seconds ends up waiting on a terminal that is not there: the reading end has
+ * no writer and the child never sees end of file.
+ */
+function capture(string $command): string
+{
+    return (string) shell_exec($command . ' < /dev/null');
+}
+
 function humanSize(int $bytes): string
 {
     return $bytes < 1024
@@ -114,6 +136,441 @@ function copyInto(string $from, string $to): void
         sprintf('cp -R %s %s', escapeshellarg($from), escapeshellarg($to)),
         'copying ' . basename($from) . '/',
     );
+}
+
+// ------------------------------------------------------------------ pruning
+
+/**
+ * Directories that hold nothing the archive can use.
+ *
+ * Every package installs its own test suite, its documentation and its CI
+ * configuration, and none of it is code the archive ever loads. `phpoffice/math`
+ * alone brings 17 test files (156 KiB) and 16 documentation files (14 KiB), and
+ * it is a package the archive cannot write a document without.
+ *
+ * Matched against the name of any directory below `vendor/`, at any depth.
+ */
+const PRUNED_DIRECTORIES = [
+    '.git',
+    '.github',
+    'doc',
+    'docs',
+    'test',
+    'tests',
+];
+
+/**
+ * Files that hold nothing the archive can use.
+ *
+ * Matched against the name of any file below `vendor/`, at any depth. These are
+ * patterns rather than a plain list because the packages are not ours and their
+ * configuration files are not in our keeping.
+ */
+const PRUNED_FILES = [
+    'phpstan*',
+    'psalm*',
+    'phpunit*',
+    '*.dist',
+    '.editorconfig',
+    '.gitattributes',
+    '.gitignore',
+    '.gitmodules',
+    '.travis.yml',
+    'mkdocs.yml',
+    'roave-bc-check.yaml',
+];
+
+/**
+ * Files that match `PRUNED_FILES` but are loaded at runtime.
+ *
+ * `PhpWord\Settings::loadConfig()` with no argument falls back to
+ * `phpword.ini.dist` in the package root, and a file that is gone is a file
+ * whose settings silently stop applying. Pruning it would be a behavioural
+ * change dressed up as a size saving, so it stays and the exception is named
+ * here rather than hidden in a condition.
+ */
+const PRUNED_FILE_EXCEPTIONS = [
+    // Matched against the path relative to the vendor directory.
+    'phpoffice/phpword/phpword.ini.dist',
+];
+
+/**
+ * Delete the development-only parts of the dependency tree.
+ *
+ * Reports what it removed rather than what it was asked to remove, because a
+ * pattern that quietly matched something a package needed at runtime would
+ * otherwise show up as a broken archive — or, worse, not at all.
+ *
+ * @return array{count: int, bytes: int, paths: list<string>, directories: list<string>}
+ */
+function prune(string $vendor): array
+{
+    $files = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($vendor, FilesystemIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::SELF_FIRST,
+    );
+
+    $pruned = ['count' => 0, 'bytes' => 0, 'paths' => [], 'directories' => []];
+    $directories = [];
+
+    foreach ($files as $file) {
+        $path = (string) $file->getPathname();
+        $relative = substr($path, strlen($vendor) + 1);
+
+        if ($file->isDir()) {
+            if (in_array(strtolower($file->getFilename()), PRUNED_DIRECTORIES, true)) {
+                $directories[] = $relative;
+            }
+
+            continue;
+        }
+
+        $name = $file->getFilename();
+
+        if (in_array($relative, PRUNED_FILE_EXCEPTIONS, true)) {
+            continue;
+        }
+
+        $matched = false;
+
+        foreach (PRUNED_FILES as $pattern) {
+            if (fnmatch($pattern, $name)) {
+                $matched = true;
+
+                break;
+            }
+        }
+
+        if (!$matched) {
+            continue;
+        }
+
+        $pruned['count']++;
+        $pruned['bytes'] += (int) $file->getSize();
+        $pruned['paths'][] = $relative;
+
+        unlink($path);
+    }
+
+    // Deepest first, so a `tests` inside a pruned `docs` is already gone and
+    // `rmdir` is not called on a directory that still has something in it.
+    rsort($directories, SORT_STRING);
+
+    foreach ($directories as $relative) {
+        $path = $vendor . '/' . $relative;
+
+        if (is_dir($path)) {
+            $inside = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($path, FilesystemIterator::SKIP_DOTS),
+            );
+
+            foreach ($inside as $file) {
+                if ($file->isFile()) {
+                    $pruned['count']++;
+                    $pruned['bytes'] += (int) $file->getSize();
+                    $pruned['paths'][] = substr($file->getPathname(), strlen($vendor) + 1);
+                }
+            }
+
+            $pruned['directories'][] = $relative;
+
+            exec(sprintf('rm -rf %s', escapeshellarg($path)));
+        }
+    }
+
+    sort($pruned['paths'], SORT_STRING);
+    sort($pruned['directories'], SORT_STRING);
+
+    return $pruned;
+}
+
+// -------------------------------------------------------- reproducibility
+
+/**
+ * The instant every part of the archive is stamped with.
+ *
+ * `SOURCE_DATE_EPOCH` wins when it is set, which is what the reproducible
+ * builds convention says and what a release should do: the tag's own commit
+ * date is the most meaningful timestamp an artifact can carry. Without it, the
+ * newest modification time of the *authored* sources is used, so a checkout
+ * that has not been touched still builds the same bytes twice.
+ *
+ * `vendor/` is deliberately not consulted. Those files were extracted by
+ * Composer a moment ago and their modification times say when the machine built
+ * the archive rather than when the code was written, which would make the
+ * archive's timestamp — and so the archive — different on every machine.
+ */
+function resolveEpoch(string $root): int
+{
+    $fromEnvironment = getenv('SOURCE_DATE_EPOCH');
+
+    if ($fromEnvironment !== false && trim($fromEnvironment) !== '') {
+        $fromEnvironment = trim($fromEnvironment);
+
+        if (!ctype_digit($fromEnvironment)) {
+            fwrite(STDERR, "SOURCE_DATE_EPOCH has to be a whole number of seconds since 1970,\n"
+                . 'and ' . var_export($fromEnvironment, true) . " is not.\n\n"
+                . "Nothing has been written.\n");
+
+            exit(1);
+        }
+
+        return (int) $fromEnvironment;
+    }
+
+    $inputs = ['composer.json', 'composer.lock', 'README.md', 'LICENSE', 'tools/build-phar.php'];
+
+    foreach (['src', 'bin'] as $directory) {
+        $files = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($root . '/' . $directory, FilesystemIterator::SKIP_DOTS),
+        );
+
+        foreach ($files as $file) {
+            if ($file->isFile()) {
+                $inputs[] = substr((string) $file->getPathname(), strlen($root) + 1);
+            }
+        }
+    }
+
+    $newest = 0;
+
+    foreach ($inputs as $input) {
+        if (is_file($root . '/' . $input)) {
+            $newest = max($newest, (int) filemtime($root . '/' . $input));
+        }
+    }
+
+    return $newest === 0 ? time() : $newest;
+}
+
+// ------------------------------------------------------------ phar internals
+
+function readUint32(string $raw, int &$offset): int
+{
+    $value = unpack('V', substr($raw, $offset, 4));
+    $offset += 4;
+
+    if ($value === false) {
+        throw new RuntimeException('the archive is truncated');
+    }
+
+    return $value[1];
+}
+
+function readUint16(string $raw, int &$offset): int
+{
+    $value = unpack('v', substr($raw, $offset, 2));
+    $offset += 2;
+
+    if ($value === false) {
+        throw new RuntimeException('the archive is truncated');
+    }
+
+    return $value[1];
+}
+
+/**
+ * Where the archive's own data begins, just after the stub.
+ *
+ * `__HALT_COMPILER();` ends the stub. What follows is up to PHP: it writes a
+ * closing tag and a line ending, and `setStub()` will add both for us, but a
+ * stub written without them is equally valid, so both are accepted.
+ */
+function dataStart(string $raw): int
+{
+    $halt = strpos($raw, '__HALT_COMPILER();');
+
+    if ($halt === false) {
+        throw new RuntimeException('the archive has no stub');
+    }
+
+    $offset = $halt + strlen('__HALT_COMPILER();');
+
+    if (str_starts_with(substr($raw, $offset), ' ?>') || str_starts_with(substr($raw, $offset), '?>')) {
+        $offset += str_starts_with(substr($raw, $offset), ' ?>') ? 3 : 2;
+    }
+
+    if (substr($raw, $offset, 2) === "\r\n") {
+        return $offset + 2;
+    }
+
+    return substr($raw, $offset, 1) === "\n" ? $offset + 1 : $offset;
+}
+
+/**
+ * The offset of every entry's timestamp, and the end of the manifest.
+ *
+ * The manifest is written before the file contents, which follow it in manifest
+ * order, and the four bytes at its head are the length of the rest of it. So
+ * the length is both the way to find its end and the check that the walk below
+ * read it correctly: if the entries do not add up to it, this PHP has written
+ * something this does not understand, and the build stops rather than guess.
+ *
+ * @return array{timestamps: list<array{offset: int, name: string}>, end: int, metadata: string}
+ */
+function readManifest(string $raw): array
+{
+    $offset = dataStart($raw);
+    $length = readUint32($raw, $offset);
+    $start = $offset;
+    $end = $offset + $length;
+
+    $count = readUint32($raw, $offset);
+    readUint16($raw, $offset); // API version
+    readUint32($raw, $offset); // global flags
+    $offset += readUint32($raw, $offset); // alias
+    $metadata = substr($raw, $offset, readUint32($raw, $offset));
+    $offset += strlen($metadata);
+
+    $timestamps = [];
+
+    for ($entry = 0; $entry < $count; $entry++) {
+        $nameLength = readUint32($raw, $offset);
+        $name = substr($raw, $offset, $nameLength);
+        $offset += $nameLength;
+        readUint32($raw, $offset); // uncompressed size
+        $timestamps[] = ['offset' => $offset, 'name' => $name];
+        readUint32($raw, $offset); // timestamp
+        readUint32($raw, $offset); // compressed size
+        readUint32($raw, $offset); // CRC32
+        readUint32($raw, $offset); // flags
+        $offset += readUint32($raw, $offset); // per-file metadata
+    }
+
+    if ($offset !== $end) {
+        throw new RuntimeException(sprintf(
+            'the manifest says it is %d bytes and reading it consumed %d, so this build does not'
+            . ' recognise the archive layout this PHP wrote and will not rewrite it',
+            $length,
+            $offset - $start,
+        ));
+    }
+
+    return ['timestamps' => $timestamps, 'end' => $end, 'metadata' => $metadata];
+}
+
+/**
+ * The hash algorithm, and the offset of the signature, for a written archive.
+ *
+ * The signature covers everything before it — stub, manifest and file contents
+ * — and is followed by the literal `GBMB`, which is the last four bytes of the
+ * file. The function checks the arithmetic against the signature PHP itself
+ * read back, so a layout that does not add up is refused instead of rewritten.
+ *
+ * @return array{algorithm: string, offset: int, length: int}
+ */
+function locateSignature(string $raw, Phar $phar): array
+{
+    $signature = $phar->getSignature();
+    $algorithms = [
+        'MD5' => 'md5',
+        'SHA-1' => 'sha1',
+        'SHA-256' => 'sha256',
+        'SHA-512' => 'sha512',
+    ];
+    $type = (string) ($signature['hash_type'] ?? '');
+
+    if (!isset($algorithms[$type])) {
+        throw new RuntimeException(sprintf(
+            'the archive is signed with %s, which this build does not know how to rewrite',
+            $type === '' ? 'nothing' : $type,
+        ));
+    }
+
+    $algorithm = $algorithms[$type];
+
+    if (substr($raw, -4) !== 'GBMB') {
+        throw new RuntimeException('the archive does not end in the marker it should');
+    }
+
+    $digestLength = strlen((string) hex2bin((string) $signature['hash']));
+
+    // The digest, then four bytes naming the algorithm. There is no length in
+    // front of them, which is why the offset is derived from the end instead.
+    $length = $digestLength + 4;
+    $offset = strlen($raw) - 4 - $length;
+
+    if (hash($algorithm, substr($raw, 0, $offset)) !== strtolower((string) $signature['hash'])) {
+        throw new RuntimeException(sprintf(
+            'the signature does not cover the bytes before it, so this build does not recognise the'
+            . ' archive layout this PHP wrote and will not rewrite it',
+        ));
+    }
+
+    return ['algorithm' => $algorithm, 'offset' => $offset, 'length' => $length];
+}
+
+/**
+ * Give every entry the same, chosen modification time.
+ *
+ * `Phar::addFile()` records `time()` at the moment the archive is flushed — not
+ * the file's own modification time, and not anything this script can pass in.
+ * `PharFileInfo::setMTime()` no longer exists, a custom `SplFileInfo` handed to
+ * `buildFromIterator()` is ignored, and no released PHP consults
+ * `SOURCE_DATE_EPOCH` (php-src#20570 will). So the timestamps are written into
+ * the manifest directly and the signature is recalculated over the result.
+ *
+ * Everything is then checked against the bytes that were written, and the
+ * artifact is deleted if any of it does not hold: an archive this script
+ * rewrote into something it merely believes is still a corrupt archive. The
+ * version and round-trip checks further down are what prove that PHP itself can
+ * still read it, and they run the archive in a process that has no cache of it.
+ */
+function normaliseTimestamps(string $target, int $epoch): void
+{
+    $raw = file_get_contents($target);
+
+    if ($raw === false) {
+        throw new RuntimeException('the archive could not be read back');
+    }
+
+    $manifest = readManifest($raw);
+    $signature = locateSignature($raw, new Phar($target));
+    $stamped = pack('V', $epoch);
+
+    $rebuilt = $raw;
+
+    foreach ($manifest['timestamps'] as $entry) {
+        $rebuilt = substr_replace($rebuilt, $stamped, $entry['offset'], 4);
+    }
+
+    $digest = hash($signature['algorithm'], substr($rebuilt, 0, $signature['offset']), true);
+    $rebuilt = substr_replace($rebuilt, $digest, $signature['offset'], $signature['length'] - 4);
+
+    if (file_put_contents($target, $rebuilt) !== strlen($rebuilt)) {
+        throw new RuntimeException('the rewritten archive could not be written in full');
+    }
+
+    // Read back off disk rather than through a second `Phar` object, which would
+    // hand out the copy this process already has open and cache.
+    $written = file_get_contents($target);
+
+    if ($written === false || strlen($written) !== strlen($raw)) {
+        throw new RuntimeException('the rewritten archive is not the length it should be');
+    }
+
+    $check = readManifest($written);
+
+    if (count($check['timestamps']) !== count($manifest['timestamps'])) {
+        throw new RuntimeException('the archive has a different number of entries than it did');
+    }
+
+    if ($check['metadata'] !== $manifest['metadata']) {
+        throw new RuntimeException('rewriting the timestamps lost the archive metadata');
+    }
+
+    foreach ($check['timestamps'] as $entry) {
+        if (substr($written, $entry['offset'], 4) !== $stamped) {
+            throw new RuntimeException(sprintf(
+                'rewriting the timestamp of %s did not take',
+                $entry['name'],
+            ));
+        }
+    }
+
+    if (hash($signature['algorithm'], substr($written, 0, $signature['offset']), true) !== $digest) {
+        throw new RuntimeException('the rewritten archive does not match its own signature');
+    }
 }
 
 // ------------------------------------------------------------------- paths
@@ -131,7 +588,7 @@ $composerPhar = $root . '/composer.phar';
 
 $composer = is_file($composerPhar)
     ? escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($composerPhar)
-    : trim((string) shell_exec('command -v composer 2>/dev/null'));
+    : trim(capture('command -v composer 2>/dev/null'));
 
 if ($composer === '') {
     fwrite(STDERR, "This build needs Composer: either a composer.phar in the project root,\n"
@@ -139,6 +596,11 @@ if ($composer === '') {
 
     exit(1);
 }
+
+// The instant every part of the archive will be stamped with, resolved before
+// anything is copied so that it describes the sources rather than the staging
+// directory.
+$epoch = resolveEpoch($root);
 
 fwrite(STDOUT, sprintf("Building %s %s\n\n", Application::NAME, Application::VERSION));
 
@@ -188,6 +650,29 @@ foreach (['LICENSE.md', 'LICENSE', 'README.md'] as $document) {
     }
 }
 
+fwrite(STDOUT, "\n  Dependencies\n");
+
+$pruned = prune($app . '/vendor');
+
+fwrite(STDOUT, sprintf(
+    "  %-44s%d files, %s\n",
+    'pruning their tests and documentation',
+    $pruned['count'],
+    humanSize($pruned['bytes']),
+));
+
+fwrite(STDOUT, sprintf("  %-44s%s\n", '  directories', implode(', ', $pruned['directories'])));
+fwrite(STDOUT, sprintf("  %-44s%s\n", '  files', implode(', ', $pruned['paths'])));
+
+// The permission bits go into the manifest, and a permission bit that came from
+// whatever umask the machine happened to have is one more thing that differs
+// between two machines building the same source.
+run(
+    sprintf('find %s -type f -exec chmod 644 {} +', escapeshellarg($app)),
+    'normalising the staged file permissions',
+);
+chmod($app . '/bin/mdword', 0o755);
+
 // ------------------------------------------------------------------- build
 
 fwrite(STDOUT, "\n  Archive\n");
@@ -220,20 +705,27 @@ $phar->setStub(<<<'STUB'
     __HALT_COMPILER();
     STUB);
 
-$files = new RecursiveIteratorIterator(
-    new RecursiveDirectoryIterator($app, FilesystemIterator::SKIP_DOTS),
-    RecursiveIteratorIterator::SELF_FIRST,
-);
-
 // Everything under the staging directory goes in at a path relative to it, so
 // the archive has an /app root and the stub finds what it expects. The
 // directories are created implicitly by the files inside them.
-foreach ($files as $file) {
-    if (!$file->isFile()) {
-        continue;
-    }
+//
+// Sorted, because a directory iterator hands back whatever order the filesystem
+// felt like, and both the manifest and the file contents follow the order the
+// files were added in. Sorted, the archive is the same archive.
+$paths = [];
 
-    $phar->addFile((string) $file->getPathname(), 'app/' . substr((string) $file->getPathname(), strlen($app) + 1));
+foreach (new RecursiveIteratorIterator(
+    new RecursiveDirectoryIterator($app, FilesystemIterator::SKIP_DOTS),
+) as $file) {
+    if ($file->isFile()) {
+        $paths[] = (string) $file->getPathname();
+    }
+}
+
+sort($paths, SORT_STRING);
+
+foreach ($paths as $path) {
+    $phar->addFile($path, 'app/' . substr($path, strlen($app) + 1));
 }
 
 // Compressed once everything is in, which is the only order `compressFiles()`
@@ -244,18 +736,33 @@ $phar->compressFiles(Phar::GZ);
 $phar->setMetadata([
     'name' => Application::NAME,
     'version' => Application::VERSION,
-    'built' => gmdate('c'),
+    'built' => gmdate('c', $epoch),
 ]);
 
 $phar->stopBuffering();
 
 chmod($target, 0o755);
 
+try {
+    normaliseTimestamps($target, $epoch);
+} catch (RuntimeException $problem) {
+    // An archive whose manifest was rewritten but not verified is worse than no
+    // archive, so it does not survive the build that could not vouch for it.
+    @unlink($target);
+
+    fwrite(STDERR, "\n" . $problem->getMessage() . "\n"
+        . "The archive it could not vouch for has been deleted.\n");
+
+    exit(1);
+}
+
+fwrite(STDOUT, sprintf("  %-44s%s (%d files)\n", 'every entry stamped', gmdate('c', $epoch), count($paths)));
+
 // -------------------------------------------------------------- verification
 
 fwrite(STDOUT, "\n  Verification\n");
 
-$reported = trim((string) shell_exec(sprintf(
+$reported = trim(capture(sprintf(
     '%s %s --version 2>&1',
     escapeshellarg(PHP_BINARY),
     escapeshellarg($target),
@@ -278,21 +785,30 @@ fwrite(STDOUT, "ok\n");
 // and then cannot convert anything is still broken. A `.docx` is a zip archive
 // and starts with `PK`, and a round trip has to come back with the heading in
 // it — together those two catch a missing dependency as well as a broken one.
+//
+// The magic bytes are read here rather than by piping the output through
+// `head` and `xxd` on the way in, because `xxd` is not part of PHP and is not
+// installed on the slim images a build runs in.
+//
+// The round trip goes through a file rather than a pipe, so that every command
+// here is a single command and closing its standard input is unambiguous. A
+// redirection written after a pipe binds to the wrong end of it, and the
+// reading end would get `/dev/null` instead of the document.
 $phar = escapeshellarg($target);
 $example = escapeshellarg($root . '/examples/markdown/01-kitchen-sink.md');
+$roundTrip = $build . '/round-trip.docx';
 
-$produced = static function (string $command) use ($phar, $example): string {
-    return (string) shell_exec(sprintf($phar . ' ' . $command, $example));
-};
+$produced = static fn (string $command): string => capture(sprintf($phar . ' ' . $command, $example));
+
+$document = $produced('to-docx %s -o - 2>/dev/null');
+$produced('to-docx %s -o ' . escapeshellarg($roundTrip) . ' 2>/dev/null');
+$back = $produced('to-markdown ' . escapeshellarg($roundTrip) . ' -o - 2>/dev/null');
+
+@unlink($roundTrip);
 
 $checks = [
-    'it converts Markdown to a document' => trim($produced(
-        'to-docx %s -o - 2>/dev/null | head -c 2 | xxd -p'
-    )) === '504b',
-    'it converts a document back to Markdown' => str_contains(
-        $produced('to-docx %s -o - 2>/dev/null | ' . escapeshellarg(PHP_BINARY) . ' ' . $phar . ' to-markdown - 2>/dev/null'),
-        '# Kitchen sink',
-    ),
+    'it converts Markdown to a document' => substr($document, 0, 2) === 'PK',
+    'it converts a document back to Markdown' => str_contains($back, '# Kitchen sink'),
 ];
 
 foreach ($checks as $what => $passed) {
@@ -308,4 +824,8 @@ foreach ($checks as $what => $passed) {
 }
 
 fwrite(STDOUT, sprintf("\n%s — %s\n", $target, humanSize((int) filesize($target))));
+fwrite(STDOUT, sprintf("%d files, %s of dependencies' own tests and documentation left out.\n",
+    $pruned['count'],
+    humanSize($pruned['bytes']),
+));
 fwrite(STDOUT, "Put it anywhere on your PATH and run `mdword`.\n\n");
