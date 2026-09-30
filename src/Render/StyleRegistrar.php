@@ -12,11 +12,11 @@ use PhpOffice\PhpWord\Style\Paragraph;
 /**
  * Writes the style *definitions* a freshly generated document needs.
  *
- * PHPWord's `styles.xml` is almost empty in a fresh document, so a paragraph that
- * merely references `Heading1` is drawn as body text by anything that does not
- * know Word's built-ins. Defining them keeps a standalone document self-contained
- * while still using the styleIds Word recognises, which is what preserves outline
- * levels and any table of contents inserted later.
+ * A fresh `styles.xml` carries only `Normal` and `FootnoteReference`, so a
+ * paragraph that merely references `Heading1` is drawn as body text by anything
+ * that does not know Word's built-ins. Defining them keeps a standalone document
+ * self-contained while still using the styleIds Word recognises, which is what
+ * preserves outline levels and any table of contents inserted later.
  *
  * Not run when rendering into a template, which is the authority there.
  */
@@ -71,17 +71,13 @@ final class StyleRegistrar
     {
     }
 
-    /**
-     * Define every built-in style the configuration points at, so the document
-     * stands on its own when opened.
-     */
     public function register(PhpWord $phpWord): void
     {
         for ($level = 1; $level <= 6; $level++) {
             $id = 'Heading' . $level;
 
-            // A custom style name belongs to the user's own template; only the
-            // built-in ids are filled in here.
+            // Only the built-in ids are filled in: a custom style name belongs to
+            // the user's own template.
             if ($this->styles->get('heading.' . $level) === $id) {
                 $this->define($phpWord, $id, self::HEADINGS[$id]);
             }
@@ -96,20 +92,19 @@ final class StyleRegistrar
         }
     }
 
-    /**
-     * @param array<string, mixed> $definition
-     */
     private function define(PhpWord $phpWord, string $id, array $definition): void
     {
-        // PHPWord keeps its style registry for the lifetime of the process, so a
-        // second render would otherwise redefine a style a document already used.
+        // `setStyleValues()` skips its whole body once a name is taken, so a
+        // duplicate id does not update the registry — a static, cleared only by
+        // `new PhpWord()`. Rendering into one `PhpWord` twice therefore keeps the
+        // first definition, which is what this guard makes explicit.
         if (Style::getStyle($id) !== null) {
             return;
         }
 
-        // The keys are the ones PHPWord's Font style understands; `italics` is
-        // spelled `setItalic` there, so the array form is used rather than
-        // guessing a setter name.
+        // The array form maps each key to `set<Key>()` and silently ignores one
+        // that does not exist, so the keys are the property names PHPWord's Font
+        // style has — `italic`, not `italics`.
         $font = [];
         foreach (['name', 'size', 'color', 'bold', 'italic', 'strikethrough', 'underline'] as $key) {
             if (array_key_exists($key, $definition)) {
@@ -129,10 +124,11 @@ final class StyleRegistrar
             }
         }
 
-        // The font properties go in as an array, never as a Font object: given an
-        // object of the same class PHPWord's style registry adopts it in place of
-        // its own, the paragraph binding is lost, and the style is written with
-        // no `w:styleId` and no `w:pPr` — headings then render as body text.
+        // The font properties go in as an array, never as a Font object: an
+        // `AbstractStyle` of the same class is adopted in place of the one
+        // `addFontStyle()` built, and the paragraph went in as a constructor
+        // argument to that discarded one. What comes out is a character style
+        // with no `w:styleId` and no `w:pPr` — headings render as body text.
         $phpWord->addFontStyle($id, $font, $paragraph);
     }
 }

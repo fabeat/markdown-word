@@ -10,9 +10,9 @@ use PhpOffice\PhpWord\Element\AbstractContainer;
 /**
  * Renders raw HTML found in the Markdown.
  *
- * The default mode is `strip`, which removes the tags but keeps the text they
- * wrap: `<div>foo</div>` contributes the word *foo*, not the markup. `preserve`
- * keeps the markup as literal monospaced text and `drop` discards the fragment.
+ * `strip`, the default, removes the tags but keeps the text they wrap:
+ * `<div>foo</div>` contributes the word *foo*, not the markup. `preserve` keeps
+ * the markup as literal monospaced text and `drop` discards the fragment.
  * Emitting the tags as real OOXML is deliberately not an option — it would mean
  * injecting unvalidated XML into the document.
  */
@@ -64,8 +64,8 @@ final class HtmlFragmentRenderer
     }
 
     /**
-     * Inline HTML is spliced into a run that may already contain text, so it is
-     * rendered without the block-level line breaks a standalone fragment gets.
+     * Inline HTML is spliced into a run that may already contain text, so it gets
+     * none of the block-level line breaks a standalone fragment does.
      */
     public function renderInline(string $html, AbstractContainer $target, InlineStyle $style): void
     {
@@ -99,8 +99,9 @@ final class HtmlFragmentRenderer
         $dom = new \DOMDocument();
         $previous = libxml_use_internal_errors(true);
 
-        // Wrapping in a body makes a fragment parseable wherever it sat in the
-        // original document.
+        // `LIBXML_HTML_NOIMPLIED` discards block elements unless there is a body
+        // for them to sit in, so the wrapper is what makes a fragment parse whole
+        // rather than lose the tags around its text.
         $loaded = $dom->loadHTML(
             '<?xml encoding="utf-8" ?><body>' . $html . '</body>',
             LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD | LIBXML_NONET,
@@ -138,8 +139,8 @@ final class HtmlFragmentRenderer
 
         $tag = strtolower($node->nodeName);
 
-        // A `<br>` is a line break wherever it appears; other void elements have
-        // no content to contribute.
+        // A `<br>` is a line break wherever it appears; the other void elements
+        // have no content to contribute.
         if ($tag === 'br') {
             $target->addTextBreak(1, $this->styles->fontFor($style));
 
@@ -188,7 +189,7 @@ final class HtmlFragmentRenderer
 
     /**
      * Whitespace between tags is collapsed, as a browser would, except inside
-     * `pre` and `textarea` where it is significant.
+     * `pre`, `textarea` and `code`, where it is left as it was found.
      */
     private function appendText(string $text, AbstractContainer $target, InlineStyle $style, ?\DOMNode $parent): void
     {

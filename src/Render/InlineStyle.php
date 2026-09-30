@@ -8,8 +8,8 @@ namespace MarkdownWord\Render;
  * The formatting that applies to a single run of text.
  *
  * Word has no notion of nested emphasis, so this is a flat set of flags — enough
- * to express every inline construct in CommonMark and GFM, including
- * combinations such as bold inside a link inside italic.
+ * for every inline construct in CommonMark and GFM, bold inside a link inside
+ * italic being three of them at once.
  */
 final class InlineStyle
 {
@@ -21,9 +21,9 @@ final class InlineStyle
         public readonly ?string $url = null,
         public readonly ?string $linkTitle = null,
         /**
-         * Font properties forced onto every run inside this scope, regardless of
-         * the Markdown's own emphasis. This is how a table header is made bold and
-         * how a cell's alignment is applied, since PHPWord's cell style carries
+         * Font properties forced onto every run in this scope, whatever the
+         * Markdown's own emphasis says. This is how a table header is made bold
+         * and a cell's alignment applied, since PHPWord's cell style carries
          * neither.
          *
          * @var array<string, mixed>
@@ -32,9 +32,6 @@ final class InlineStyle
     ) {
     }
 
-    /**
-     * @param  array<string, mixed>  $font
-     */
     public function withForcedFont(array $font): self
     {
         return $this->derive(forcedFont: $font + $this->forcedFont);
@@ -65,9 +62,6 @@ final class InlineStyle
         return $this->derive(url: $url, linkTitle: $title);
     }
 
-    /**
-     * @param  array<string, mixed>  $font
-     */
     private function derive(
         ?bool $bold = null,
         ?bool $italic = null,
