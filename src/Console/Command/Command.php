@@ -10,15 +10,12 @@ use MarkdownWord\Console\Application;
  * A command the {@see Application} can run.
  *
  * {@see self::options()} is the help table, written for a reader;
- * {@see self::spec()} is what the parser is given. They are held in step by a
- * test in both directions rather than derived from each other, because a help
- * table reads nothing like a parser specification.
+ * {@see self::spec()} is what the parser is given. Two lists, held in step by a
+ * test, because a help table reads nothing like a parser specification.
  */
 interface Command
 {
-    /**
-     * @param list<string> $argv The arguments after the command name.
-     */
+    /** @param list<string> $argv The arguments after the command name. */
     public function execute(array $argv): int;
 
     /**
@@ -29,9 +26,8 @@ interface Command
     public static function options(): array;
 
     /**
-     * What the parser will accept: the long names of the options that take a
-     * value, of the options that are on or off, of the options that may repeat,
-     * and the short spellings.
+     * The long names the parser will accept for the options that take a value,
+     * the on-or-off ones, the repeatable ones, and the short spellings.
      *
      * @return array{values: list<string>, flags: list<string>, repeated: list<string>, aliases: array<string, string>}
      */
