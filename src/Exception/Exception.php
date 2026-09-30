@@ -8,10 +8,8 @@ use RuntimeException;
 
 /**
  * The base for every failure this library reports, so one `catch` covers all of
- * them without also catching unrelated failures from PHP itself and from PHPWord.
- *
- * It extends {@see RuntimeException} so that code written against the library
- * before these types existed keeps working.
+ * them without also catching PHPWord's. It extends {@see RuntimeException} for
+ * the code written before these types existed.
  */
 class Exception extends RuntimeException
 {

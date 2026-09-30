@@ -22,10 +22,9 @@ use PhpOffice\PhpWord\Element\AbstractContainer;
 use PhpOffice\PhpWord\PhpWord;
 
 /**
- * Converts Markdown into a Word document. CommonMark and GitHub-Flavored
- * Markdown are both fully supported, because the renderer walks the syntax tree
- * directly instead of going through HTML. See {@see Converter} for what this and
- * {@see WordToMarkdown} share.
+ * Converts Markdown into a Word document, read by default with
+ * {@see CommonMarkParser} — pass another one to change the dialect. See
+ * {@see Converter} for what this and {@see WordToMarkdown} share.
  */
 final class MarkdownToWord implements Converter
 {
@@ -34,9 +33,9 @@ final class MarkdownToWord implements Converter
     private ?ImageDescriptionCollector $images = null;
 
     /**
-     * @param string|null $source Markdown: a path, or the text itself, read as
-     *        {@see Input} reads a string. Null leaves the choice to
-     *        {@see self::toDocx()} and friends.
+     * @param string|null $source A path, or the Markdown itself; {@see Input}
+     *        says which a string is. Null leaves the subject to
+     *        {@see self::toDocx()}.
      */
     public function __construct(
         private readonly ?string $source = null,
@@ -76,8 +75,8 @@ final class MarkdownToWord implements Converter
     /**
      * Render Markdown into an existing container — a section, a table cell, a
      * header or a footer. No style definitions are written: the destination
-     * document — a template, most likely — is the authority on what its styles
-     * look like, and defining them here would override the author's design.
+     * document, a template most likely, is the authority on what its styles look
+     * like, and defining them here would override the author's design.
      */
     public function renderIntoContainer(
         string $markdown,
@@ -93,11 +92,11 @@ final class MarkdownToWord implements Converter
     }
 
     /**
-     * @throws NothingToConvert          when the converter was built without a source.
-     * @throws Exception\UnreadableFile  when the source names a file that cannot be read.
-     * @throws Exception\FileNotWritable when the document cannot be written.
+     * @throws NothingToConvert             when the converter was built without a source.
+     * @throws Exception\UnreadableFile     when the source names a file that cannot be read.
      * @throws Exception\UnreadableDocument when the finished archive cannot be reopened.
      * @throws Exception\MalformedDocument  when a part of it is not XML.
+     * @throws Exception\FileNotWritable    when the document cannot be written.
      */
     public function convert(?string $target = null): string
     {
@@ -115,11 +114,10 @@ final class MarkdownToWord implements Converter
             return DocxWriter::toString($phpWord, $this->links, $this->images);
         }
 
-        // Through the writer rather than `file_put_contents`, because the writer
-        // stages the archive in the temp directory and moves it into place: a
-        // half-written document cannot be left where someone will open it, and a
-        // directory that does not exist yet is made rather than written to and
-        // warned about.
+        // Through the writer rather than `file_put_contents`: it stages the archive
+        // in the temp directory and moves it into place, so a half-written document
+        // is never left where someone will open it, and a directory that is not
+        // there yet is made rather than warned about.
         return DocxWriter::write($phpWord, $target, $this->links, $this->images);
     }
 
@@ -129,8 +127,8 @@ final class MarkdownToWord implements Converter
     }
 
     /**
-     * Write Markdown to a `.docx` file and return its raw bytes, the counterpart
-     * of {@see \MarkdownWord\WordToMarkdown::toMarkdown()}.
+     * Markdown as the raw bytes of a `.docx`, the counterpart of
+     * {@see \MarkdownWord\WordToMarkdown::toMarkdown()}.
      */
     public function toDocx(string $markdown, ?PhpWord $phpWord = null): string
     {
@@ -140,8 +138,8 @@ final class MarkdownToWord implements Converter
     }
 
     /**
-     * The hyperlink payloads collected during the last render, keyed by the
-     * placeholder that stands in for them in the element tree.
+     * Every hyperlink payload collected so far — they accumulate across renders —
+     * keyed by the placeholder standing in for each in the element tree.
      *
      * @return list<array{placeholder: string, url: string, title: ?string, runs: list<array{text: string, style: array<string, mixed>}>}>
      */
@@ -162,9 +160,8 @@ final class MarkdownToWord implements Converter
             (new StyleRegistrar($this->config->getStyles()))->register($phpWord);
         }
 
-        // The collector is kept across renders so its placeholder indices stay
-        // unique, which matters when several documents go through the same
-        // converter, as the template renderer does.
+        // Kept across renders so the placeholder indices stay unique, which matters
+        // when several documents go through one converter, as the template does.
         $this->links ??= new LinkPayloadCollector($styles);
 
         $html = new HtmlFragmentRenderer($this->config->getOptions(), $styles);
