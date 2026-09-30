@@ -20,8 +20,8 @@ use PhpOffice\PhpWord\Style\Paragraph;
  * Test bootstrap and the helpers the renderer tests share.
  *
  * The helpers are functions rather than a base test case: Pest builds each test
- * as a closure, so a shared *capability* belongs here and a shared *assertion*
- * belongs in the test that makes it.
+ * as a closure, so a shared *capability* belongs here and a shared *assertion* in
+ * the test that makes it.
  */
 
 /**
@@ -33,9 +33,6 @@ function convertTo(string $markdown, ?Configuration $config = null, ?PhpWord $ph
 }
 
 /**
- * The elements of the document's first section, which is what most assertions
- * are about.
- *
  * @return list<AbstractElement>
  */
 function renderElements(string $markdown, ?Configuration $config = null): array
@@ -52,9 +49,6 @@ function renderSection(string $markdown, ?Configuration $config = null): Abstrac
     return $sections[0];
 }
 
-/**
- * The visible text of a rendered document.
- */
 function renderText(string $markdown, ?Configuration $config = null): string
 {
     $converter = new MarkdownToWord(null, $config ?? new Configuration());
@@ -66,9 +60,6 @@ function renderText(string $markdown, ?Configuration $config = null): string
     );
 }
 
-/**
- * The plain text of a single element, useful for asserting on one paragraph.
- */
 function elementTextOf(AbstractElement $element): string
 {
     return $element instanceof AbstractContainer
@@ -76,10 +67,6 @@ function elementTextOf(AbstractElement $element): string
         : '';
 }
 
-/**
- * The style name an element references, whether it was given as a string or as a
- * `Paragraph` object carrying one.
- */
 function styleNameOf(AbstractElement $element): ?string
 {
     $style = $element->getParagraphStyle();
@@ -133,8 +120,8 @@ function paragraphStyleOf(AbstractElement $element): array|string|null
         }
     }
 
-    // PHPWord exposes paragraph spacing through dedicated accessors, and a space
-    // before of zero is meaningful, so it is read directly.
+    // PHPWord exposes spacing through accessors of its own, and a space before
+    // of zero is meaningful, so it is read outside the table above.
     $spacing = array_filter([
         'before' => $style->getSpaceBefore(),
         'after' => $style->getSpaceAfter(),
@@ -192,7 +179,7 @@ function simplifyStyleValue(mixed $value): mixed
  * The runs of an element, in order.
  *
  * PHPWord materialises the inline style array into a `Font` object, so it is
- * converted back to the shape the renderer was configured with.
+ * turned back into the array the renderer was configured with.
  *
  * @return list<array{text: string, font: array<string, mixed>|string|null}>
  */
@@ -258,38 +245,22 @@ function simplifyFont(mixed $font): array|string|null
     return $set;
 }
 
-/**
- * The text of an element's runs joined together, which is what a reader sees.
- */
 function renderRunText(AbstractElement $element): string
 {
     return implode('', array_column(renderRuns($element), 'text'));
 }
 
-
 /**
- * The visible text of a document, in the shape a text comparison needs.
- *
- * Whitespace layout is a rendering concern rather than a content one, so runs of
- * spaces and tabs collapse to a single space and blank lines are dropped: where a
- * line wraps and whether a list is loose are not content. Line breaks are kept,
- * since that is where structure such as list items and table rows shows up.
+ * The visible text of a document, in the shape a text comparison needs; the
+ * rules are {@see MarkdownText::normalise()}'s.
  */
 function normaliseDocumentText(string $text): string
 {
     return MarkdownText::normalise($text);
 }
 
-/*
-|--------------------------------------------------------------------------
-| Datasets
-|--------------------------------------------------------------------------
-|
-| The specification corpora, as named datasets. Registering them here rather than
-| inline keeps the two corpus suites — conformance and round trip — reading as one
-| line each, and means the 1300 examples are only parsed when one of them runs.
-|
-*/
+// The specification corpora, as named datasets: a closure, so the examples are
+// parsed only when a corpus suite runs and each suite reads as one line.
 
 require_once __DIR__ . '/Datasets/spec-examples.php';
 
@@ -297,34 +268,15 @@ dataset('commonMarkExamples', fn (): array => specExamples(__DIR__ . '/fixtures/
 
 dataset('gfmExamples', fn (): array => specExamples(__DIR__ . '/fixtures/spec/gfm-spec.txt', 'gfm'));
 
-/*
-|--------------------------------------------------------------------------
-| The number of levels a Word list definition carries
-|--------------------------------------------------------------------------
-|
-| A nested list points at a level of the same numbering definition, so a
-| definition missing a level makes Word fall back to a different list — which is
-| how a sub-list of bullets comes out numbered. The renderer writes this many
-| levels, and the tests that count them say so here rather than writing the number
-| out five times.
-|
-| `it('writes a level for every level Word supports')` in
-| tests/Unit/style-definition.php reads the count back off the renderer, so a
-| change to it fails as one test whose name says what changed, rather than as five
-| that only say a number moved.
-|
-| The constant belongs on `NumberingRegistry` next to the loops that use it, which
-| is a change in `src/`; this is the same number under the name the tests can
-| reach.
-|
-*/
-
 /**
  * How many levels of list nesting a numbering definition covers.
  *
- * `NumberingRegistry::LEVELS` says the same thing; this copy is here because the
- * tests that assert on it must not depend on a class in `src/` to do so, and the
- * two are checked against each other.
+ * A nested list points at a level of the same definition, so a definition
+ * missing one makes Word fall back to a different list — which is how a sub-list
+ * of bullets comes out numbered. `NumberingRegistry` writes this many levels,
+ * and `it('writes a level for every level Word supports')` in
+ * tests/Unit/style-definition.php reads that number back off the renderer, so a
+ * change to either fails as one test whose name says what changed.
  */
 const NUMBERING_LEVELS = 9;
 
@@ -332,10 +284,8 @@ const NUMBERING_LEVELS = 9;
  * Assert that both specification corpora are really there.
  *
  * A silently empty corpus — a parser that stopped recognising the example
- * markers, a fixture that failed to copy — would leave 1300 tests passing for
- * the wrong reason, so their size is asserted. Both corpus suites need it, and
- * the sizes are stated here once so that a corpus which changes is changed in one
- * place rather than in two that are easy to update unevenly.
+ * markers, a fixture that failed to copy — would leave the corpus suites passing
+ * for the wrong reason, so their size is asserted. Both corpus suites need it.
  */
 function expectSpecificationCorpora(): void
 {
@@ -343,17 +293,10 @@ function expectSpecificationCorpora(): void
     expect(specExamples(__DIR__ . '/fixtures/spec/gfm-spec.txt', 'gfm'))->toHaveCount(646);
 }
 
-/*
-|--------------------------------------------------------------------------
-| Known upstream issues
-|--------------------------------------------------------------------------
-|
-| One dependency defect would otherwise mark every document-writing test as
-| deprecated. It is silenced precisely, for that one message from that one file,
-| rather than by switching deprecation reporting off. See tests/Support/Upstream.
-|
-*/
-
+/**
+ * With the one known upstream deprecation silenced; tests/Support/Upstream is
+ * where the defect and the reason only that one is swallowed are described.
+ */
 function withoutUpstreamDeprecations(callable $work): mixed
 {
     return Upstream::quietly($work);
@@ -369,20 +312,11 @@ function toDocx(string $markdown, ?Configuration $config = null): string
     );
 }
 
-/*
-|--------------------------------------------------------------------------
-| Housekeeping
-|--------------------------------------------------------------------------
-|
-| Everything a test writes into the project's `tmp` directory is removed once the
-| test is over, so a run leaves nothing behind and a failure leaves the document
-| in place long enough to open it.
-|
-| The hook goes through `pest()`. In Pest 5 a bare `afterEach()` written here
-| binds to this file rather than to the suite, which is easy to miss: nothing
-| fails, every test passes, and the files simply stop being cleaned up.
-|
-*/
+// `tmp/pest` is emptied after every test, failure or not, so a run leaves
+// nothing behind. The hook goes through `pest()`: in Pest 5 a bare `afterEach()`
+// written here binds to this file, which is not a test file, so it would never
+// fire — nothing fails, every test passes, and the files simply stop being
+// cleaned up.
 
 pest()->afterEach(function (): void {
     Scratch::cleanUp();
@@ -391,12 +325,9 @@ pest()->afterEach(function (): void {
 /**
  * A file in the scratch directory with the given contents, and its path.
  *
- * Every test that needs an input file needs the same two things: a name nobody
- * else's test is using, and something in it. The name may carry its own extension
- * — the command line derives an output name from it, and a few tests are about
- * the name rather than only the bytes — and a suffix is added to make it unique
- * without changing what it is called. Where the input is a document to be
- * rendered, {@see saveDocument()} writes one in a single call.
+ * The name may carry its own extension — the command line derives an output name
+ * from it, and a few tests are about the name rather than only the bytes — and a
+ * random suffix is added so that no two tests collide.
  */
 function inputFile(string $name, string $contents, ?string $extension = null): string
 {
@@ -417,9 +348,9 @@ function inputFile(string $name, string $contents, ?string $extension = null): s
  *
  * Running as root, every file is readable however its mode is set and every
  * directory is writable, so a test about an unreadable file or an uncreatable one
- * has nothing left to check. It is reported as skipped rather than passed:
- * `expect(true)->toBeTrue()` in a root container is a green tick for a check that
- * never ran, and a build full of them is a build that says nothing.
+ * has nothing left to check. It is reported as skipped rather than passed: in a
+ * root container a green tick is a check that never ran, and a build full of them
+ * says nothing.
  */
 function skipWithoutPermissions(string $what): void
 {
@@ -429,10 +360,8 @@ function skipWithoutPermissions(string $what): void
 }
 
 /**
- * Write a `.docx` file.
- *
- * The guard is only there for the upstream deprecation described above; from the
- * test's point of view this is `(new MarkdownToWord($markdown))->save($path)`.
+ * Write a `.docx` file. The wrapper is only there for the upstream deprecation
+ * described in tests/Support/Upstream.
  */
 function saveDocument(string $markdown, string $path, ?Configuration $config = null): void
 {
@@ -441,17 +370,13 @@ function saveDocument(string $markdown, string $path, ?Configuration $config = n
     });
 }
 
-/**
- * Write a `.docx` file with the default configuration.
- */
 function saveMarkdown(string $markdown, string $path): void
 {
     saveDocument($markdown, $path);
 }
 
 /**
- * Write a `PhpWord` document out with PHPWord's own writer, for the tests that
- * are about what that writer produces.
+ * Write a `PhpWord` document out with PHPWord's own writer.
  */
 function writePhpWordDocument(PhpWord $phpWord, string $path): void
 {
@@ -461,8 +386,7 @@ function writePhpWordDocument(PhpWord $phpWord, string $path): void
 }
 
 /**
- * Write a filled-in template out. The wrapper is only here for the upstream
- * deprecation described in tests/Support/Upstream.
+ * Write a filled-in template out.
  */
 function saveTemplateDocument(MarkdownTemplate $template, string $path): void
 {

@@ -16,8 +16,8 @@ use ZipArchive;
 final class TemplateFactory
 {
     /**
-     * A template with the constructs a typical report needs: a single value, a
-     * Markdown region, and a repeating region.
+     * A template with a single value, a Markdown region and a repeating region —
+     * the constructs a typical report needs.
      */
     public static function report(): string
     {
@@ -137,9 +137,6 @@ final class TemplateFactory
         return Scratch::directory();
     }
 
-    /**
-     * The visible text of a generated document, paragraph by paragraph.
-     */
     public static function textOf(string $docx): string
     {
         $xpath = self::xpathOf($docx);
@@ -155,13 +152,11 @@ final class TemplateFactory
     /**
      * The visible text of a document, with no regard for where it is broken up.
      *
-     * Every `w:t` under a node, in document order. What a reader sees is the
-     * concatenation, so a run boundary is a detail of the writer rather than of
-     * the text — which is what makes this the right thing to compare when the
-     * question is whether the words survived, and the wrong thing when it is
-     * whether a paragraph is where it should be. {@see self::textOf()} is that.
-     *
-     * @param \DOMXPath|\DOMNode $context
+     * What a reader sees is the concatenation of every `w:t` under a node, so a
+     * run boundary is a detail of the writer rather than of the text. That makes
+     * this the thing to compare when the question is whether the words survived
+     * and the wrong thing when it is whether a paragraph is where it should be;
+     * {@see self::textOf()} is that.
      */
     public static function textIn(\DOMXPath $xpath, \DOMNode $context): string
     {
@@ -178,8 +173,8 @@ final class TemplateFactory
      *
      * A `.docx` whose `word/document.xml` does not parse is one Word refuses to
      * open, and it is the failure the escaping and raw-HTML tests are about. The
-     * part is read through {@see self::xmlOf()}, so a document that is not an
-     * archive, or has no body, throws rather than reporting itself valid.
+     * part comes from {@see self::read()}, so a file that is not an archive, or
+     * has no such part, throws rather than reporting itself valid.
      */
     public static function xmlIsValid(string $docx, string $part = 'word/document.xml'): bool
     {
@@ -195,8 +190,6 @@ final class TemplateFactory
     }
 
     /**
-     * The relationship targets declared in a document part.
-     *
      * @return list<string>
      */
     public static function targetsOf(string $docx, string $part = 'word/_rels/document.xml.rels'): array
@@ -230,9 +223,6 @@ final class TemplateFactory
         return $xpath;
     }
 
-    /**
-     * The number of `w:hyperlink` elements in the document.
-     */
     public static function hyperlinkCount(string $docx): int
     {
         $xpath = self::xpathOf($docx);

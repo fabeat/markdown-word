@@ -7,11 +7,6 @@ namespace MarkdownWord\Tests\Support;
 /**
  * Extracts the visible text of an HTML fragment the way a browser would render
  * it, which is what the specification's expected output describes.
- *
- * This is the oracle for the conformance suite: `league/commonmark` is a fully
- * conforming implementation, so the text of its HTML output is by definition
- * the text the specification asks for. If the Word document we build carries the
- * same text, the conversion is faithful.
  */
 final class HtmlText
 {
@@ -61,12 +56,10 @@ final class HtmlText
      */
     private static function stripComments(string $html): string
     {
-        // Grouped so the order the alternatives are tried in is stated rather than
-        // left to be inferred: the abrupt-closing forms first, then a real comment,
-        // then an unterminated one, which has to swallow the rest of the input.
-        //
-        // The `/s` flag lets `.` cross a newline, which is what the alternative
-        // matching to the end needs, rather than spelling it `[\s\S]` twice.
+        // The order the alternatives are tried in is the point of the grouping:
+        // the abrupt-closing forms, then a real comment, then an unterminated one,
+        // which has to swallow the rest of the input. The `/s` flag is what lets
+        // `.` reach the end of it.
         return (string) preg_replace('/(<!--(?:->|>|.*?-->|.*$))/s', '', $html);
     }
 
@@ -76,10 +69,9 @@ final class HtmlText
 
         foreach ($node->childNodes as $child) {
             if ($child instanceof \DOMText) {
-                // A newline in HTML source is a soft break, which a browser
-                // renders as a space. Elements whose content is preformatted
-                // keep their whitespace; for those the caller normalises tabs,
-                // which are tab stops rather than characters.
+                // A newline in HTML source is a soft break, which a browser shows
+                // as a space; `pre` and `textarea` keep theirs, tabs included —
+                // a tab is a tab stop rather than a character.
                 $text .= $preserveWhitespace
                     ? $child->textContent
                     : (string) preg_replace('/\s+/', ' ', $child->textContent);
@@ -96,8 +88,8 @@ final class HtmlText
 
             $tag = strtolower($child->nodeName);
 
-            // An image renders as itself, so it contributes no text. The same is
-            // true of the other void elements.
+            // An image renders as itself, so it contributes no text; neither do
+            // the other void elements.
             if (in_array($tag, self::VOID_TAGS, true)) {
                 if ($tag === 'br') {
                     $text .= "\n";
@@ -105,16 +97,12 @@ final class HtmlText
                 continue;
             }
 
-            // A `pre` block is verbatim content, so its newlines are real line
-            // breaks rather than collapsible whitespace.
-            // `pre` and `textarea` hold preformatted content, so their whitespace
-            // is significant.
             $verbatim = $tag === 'pre' || $tag === 'textarea';
             $inner = self::walk($child, $preserveWhitespace || $verbatim);
 
             // The source of a `pre` block ends with a newline that carries no
-            // content, so it is removed here rather than compared. The same is
-            // true of the blank lines around content inside `textarea`.
+            // content, so it is removed here rather than compared; so is the
+            // blank line a browser drops after the `textarea` start tag.
             if ($verbatim) {
                 $inner = trim($inner, "\n");
             }

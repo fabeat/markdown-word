@@ -9,9 +9,7 @@ namespace MarkdownWord\Tests\Support;
  *
  * The `spec.txt` files distributed by commonmark/commonmark-spec and
  * github/cmark-gfm list every construct with a Markdown input and the expected
- * HTML. Those inputs double as a conformance corpus: if our renderer can
- * process every one of them without losing text, it handles everything the
- * specifications describe.
+ * HTML.
  */
 final class SpecFile
 {
