@@ -154,3 +154,35 @@ it('does not claim again what the code does not do', function (string $claim) {
 ```
 
 The first argument is the case, the second is the phrase that must not reappear.
+
+## Tests
+
+Gate is **91%** (`composer.json`, and both CI jobs that measure it). Four traps,
+each of which has cost a real bug here:
+
+- **Never compare `.docx` bytes.** A zip stores 2-second timestamps and
+  `docProps/core.xml` carries `dcterms:created`/`modified`, so two correct
+  conversions differ about three times in four. Compare parts.
+- **Assert preservation, not defaults, for the option objects.** Set every
+  property away from the default, change one, assert the rest survived. Against
+  the defaults, a `with()` that discards everything passes.
+- **A method with no caller outside `tests/` is not exercised.** It is dead, or
+  public API nobody documented. Say which.
+- **A new test must fail without its fix.** Run it against the reverted change.
+  One that passes either way proves nothing.
+
+## Static analysis
+
+PHPStan **level 1** over `src`, `bin`, `tools`, `tests`; fetched by checksum, not
+a dependency. **No `ignoreErrors`, no baseline, no suppression comment** — a clean
+level 1 is why the level is 1. Fix the finding or leave the level alone.
+
+## Sonar
+
+Runs on PRs, gated on `sonar.qualitygate.status`; config in
+`sonar-project.properties`. Two things to know:
+
+- **The gate is the check. Missing diff annotations mean nothing** — they need the
+  SonarCloud GitHub App, which is a UI setting, not a file here.
+- **It does not read prose.** A confidently false docblock passes. Only
+  `tests/Unit/dead-code.php` checks claims, and only ones it has been told.
