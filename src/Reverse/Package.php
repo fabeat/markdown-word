@@ -151,11 +151,6 @@ final class Package
         return $contents === false ? null : $contents;
     }
 
-    public function has(string $part): bool
-    {
-        return $this->zip->locateName($part) !== false;
-    }
-
     private function part(string $name, bool $required = false): ?\DOMDocument
     {
         if (array_key_exists($name, $this->parts)) {
