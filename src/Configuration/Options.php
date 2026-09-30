@@ -5,16 +5,13 @@ declare(strict_types=1);
 namespace MarkdownWord\Configuration;
 
 /**
- * Immutable set of behavioural switches.
+ * Behavioural switches for the cases where Markdown and Word do not map onto
+ * each other one-to-one; {@see Styles} decides how things look.
  *
- * While {@see Styles} decides *how things look*, these options decide *what
- * gets rendered* in situations where Markdown and Word do not map onto each
- * other one-to-one.
- *
- * Every `with*()` method returns a new instance and leaves the receiver alone,
- * and it is called on the result of the last one in a chain — so each one has to
- * carry the rest of the configuration forward, not just the property it was
- * given. See {@see self::with()}, which is where that is arranged.
+ * Every `with*()` returns a new instance and is called on the result of the last
+ * one in a chain, so each has to carry the rest of the configuration forward
+ * rather than just the property it was given. See {@see self::with()}, which is
+ * where that is arranged.
  */
 final class Options
 {
@@ -46,34 +43,23 @@ final class Options
 
     /**
      * The properties where `null` is a value in its own right rather than the
-     * absence of one.
-     *
-     * Everything else reads a `null` as "not configured" and takes the default,
-     * which is what a config file spelling a key out with no value means.
+     * absence of one; everywhere else it means "not configured" and the default
+     * applies.
      *
      * @var list<string>
      */
     private const NULLABLE = ['imageBasePath', 'orderedListSuffix'];
 
     /**
-     * @param string          $softBreak           How to render a CommonMark soft line break.
-     * @param string          $hardBreak           How to render a hard line break (two spaces, backslash or `<br>`).
-     * @param string          $html                Handling of raw HTML blocks and inline HTML.
-     * @param string          $images              Handling of images: embed into the document, emit alt-text placeholder, or omit.
-     * @param string|null     $imageBasePath       Base directory used to resolve relative image paths.
-     * @param float           $imageMaxWidth       Maximum image width in centimetres. `0` disables scaling.
+     * @param float           $imageMaxWidth       Maximum image width in centimetres; `0` disables scaling.
      * @param int             $maxHeadingLevel     Headings deeper than this are rendered as paragraphs.
      * @param string          $orderedListFormat   `w:numFmt` value used for ordered lists (decimal, lowerLetter, ...).
      * @param string|null     $orderedListSuffix   Separator between the number and the text: `tab`, `space` or `nothing`.
-     * @param bool            $tableBorders        Draw borders around table cells.
-     * @param bool            $tableHeaderBold     Render the first table row in bold.
      * @param int             $tableWidth          Table width in fiftieths of a percent of the text column.
      *        `5000` — the default — is the full width, which is what a table read
      *        as a table rather than as a fragment of one should be. `0` leaves the
      *        width to Word's automatic sizing.
-     * @param bool            $codeBlockShading    Give code blocks a light background.
-     * @param string          $linkTarget          `w:hyperlink` target: `_blank` or `_self`.
-     * @param string          $thematicBreak       Horizontal rule rendering: `border` (paragraph rule) or `text` (a row of dashes).
+     * @param string          $thematicBreak       `border` (paragraph rule) or `text` (a row of dashes).
      * @param bool            $deferredHyperlinks   Write every link as a placeholder and resolve it while
      *        the file is written, instead of letting PHPWord emit `w:hyperlink` directly. Needed when the
      *        rendered elements are copied into another document — as the template renderer does — because
@@ -159,10 +145,6 @@ final class Options
         return $this->with('tableBorders', $borders);
     }
 
-    /**
-     * @param int $width Fiftieths of a percent of the text column, so `5000` is
-     *                   the full width and `0` hands the sizing back to Word.
-     */
     public function withTableWidth(int $width): self
     {
         return $this->with('tableWidth', $width);
@@ -226,25 +208,22 @@ final class Options
     }
 
     /**
-     * Coerce loosely typed configuration values (typically coming from a PHP,
-     * JSON or YAML config file) into the exact types the constructor demands.
+     * Coerce loosely typed values (typically from a PHP, JSON or YAML config
+     * file) into the exact types the constructor demands.
      *
-     * Every numeric and every boolean property is listed here. That is the rule
-     * to keep when one is added: a number the renderer puts into the document
-     * has to reach it as a number, and a wrong one changes the document rather
-     * than raising, so a value that is neither cast nor bounded silently
-     * becomes whatever `(int)` or `(bool)` makes of it. The `imageBasePath` case
-     * is the same idea for a string, where an empty string is a path nobody can
-     * open.
+     * Every numeric and every boolean property is listed here, and a new one has
+     * to be added: a number the renderer puts into the document has to reach it
+     * as a number, and a wrong one changes the document rather than raising, so
+     * a value that is neither cast nor bounded silently becomes whatever `(int)`
+     * or `(bool)` makes of it.
      *
      * The string properties are deliberately not cast: a mode that is not one of
-     * the constants is a mistake in the config file, and the constructor's own
-     * type declaration is what says so. Casting them would mean inventing a
-     * fallback mode, which is a decision this class does not get to make.
+     * the constants is a mistake in the config file, and casting it would mean
+     * inventing a fallback mode, which is a decision this class does not get to
+     * make.
      *
      * The array handed in has already been merged over the defaults, so every
-     * property is present, and any `null` has been resolved to either the
-     * default or a genuine value by `fromArray()`.
+     * property is present and any `null` has already been resolved.
      *
      * @param  array<string, mixed>  $options
      * @return array<string, mixed>
