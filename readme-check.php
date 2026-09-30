@@ -8,10 +8,10 @@ declare(strict_types=1);
  *
  * Every PHP block on that page is here, and the `mdword` one-liners are driven
  * through the application. That is worth less than it sounds if half the examples
- * are quietly absent — which is what happened: seven checks for nine examples, and
- * a claim on the page that all of them ran. So the list below is meant to be read
- * against the README rather than trusted, and a new example there is a new check
- * here.
+ * are quietly absent — which is what happened once, seven checks for nine
+ * examples and a claim on the page that all of them ran. So the list below is
+ * meant to be read against the README rather than trusted, and a new example
+ * there is a new check here.
  */
 
 require __DIR__ . '/vendor/autoload.php';
@@ -34,9 +34,8 @@ use PhpOffice\PhpWord\PhpWord;
 use PhpOffice\PhpWord\Style\Paragraph;
 use PhpOffice\PhpWord\TemplateProcessor;
 
-// One dependency emits a deprecation for every list item it writes; see the class
-// for why. Without this a run prints thousands of lines of somebody else's
-// warning and buries anything real.
+// One dependency emits a deprecation for every list item it writes, and the run
+// would print thousands of somebody else's lines; see the class for why.
 UpstreamDeprecations::install();
 
 $work = __DIR__ . '/tmp/readme';
@@ -46,18 +45,13 @@ $work = __DIR__ . '/tmp/readme';
  * Every part of a `.docx`, keyed by name, with what a clock changes taken out.
  *
  * Two things vary between two correct conversions of the same input, and neither
- * is a difference in the document:
- *
- * - the zip's per-entry timestamps — two seconds of resolution, no sub-second
- *   part, no time zone — which live in the container and not in the parts;
- * - `docProps/core.xml`, which records when the document was created and last
- *   modified, so it differs whenever the two conversions are not in the same
- *   second.
- *
- * What has to match is everything else, so that is what this compares. The
- * comparison is on the parts rather than on the archive because a check that
- * compared the bytes failed about three times in four on any machine slow enough
- * to cross a two-second boundary between the two writes.
+ * is a difference in the document: the zip's per-entry timestamps — two seconds
+ * of resolution, no sub-second part, no time zone — which live in the container
+ * and not in the parts, and `docProps/core.xml`, which records when the document
+ * was created and last modified. What has to match is everything else, so that
+ * is what this compares: a check that compared the archive's bytes failed about
+ * three times in four on any machine slow enough to cross a two-second boundary
+ * between the two writes.
  *
  * @return array<string, string>
  */
@@ -107,11 +101,9 @@ function documentParts(string $docx): array
 }
 
 /**
- * A document's core properties with the two dates blanked.
- *
- * `dcterms:created` and `dcterms:modified` are the only parts of a `.docx` that
- * say when it was made. Leaving them in makes this comparison a test of the
- * clock.
+ * A document's core properties with the two dates blanked: `dcterms:created` and
+ * `dcterms:modified` are the only parts of a `.docx` that say when it was made,
+ * and leaving them in makes the comparison a test of the clock.
  */
 function withoutTimestamps(string $coreProperties): string
 {
@@ -137,9 +129,6 @@ $check = static function (string $name, callable $body) use (&$failures, &$check
     }
 };
 
-// ------------------------------------------------------------------ the ways in
-
-// The very first example.
 $check('quick start: Markdown to Word', function () use ($work): void {
     $md = $work . '/README.md';
     file_put_contents($md, "# Title\n\nBody.\n");
@@ -166,12 +155,7 @@ $check('convert returns the result, save writes it', function () use ($work): vo
 
     assertTrue(str_starts_with($bytes, 'PK'), 'convert() did not return the document');
 
-    // Every part of the archive, not the archive itself. A zip records a
-    // timestamp per entry — two seconds of resolution, no sub-second part, no
-    // time zone — so two correct conversions whose writes fall either side of a
-    // boundary differ in those four bytes and agree in every other. Comparing
-    // the bytes made this check fail roughly three times in four on any machine
-    // slow enough to cross a boundary between the two writes.
+    // Parts, not the archive's bytes: `documentParts()` says why.
     assertTrue(
         documentParts($bytes) === documentParts((string) file_get_contents($document)),
         'save() wrote a different document from the one convert() returned',
@@ -187,8 +171,8 @@ $check('convert returns the result, save writes it', function () use ($work): vo
 $check('a string that names a file is read from it', function () use ($work): void {
     file_put_contents($work . '/path-or-content.md', "# Either way\n");
 
-    // A path, and the same text handed over directly. Anything that is not a file
-    // is the content, so the two produce the same document.
+    // Anything that is not a file is the content, so these two produce the same
+    // document.
     $fromPath = (new MarkdownToWord($work . '/path-or-content.md'))->convert();
     $fromText = (new MarkdownToWord(file_get_contents($work . '/path-or-content.md')))->convert();
 
@@ -230,13 +214,11 @@ $check('a round trip is two of them', function () use ($work): void {
     assertTrue(str_contains($back, 'A paragraph.'), 'the paragraph did not survive');
 });
 
-// --------------------------------------------------------------- installation
-
 // Neither of the two commands the page prints can be run here: one needs a
-// release that does not exist yet, the other a Composer install of the package
-// as a dependency. What is checked is everything behind them — the package name,
-// the `bin` entry the `vendor/bin/mdword` claim rests on, and the version the
-// phar block asks for.
+// release that does not exist yet, the other a Composer install of the package as
+// a dependency. What is checked is everything behind them — the package name, the
+// `bin` entry the `vendor/bin/mdword` claim rests on, and the version the phar
+// block asks for.
 $check('installation: the package, the bin entry and the version', function (): void {
     $composer = json_decode(
         (string) file_get_contents(__DIR__ . '/composer.json'),
@@ -259,8 +241,8 @@ $check('installation: the package, the bin entry and the version', function (): 
 
     assertTrue(is_file(__DIR__ . '/bin/mdword'), 'the file the `bin` entry names is not there');
 
-    // The phar block ends with `./mdword.phar --version`, and the archive's stub
-    // is this same script, so the version a release would report is this answer.
+    // The phar block ends with `./mdword.phar --version`, and the archive's stub is
+    // this same script, so the version a release would report is this answer.
     $version = self_cli(['--version']);
 
     assertTrue($version['code'] === 0, '--version exited ' . $version['code'] . ': ' . $version['err']);
@@ -269,8 +251,6 @@ $check('installation: the package, the bin entry and the version', function (): 
         'unexpected version output: ' . trim($version['out']),
     );
 });
-
-// ------------------------------------------------------- the command line
 
 $check('the command line works the direction out for itself', function () use ($work): void {
     file_put_contents($work . '/cli.md', "# From the command line\n");
@@ -291,7 +271,6 @@ $check('the command line works the direction out for itself', function () use ($
         'the document did not read back',
     );
 
-    // `--to` takes a short name for either direction as well as the long one.
     $short = self_cli(['--to', 'word', $work . '/cli.md', '-o', $work . '/cli-3.docx']);
     $shorter = self_cli(['--to', 'md', $work . '/cli-3.docx', '-o', '-']);
 
@@ -299,8 +278,6 @@ $check('the command line works the direction out for itself', function () use ($
     assertTrue($shorter['code'] === 0, '--to md exited ' . $shorter['code'] . ': ' . $shorter['err']);
     assertTrue(str_contains($shorter['out'], '# From the command line'), '--to md produced nothing');
 });
-
-// ----------------------------------------------------- Word to Markdown
 
 $check('Word to Markdown: convert, save and toMarkdown', function () use ($work): void {
     (new MarkdownToWord("# Bytes in hand\n"))->save($work . '/in-hand.docx');
@@ -338,8 +315,8 @@ $check('the reader takes its options from an array', function () use ($work): vo
 });
 
 // Every loss the page lists under "What the round trip does not preserve",
-// reproduced rather than read out of the code: a list of what is lost is only
-// worth having while it is true, and a reader who trusts it is building on it.
+// reproduced rather than read out of the code: a list of what is lost is worth
+// having only while it is true.
 $check('what the round trip does not preserve', function () use ($work): void {
     $back = static function (string $markdown, ?Configuration $config = null): string {
         $config ??= new Configuration();
@@ -358,7 +335,7 @@ $check('what the round trip does not preserve', function () use ($work): void {
     );
 
     // The delimiter row is the part that is rewritten, and the page shows the
-    // rewrite, so both halves of that sentence are held up here.
+    // rewrite, so what is asserted is the rewrite rather than merely a change.
     assertTrue(
         str_contains($table, '| :-- | :-- |'),
         "the delimiter row is not what the page shows:\n{$table}",
@@ -372,7 +349,6 @@ $check('what the round trip does not preserve', function () use ($work): void {
         "the column alignment did not survive:\n{$aligned}",
     );
 
-    // A fenced code block comes back without its language.
     $fenced = $back("```php\n\$x = 1;\n\$y = 2;\n```\n");
 
     assertTrue(
@@ -416,9 +392,6 @@ $check('what the round trip does not preserve', function () use ($work): void {
     );
 });
 
-// ------------------------------------------------------------------ templates
-
-// The template example, including a template that defines its own styles.
 $check('template', function () use ($work): void {
     $phpWord = new PhpWord();
     $phpWord->addFontStyle('ReportTitle', ['bold' => true, 'size' => 20], new Paragraph());
@@ -467,9 +440,9 @@ $check('template', function () use ($work): void {
 });
 
 $check('renderIntoContainer renders into a container you name', function () use ($work): void {
-    // The same render as `toDocx()`, into a container rather than into a
-    // document. Nothing is written here, which is the point: the caller is writing
-    // the document out, so the destination is the authority on its styles.
+    // The same render as `toDocx()`, into a container rather than into a document.
+    // Nothing is written here, which is the point: the caller writes the document
+    // out, so the destination is the authority on its styles.
     $phpWord = new PhpWord();
     $converter = new MarkdownToWord(null, new Configuration());
 
@@ -495,8 +468,6 @@ $check('the template hands back PHPWord\'s own processor', function () use ($wor
         'processor() did not return a TemplateProcessor',
     );
 });
-
-// ------------------------------------------------------------- configuration
 
 $check('configuration from a chain', function (): void {
     $config = Configuration::create()
@@ -534,7 +505,7 @@ $check('a configuration gives its array back', function (): void {
     assertTrue(isset($array['styles'], $array['options']), 'the array is not in two parts');
     assertTrue($array['styles'][Styles::HEADING_1] === 'Heading1', 'the styles are not in it');
     assertTrue($array['options']['tableBorders'] === false, 'the options are not in it');
-    // Round trip: what comes out can go back in.
+
     assertTrue(
         Configuration::fromArray($array)->getOptions()->tableBorders === false,
         'the array did not survive Configuration::fromArray()',
@@ -565,8 +536,6 @@ $check('the reader options survive the array they are written in', function (): 
 $check('the style slots can be read and replaced one at a time', function (): void {
     $styles = new Styles();
 
-    // `defaults()` is what a new instance starts from, `heading()` resolves a
-    // level, and `with()` returns a new instance with one slot replaced.
     assertTrue($styles->toArray() === Styles::defaults(), 'a new instance is not the defaults');
     assertTrue($styles->heading(1) === 'Heading1', 'level 1 is not Heading1');
     assertTrue($styles->heading(9) === 'Heading6', 'a level past the sixth is not the sixth');
@@ -576,8 +545,6 @@ $check('the style slots can be read and replaced one at a time', function (): vo
     assertTrue($changed->get(Styles::HEADING_1) === 'CorpTitle', 'the slot was not replaced');
     assertTrue($styles->get(Styles::HEADING_1) === 'Heading1', 'the original was changed');
 });
-
-// -------------------------------------------------------------- advanced use
 
 $check('advanced: compose with PhpWord', function () use ($work): void {
     $phpWord = new PhpWord();
@@ -595,10 +562,9 @@ $check('advanced: compose with PhpWord', function () use ($work): void {
 
     assertTrue(is_file($work . '/report.docx'), 'no file written');
 
-    // `toDocx()` renders the Markdown into the document it is handed, so the
-    // example renders once. An example that also called `renderIntoContainer()`
-    // with the same section first would have the chapter in the document twice,
-    // and the count is what says so.
+    // `toDocx()` renders into the document it is handed, so the example renders
+    // once: an example that also called `renderIntoContainer()` with the same
+    // section first would have the chapter in the document twice.
     $readBack = (new WordToMarkdown($document))->convert();
 
     assertTrue(str_contains($readBack, 'Annual Report'), 'the title went missing');
@@ -629,15 +595,12 @@ $check('the syntax tree is there for callers that want it', function (): void {
     assertTrue($urls === ['https://example.test'], 'unexpected pending hyperlinks: ' . implode(', ', $urls));
 
     // The shape as well as the URLs. The sample on the page is a shape, and
-    // checking only the URLs left nothing holding it up: a sample whose token had
-    // the marker on one side of the index rather than both survived a whole pass
-    // over this page, because the URL was right and nothing looked at the rest.
+    // checking only the URLs left nothing holding it up.
     assertTrue(
         array_keys($pending[0]) === ['placeholder', 'url', 'title', 'runs'],
         'the pending hyperlink has the wrong keys: ' . implode(', ', array_keys($pending[0])),
     );
 
-    // `MARKER . $index . MARKER`, twice over — which is what the sample shows.
     $token = $pending[0]['placeholder'];
 
     assertTrue(
@@ -679,11 +642,8 @@ $check('parser flavours', function (): void {
     }
 });
 
-// The two rows of the supported-Markdown table that name a parser, and the
-// mistake they had between them: task lists are GFM, GFM is the default, and a
-// table that says otherwise sends a reader looking for a reason to add an
-// extension they do not need while leaving them to think task lists are not
-// there by default. They are.
+// The two rows of the supported-Markdown table that name a parser, and the mistake
+// they had between them: task lists are GFM, and GFM is the default.
 $check('the default parser: what needs extended() and what does not', function (): void {
     $back = static function (string $markdown, ?CommonMarkParser $parser = null): string {
         $document = (new MarkdownToWord($markdown, new Configuration(), $parser))->convert();
@@ -691,9 +651,9 @@ $check('the default parser: what needs extended() and what does not', function (
         return (new WordToMarkdown($document))->convert();
     };
 
-    // A task list, through the default parser, unchanged in both directions —
-    // the round trip's missing trailing newline and all, which is a loss of its
-    // own and is listed as one on the page.
+    // A task list, through the default parser, unchanged in both directions — the
+    // round trip's missing trailing newline and all, which is a loss of its own
+    // and is listed as one on the page.
     $tasks = "- [ ] todo\n- [x] done\n";
     assertTrue(
         $back($tasks) === "- [ ] todo\n- [x] done",
@@ -709,9 +669,8 @@ $check('the default parser: what needs extended() and what does not', function (
         'the task list markers are not the ballot boxes: ' . json_encode($boxes),
     );
 
-    // A footnote is not GFM. Without the extension the marker survives as
-    // escaped literal text, which is what makes the caveat on the page true for
-    // footnotes: the brackets are escaped, so it is not a footnote reference.
+    // A footnote is not GFM. Without the extension the marker survives as escaped
+    // literal text, which is what makes the caveat on the page true for footnotes.
     $footnote = "Text[^1]\n\n[^1]: A note.\n";
     $plain = $back($footnote);
 
@@ -720,8 +679,6 @@ $check('the default parser: what needs extended() and what does not', function (
         'a footnote was recognised without extended(): ' . json_encode($plain),
     );
 
-    // With the extension it is a real footnote, so the marker is consumed rather
-    // than escaped and the note text moves into the document body.
     $extended = $back($footnote, CommonMarkParser::extended());
 
     assertTrue(
@@ -739,8 +696,6 @@ $check('the default parser: what needs extended() and what does not', function (
     );
 });
 
-// -------------------------------------------------------------------- helpers
-
 function assertTrue(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -749,10 +704,7 @@ function assertTrue(bool $condition, string $message): void
 }
 
 /**
- * `word/document.xml` out of a `.docx`, as bytes.
- *
- * Compared instead of the archive because a zip records an entry's timestamp, so
- * two correct conversions of the same input are never byte-identical.
+ * Compared instead of the archive: see `documentParts()` for what a clock changes.
  */
 function self_documentBody(string $docx): string
 {
@@ -769,8 +721,6 @@ function self_documentBody(string $docx): string
 }
 
 /**
- * Run the command line in process, and hand back what it did.
- *
  * @param list<string> $argv
  * @return array{code: int, out: string, err: string}
  */
@@ -801,17 +751,12 @@ function self_cli(array $argv, string $stdin = ''): array
     return $result;
 }
 
-/**
- * A small red square, for the example that takes an image out of a document.
- */
 function self_redSquare(string $path): void
 {
     $image = imagecreatetruecolor(16, 16);
     imagefilledrectangle($image, 0, 0, 16, 16, imagecolorallocate($image, 0x8B, 0x1A, 0x1A));
     imagepng($image, $path);
 }
-
-// ---------------------------------------------------------------------- done
 
 UpstreamDeprecations::restore();
 
@@ -824,13 +769,9 @@ echo $failures === 0
 exit($failures === 0 ? 0 : 1);
 
 /**
- * Remove a directory and everything in it.
- *
  * The whole tree, because an example is allowed to make a directory of its own —
- * the one that takes images out of a document does — and a check that leaves one
- * behind is a check whose output is a mystery to whoever finds it next. Only this
- * script's own directory goes: the suite writes to `tmp/pest` beside it and must
- * not lose it.
+ * the one that takes images out of a document does. Only this script's own
+ * directory goes: the suite writes to `tmp/pest` beside it and must not lose it.
  */
 function self_removeTree(string $directory): void
 {

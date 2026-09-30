@@ -6,12 +6,10 @@ declare(strict_types=1);
 /**
  * Does this library work on this version of PHP?
  *
- * The test suite needs Pest, and Pest 5 needs PHP 8.4. The library itself
- * supports PHP 8.2, so on the older versions there would otherwise be nothing at
- * all running: a syntax error, a missing extension or a broken autoloader would
- * not be noticed until somebody tried to install it.
- *
- * This covers that gap. It uses no test framework, so it runs anywhere the
+ * The test suite needs Pest, and Pest 5 needs PHP 8.4, so on the older versions
+ * the library supports there would otherwise be nothing running: a syntax error,
+ * a missing extension or a broken autoloader would not be noticed until somebody
+ * tried to install it. This uses no test framework, so it runs anywhere the
  * library claims to run, and it checks both directions plus the command line —
  * `stress.php` only exercises the way into Word.
  *
@@ -20,11 +18,11 @@ declare(strict_types=1);
  * php smoke.php build/mdword.phar   # a phar as well, if one has been built
  * ```
  *
- * The phar is a separate program with its own dependencies inside it, so the
+ * The phar is a program of its own with its own dependencies inside it, so the
  * library passing says nothing about whether the archive that ships it runs.
  * Pointed at one, this runs it in a child process and converts a document through
- * it both ways — which is the only way to check that a phar works, since the
- * extensions and `phar.readonly` it needs belong to the PHP that runs it.
+ * it both ways: the extensions and `phar.readonly` it needs belong to the PHP
+ * that runs it, so no other check could answer for it.
  */
 
 require __DIR__ . '/vendor/autoload.php';
@@ -38,17 +36,13 @@ $checks = 0;
 $failures = 0;
 $phar = $argv[1] ?? getenv('MDWORD_PHAR') ?: null;
 
-// One dependency emits a deprecation for every list item it writes; see the class
-// for why. Without this the run prints thousands of lines of somebody else's
-// warning and buries anything real.
+// One dependency emits a deprecation for every list item it writes, and the run
+// would print thousands of somebody else's lines; see the class for why.
 UpstreamDeprecations::install();
 
 $work = __DIR__ . '/tmp/smoke';
 @mkdir($work, 0o777, true);
 
-/**
- * Check one thing, counting it either way.
- */
 function check(string $what, callable $test): void
 {
     global $checks, $failures;
@@ -85,9 +79,6 @@ function normalise(string $markdown): string
     return implode("\n", array_filter($lines, static fn (string $line): bool => $line !== ''));
 }
 
-/**
- * One part of a document inside the zip archive, or null when it is not there.
- */
 function part(string $docx, string $name): ?string
 {
     $zip = new ZipArchive();
@@ -102,8 +93,6 @@ function part(string $docx, string $name): ?string
     return $contents === false ? null : $contents;
 }
 
-// ------------------------------------------------------------- requirements
-
 echo 'PHP ' . PHP_VERSION . "\n\n";
 
 check('the extensions the library needs are loaded', static function (): bool|string {
@@ -114,8 +103,6 @@ check('the extensions the library needs are loaded', static function (): bool|st
 
     return $missing === [] ? true : 'missing: ' . implode(', ', $missing);
 });
-
-// ------------------------------------------------------------ into a document
 
 $sample = <<<'MD'
     # Heading
@@ -185,8 +172,6 @@ check('the hyperlink placeholder did not survive into the document', static func
         : true;
 });
 
-// ------------------------------------------------------------ back out again
-
 $markdown = '';
 
 check('the document converts back to Markdown', static function () use ($docx, &$markdown): bool|string {
@@ -208,9 +193,9 @@ foreach ([
     'the code itself' => '$y = sqrt($x);',
     'a table' => '| 1 | 2 |',
 ] as $what => $needle) {
-    // Skipped rather than failed when the conversion above produced nothing: the
-    // eleven checks below all look for the same thing in the same empty string, so
-    // reporting them one by one would turn one defect into twelve.
+    // Skipped rather than failed when the conversion above produced nothing: every
+    // check in this loop looks for its own construct in the same empty string, so
+    // reporting them one by one would report one defect once per construct.
     if ($markdown === '') {
         echo 'SKIP  the round trip keeps ' . $what . ": nothing was read back\n";
         $checks++;
@@ -263,8 +248,6 @@ check('something that is not a document is reported, not swallowed', static func
 
     return 'no exception was thrown';
 });
-
-// ------------------------------------------------------------- command line
 
 check('the command line converts in both directions', static function () use ($sample, $work): bool|string {
     $source = $work . '/cli.md';
@@ -322,8 +305,6 @@ check('the command line reports its version', static function (): bool|string {
         : 'exited ' . $exit . ' saying "' . trim($text) . '"';
 });
 
-// ------------------------------------------------------------------ the phar
-
 if ($phar !== null && $phar !== '') {
     $havePhar = is_file($phar);
 
@@ -339,8 +320,7 @@ if ($phar !== null && $phar !== '') {
         check('the phar runs on this version of PHP', static function () use ($phar): bool|string {
             // A child process, because a phar is a program of its own: what is
             // being checked is that *that* program starts, with whatever it carries
-            // inside it, rather than that this process can reach inside the
-            // archive.
+            // inside it, rather than that this process can reach inside the archive.
             $code = runPhar([$phar, '--version']);
 
             if ($code === null) {
@@ -384,8 +364,6 @@ if ($phar !== null && $phar !== '') {
     }
 }
 
-// --------------------------------------------------------------------- done
-
 echo "\n{$checks} checks, {$failures} failure(s)\n";
 
 UpstreamDeprecations::restore();
@@ -395,10 +373,8 @@ removeTree($work);
 exit($failures === 0 ? 0 : 1);
 
 /**
- * Remove a directory and everything in it, and only that.
- *
- * `tmp` is shared with the test suite and with the other checks at the root of the
- * repository, so nothing outside this run's own directory is touched.
+ * Only this run's own directory goes: `tmp` is shared with the test suite and with
+ * the other checks at the root of the repository.
  */
 function removeTree(string $directory): void
 {
@@ -416,17 +392,15 @@ function removeTree(string $directory): void
 }
 
 /**
- * Run the phar in a child process and hand back its exit code.
+ * Runs the phar in a child process and hands back its exit code.
  *
  * Null where no child process could be started — `proc_open` disabled, which some
  * build hosts do — so the caller can skip rather than report a phar that was never
- * asked a question. A phar needs the extensions of the PHP that runs it, so this
- * is the only place a check like this can honestly live.
+ * asked a question.
  *
  * The command is an array, so it is executed directly rather than through a shell
  * and nothing here has to be quoted: a path with a space in it is one argument
- * rather than two, and a path that is not there fails the way a missing file
- * should.
+ * rather than two.
  *
  * @param list<string> $arguments
  */
