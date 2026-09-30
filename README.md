@@ -5,6 +5,10 @@
 [![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=fabeat_markdown-word&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=fabeat_markdown-word)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=fabeat_markdown-word&metric=coverage)](https://sonarcloud.io/summary/new_code?id=fabeat_markdown-word)
 
+[![Latest release](https://img.shields.io/github/v/release/fabeat/markdown-word)](https://github.com/fabeat/markdown-word/releases/latest)
+[![Licence](https://img.shields.io/github/license/fabeat/markdown-word)](https://github.com/fabeat/markdown-word#licence)
+[![php](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffabeat%2Fmarkdown-word%2Fmain%2Fcomposer.json&query=%24.require.php&label=php&logo=php&logoColor=white)](https://github.com/fabeat/markdown-word#requirements)
+
 Convert Markdown to Word documents in pure PHP — and back again.
 
 Parsing is done by [`league/commonmark`][commonmark], writing by
