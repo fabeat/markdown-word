@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # The jobs below install what the lock file pins, so nothing upstream can break
+  # a build without anyone noticing. This is the one that resolves afresh, to find
+  # out when it does.
+  schedule:
+    - cron: '17 6 * * 1'
 
 # One push does not need five runs; the last is enough.
 concurrency:
@@ -17,24 +22,22 @@ jobs:
     name: quality
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
           php-version: '8.5'
           coverage: none
           tools: composer:v2
 
       # A manifest that does not validate is not worth running anything else
-      # against. There is no lock file to check here: this is a library, and one
-      # is deliberately not committed.
-      - name: Validate composer.json
+      # against, and the lock file has to match it or the install below would
+      # quietly resolve something else.
+      - name: Validate the manifest and the lock file
         run: composer validate --strict
 
-      # Installed before the audit, because the audit reads what was installed —
-      # run first it has nothing to look at.
       - name: Install
-        run: composer update --prefer-dist --no-interaction --no-progress
+        run: composer install --prefer-dist --no-interaction --no-progress
 
       - name: Known security advisories
         run: composer audit --no-interaction
@@ -59,30 +62,29 @@ jobs:
     name: php 8.2 (minimum)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
           php-version: '8.2'
           coverage: none
           tools: composer:v2
 
-      # `composer update --no-dev` would not do: the development requirements are
-      # still resolved even when they are not installed, so a test framework
-      # needing PHP 8.4 blocks the install here. The runtime-only manifest
-      # installs what a consumer installs, resolved fresh — so a runtime
-      # dependency dropping 8.2 still fails this job.
+      # `--no-dev` so the test framework is not installed — it needs PHP 8.4, and
+      # the whole point here is what works on 8.2. The lock file is why that is
+      # enough: the development requirements are read from it rather than
+      # resolved, and `--no-dev` skips them. Without a lock file this would have
+      # to be a runtime-only manifest, because `composer update --no-dev` still
+      # *resolves* the development requirements even when it does not install them.
       - name: Install the runtime dependencies
-        run: |
-          php tools/resolve-runtime.php
-          COMPOSER=composer.runtime.json composer update --prefer-dist --no-interaction --no-progress
+        run: composer install --prefer-dist --no-interaction --no-progress --no-dev
 
-      # Names the version and every requirement if something below fails for a
-      # platform reason, rather than leaving it to be inferred.
+      # Names the version and every requirement, so a platform failure says which
+      # package wanted what rather than leaving it to be inferred.
       - name: The platform is what we asked for
         run: |
           php -v
-          COMPOSER=composer.runtime.json composer check-platform-reqs
+          composer check-platform-reqs --no-dev
 
       - name: The library works on this version
         run: php smoke.php
@@ -100,9 +102,9 @@ jobs:
       matrix:
         php: ['8.4', '8.5']
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
           php-version: ${{ matrix.php }}
           # pcov rather than xdebug: it is roughly an order of magnitude faster
@@ -111,7 +113,7 @@ jobs:
           tools: composer:v2
 
       - name: Install
-        run: composer update --prefer-dist --no-interaction --no-progress
+        run: composer install --prefer-dist --no-interaction --no-progress
 
       - name: Test
         run: vendor/bin/pest
@@ -127,8 +129,45 @@ jobs:
 
       - name: Upload the coverage report
         if: matrix.php == '8.5'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: coverage
           path: build/coverage
           retention-days: 7
+
+  # Everything above installs what the lock file pins, so a build is repeatable.
+  # The cost of that is hearing nothing when a dependency publishes something
+  # that breaks us, so this resolves afresh and runs the suite against the result.
+  # It is the one place `composer update` belongs.
+  dependencies:
+    name: dependencies have moved
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.5'
+          coverage: none
+          tools: composer:v2
+
+      - name: Resolve the newest versions
+        run: composer update --prefer-dist --no-interaction --no-progress
+
+      - name: What changed
+        run: git --no-pager diff --stat composer.lock
+
+      - name: The suite still passes
+        run: vendor/bin/pest
+
+      # A runtime dependency that stops supporting the version the library claims
+      # is the failure worth catching, and the minimum job cannot see it while it
+      # installs from the lock. Resolved against a simulated 8.2, so a resolution
+      # that fails here says which package gave up which version.
+      - name: The minimum version still resolves
+        run: |
+          php tools/resolve-runtime.php
+          composer config --file=composer.runtime.json platform.php 8.2.99
+          COMPOSER=composer.runtime.json composer update \
+            --prefer-dist --no-interaction --no-progress --dry-run

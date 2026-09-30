@@ -61,7 +61,13 @@ final class HtmlText
      */
     private static function stripComments(string $html): string
     {
-        return (string) preg_replace('/<!--(?:->|>|[\s\S]*?-->|[\s\S]*$)/', '', $html);
+        // Grouped so the order the alternatives are tried in is stated rather than
+        // left to be inferred: the abrupt-closing forms first, then a real comment,
+        // then an unterminated one, which has to swallow the rest of the input.
+        //
+        // The `/s` flag lets `.` cross a newline, which is what the alternative
+        // matching to the end needs, rather than spelling it `[\s\S]` twice.
+        return (string) preg_replace('/(<!--(?:->|>|.*?-->|.*$))/s', '', $html);
     }
 
     private static function walk(\DOMNode $node, bool $preserveWhitespace): string
