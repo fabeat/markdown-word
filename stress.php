@@ -33,16 +33,13 @@ use MarkdownWord\Text\TextExtractor;
 use PhpOffice\PhpWord\IOFactory;
 use PhpOffice\PhpWord\PhpWord;
 
-// One dependency emits a deprecation for every list item it writes; see the class
-// for why. Without this the run prints thousands of lines of somebody else's
-// warning and buries anything real.
+// One dependency emits a deprecation for every list item it writes, and the run
+// would print thousands of somebody else's lines; see the class for why.
 UpstreamDeprecations::install();
 
 $work = __DIR__ . '/tmp/stress';
 @mkdir($work, 0o777, true);
 
-// Deliberately awkward input: malformed nesting, unbalanced delimiters, very
-// deep structures, stray control characters and enormous documents.
 $cases = [
     'empty' => '',
     'whitespace only' => "   \n\t\n  \n",
@@ -79,10 +76,8 @@ $cases = [
 ];
 
 /**
- * The cases whose document is allowed to carry no text at all.
- *
- * Anything with content in it has to come out with that content still in it; these
- * are the ones where there was never any to lose.
+ * The cases whose document is allowed to carry no text at all: there was never any
+ * to lose, while anything with content in it has to come out with that content.
  */
 $noTextExpected = [
     'empty' => true,
@@ -152,8 +147,6 @@ function self_mixed(): string
 }
 
 /**
- * The body of a document, checked on the way out.
- *
  * "Word will open it" means the archive is a zip and `word/document.xml` is XML,
  * short of opening it. Read from the archive rather than from the file: the file
  * is compressed, and looking for a placeholder in compressed bytes finds one by
@@ -202,11 +195,9 @@ $parsers = [
     'every extension' => CommonMarkParser::withAllExtensions(),
 ];
 
-// The template renderer takes a configuration but no parser, so two of the nine
-// above are the default configuration again: what is left are the ones that change
-// how a document is written rather than how the Markdown is read. The template
-// path runs those, and says so, rather than reporting a configuration it was not
-// given.
+// The template renderer takes a configuration but no parser, so the configurations
+// named in $parsers are left out: they would run as the default and be reported
+// under a name that is not what was given.
 $templateConfigurations = array_filter(
     $configurations,
     static fn ($config, string $name): bool => !isset($parsers[$name]),
@@ -255,10 +246,9 @@ foreach ($configurations as $configName => $config) {
     }
 }
 
-// The template path has to survive the same treatment, with the same
-// configurations: it renders the same Markdown into a document that was not built
-// for it, and a configuration that works only on the way into a new document is
-// not a configuration that works.
+// The template path has to survive the same treatment with the same
+// configurations: a configuration that works only on the way into a new document
+// is not a configuration that works.
 $templatePath = $work . '/template.docx';
 
 $blank = new PhpWord();
@@ -302,9 +292,6 @@ echo "\n{$checks} checks, {$failures} failure(s)\n";
 
 exit($failures === 0 ? 0 : 1);
 
-/**
- * Remove a directory and everything in it, and only that.
- */
 function self_removeTree(string $directory): void
 {
     foreach (scandir($directory) ?: [] as $entry) {

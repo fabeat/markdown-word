@@ -11,23 +11,19 @@ declare(strict_types=1);
  * composer build:phar
  * ```
  *
- * The archive carries the library and its two runtime dependencies and nothing
- * else. The development dependencies are left out, which is most of why it is
- * around a megabyte rather than the tens of megabytes the test suite brings
- * with it — and the dependencies' own test suites, documentation and static
- * analysis configuration are pruned before they go in, so the archive is the
- * code that runs and nothing else.
- *
  * The dependencies are installed into a directory of their own rather than into
  * the project, because `composer install --no-dev` in the project would delete
- * the test tools from `vendor/` and the next `composer test` would fail.
+ * the test tools from `vendor/` and the next `composer test` would fail. Their
+ * own test suites, documentation and analysis configuration are pruned out of
+ * the archive.
  *
- * The build is reproducible: the same source tree produces the same bytes, so
- * two machines — or two runs on one — can be compared by checksum. See
- * `resolveEpoch()` and `normaliseTimestamps()` for what that costs; the short
- * version is that PHP's Phar extension stamps every entry with the time the
- * archive was written and offers no way to say otherwise, so the timestamps are
- * rewritten afterwards.
+ * Two builds of one source tree on one runner, PHP and zlib produce the same
+ * bytes, and `phar.yml` compares the checksums to keep it that way. Two
+ * different PHP builds are not promised: the compressor has a say in that too.
+ * What the script controls is in `resolveEpoch()` and `normaliseTimestamps()` —
+ * the short version is that the Phar extension stamps every entry with the time
+ * the archive was written and offers no way to say otherwise, so the timestamps
+ * are rewritten after.
  *
  * `phar.readonly` is `On` in most PHP installations, which is the right default
  * and cannot be changed at runtime. Rather than refuse, this script re-runs
@@ -36,8 +32,6 @@ declare(strict_types=1);
  */
 
 use MarkdownWord\Console\Application;
-
-// Re-exec
 
 if (ini_get('phar.readonly')) {
     $command = sprintf(
@@ -53,9 +47,8 @@ if (ini_get('phar.readonly')) {
 }
 
 // The name and the version of the tool come from the class it drives, so the
-// project's own autoloader has to be loadable. Saying so plainly beats a fatal
-// error about a missing file, which is what this used to produce on a machine
-// with no `vendor/` — such as a fresh continuous integration runner.
+// project's own autoloader has to be loadable; saying so plainly beats the
+// fatal error about a missing file this used to produce on a fresh CI runner.
 if (!is_file($autoloader = __DIR__ . '/../vendor/autoload.php')) {
     fwrite(STDERR, "build:phar needs the project's dependencies for its autoloader.\n"
         . "Run `composer install` first, or `composer install --no-dev` when you\n"
@@ -67,11 +60,6 @@ if (!is_file($autoloader = __DIR__ . '/../vendor/autoload.php')) {
 
 require $autoloader;
 
-// Helpers
-
-/**
- * Ask a yes/no question, defaulting to yes.
- */
 function confirm(string $question): bool
 {
     if (!stream_isatty(STDIN)) {
@@ -85,9 +73,6 @@ function confirm(string $question): bool
     return $answer === '' || $answer === 'y' || $answer === 'yes';
 }
 
-/**
- * Run a command, stopping the build if it fails.
- */
 function run(string $command, string $what): void
 {
     fwrite(STDOUT, sprintf('  %-44s', $what));
@@ -95,9 +80,8 @@ function run(string $command, string $what): void
     $output = [];
     $status = 0;
 
-    // Standard input is closed for the child, so that a Composer command asking
-    // a question — or waiting on one that was never asked — cannot leave the
-    // build waiting on a terminal that is not there.
+    // Standard input is closed, as it is in `capture()`: a child that inherits
+    // this one waits on a terminal that is not there.
     exec($command . ' 2>&1 < /dev/null', $output, $status);
 
     if ($status !== 0) {
@@ -111,12 +95,12 @@ function run(string $command, string $what): void
 }
 
 /**
- * Run a command for its output, with standard input closed.
+ * Run a command for its output.
  *
- * Every other way of shelling out in this script redirects from `/dev/null`.
- * An inherited standard input is how a build that should have taken four
- * seconds ends up waiting on a terminal that is not there: the reading end has
- * no writer and the child never sees end of file.
+ * An inherited standard input is how a build that should have taken moments ends
+ * up waiting on a terminal that is not there: the reading end has no writer and the
+ * child never sees end of file. Every way of shelling out in this script closes it
+ * for the same reason.
  */
 function capture(string $command): string
 {
@@ -138,17 +122,11 @@ function copyInto(string $from, string $to): void
     );
 }
 
-// Pruning
-
 /**
- * Directories that hold nothing the archive can use.
- *
- * Every package installs its own test suite, its documentation and its CI
- * configuration, and none of it is code the archive ever loads. `phpoffice/math`
- * alone brings 17 test files (156 KiB) and 16 documentation files (14 KiB), and
- * it is a package the archive cannot write a document without.
- *
- * Matched against the name of any directory below `vendor/`, at any depth.
+ * Every package installs a test suite, documentation and CI configuration of its
+ * own, and none of it is code the archive loads — `phpoffice/math` is in this
+ * tree and the archive cannot write a document without it. Matched on the
+ * directory's own name, at any depth below `vendor/`.
  */
 const PRUNED_DIRECTORIES = [
     '.git',
@@ -160,11 +138,8 @@ const PRUNED_DIRECTORIES = [
 ];
 
 /**
- * Files that hold nothing the archive can use.
- *
- * Matched against the name of any file below `vendor/`, at any depth. These are
- * patterns rather than a plain list because the packages are not ours and their
- * configuration files are not in our keeping.
+ * Matched on a file's own name, at any depth below `vendor/`, as patterns because
+ * the packages are not ours.
  */
 const PRUNED_FILES = [
     'phpstan*',
@@ -181,22 +156,19 @@ const PRUNED_FILES = [
 ];
 
 /**
- * Files that match `PRUNED_FILES` but are loaded at runtime.
+ * Files that match `PRUNED_FILES` and are loaded at runtime anyway.
  *
  * `PhpWord\Settings::loadConfig()` with no argument falls back to
- * `phpword.ini.dist` in the package root, and a file that is gone is a file
- * whose settings silently stop applying. Pruning it would be a behavioural
- * change dressed up as a size saving, so it stays and the exception is named
- * here rather than hidden in a condition.
+ * `phpword.ini.dist` in the package root, and a file that is gone is a file whose
+ * settings silently stop applying: pruning it would be a behavioural change
+ * dressed up as a size saving.
  */
 const PRUNED_FILE_EXCEPTIONS = [
-    // Matched against the path relative to the vendor directory.
+    // Matched against the path relative to the vendor directory, not the name.
     'phpoffice/phpword/phpword.ini.dist',
 ];
 
 /**
- * Delete the development-only parts of the dependency tree.
- *
  * Reports what it removed rather than what it was asked to remove, because a
  * pattern that quietly matched something a package needed at runtime would
  * otherwise show up as a broken archive — or, worse, not at all.
@@ -252,8 +224,9 @@ function prune(string $vendor): array
         unlink($path);
     }
 
-    // Deepest first, so a `tests` inside a pruned `docs` is already gone and
-    // `rmdir` is not called on a directory that still has something in it.
+    // Reverse order puts a directory ahead of the ones nested inside it, so a
+    // nested one is already gone when it is reached: the guard below skips it, and
+    // its files are counted with the parent that took them.
     rsort($directories, SORT_STRING);
 
     foreach ($directories as $relative) {
@@ -284,21 +257,18 @@ function prune(string $vendor): array
     return $pruned;
 }
 
-// Reproducibility
-
 /**
  * The instant every part of the archive is stamped with.
  *
- * `SOURCE_DATE_EPOCH` wins when it is set, which is what the reproducible
- * builds convention says and what a release should do: the tag's own commit
- * date is the most meaningful timestamp an artifact can carry. Without it, the
- * newest modification time of the *authored* sources is used, so a checkout
- * that has not been touched still builds the same bytes twice.
+ * `SOURCE_DATE_EPOCH` wins when it is set, which is the reproducible builds
+ * convention and what a release should do: the tag's own commit date is the most
+ * meaningful timestamp an artifact can carry. Without it the newest modification
+ * time of the *authored* sources is used, so a checkout nothing has touched since
+ * builds the same bytes twice.
  *
- * `vendor/` is deliberately not consulted. Those files were extracted by
- * Composer a moment ago and their modification times say when the machine built
- * the archive rather than when the code was written, which would make the
- * archive's timestamp — and so the archive — different on every machine.
+ * `vendor/` is deliberately not consulted. Composer extracted those files a
+ * moment ago, so their times say when this machine ran rather than when the code
+ * was written, and a fresh install would give every entry a new stamp.
  */
 function resolveEpoch(string $root): int
 {
@@ -343,8 +313,6 @@ function resolveEpoch(string $root): int
     return $newest === 0 ? time() : $newest;
 }
 
-// Phar internals
-
 function readUint32(string $raw, int &$offset): int
 {
     $value = unpack('V', substr($raw, $offset, 4));
@@ -372,9 +340,9 @@ function readUint16(string $raw, int &$offset): int
 /**
  * Where the archive's own data begins, just after the stub.
  *
- * `__HALT_COMPILER();` ends the stub. What follows is up to PHP: it writes a
- * closing tag and a line ending, and `setStub()` will add both for us, but a
- * stub written without them is equally valid, so both are accepted.
+ * `__HALT_COMPILER();` ends the stub and PHP writes a closing tag and a line
+ * ending after it, but `setStub()` adds both for us and a stub written without
+ * them is equally valid, so every combination is accepted.
  */
 function dataStart(string $raw): int
 {
@@ -400,11 +368,11 @@ function dataStart(string $raw): int
 /**
  * The offset of every entry's timestamp, and the end of the manifest.
  *
- * The manifest is written before the file contents, which follow it in manifest
- * order, and the four bytes at its head are the length of the rest of it. So
- * the length is both the way to find its end and the check that the walk below
- * read it correctly: if the entries do not add up to it, this PHP has written
- * something this does not understand, and the build stops rather than guess.
+ * The manifest comes before the file contents, which follow it in manifest
+ * order, and its first four bytes are the length of the rest of it. So the length
+ * is both how the end is found and the check that the walk below read it
+ * correctly: entries that do not add up to it mean this PHP wrote a layout this
+ * does not understand, and the build stops rather than guess.
  *
  * @return array{timestamps: list<array{offset: int, name: string}>, end: int, metadata: string}
  */
@@ -452,10 +420,10 @@ function readManifest(string $raw): array
 /**
  * The hash algorithm, and the offset of the signature, for a written archive.
  *
- * The signature covers everything before it — stub, manifest and file contents
- * — and is followed by the literal `GBMB`, which is the last four bytes of the
- * file. The function checks the arithmetic against the signature PHP itself
- * read back, so a layout that does not add up is refused instead of rewritten.
+ * The signature covers everything before it — stub, manifest and file contents —
+ * and is followed by the literal `GBMB`, the last four bytes of the file. The
+ * arithmetic is checked against the signature PHP itself read back, so a layout
+ * that does not add up is refused instead of rewritten.
  *
  * @return array{algorithm: string, offset: int, length: int}
  */
@@ -503,18 +471,18 @@ function locateSignature(string $raw, Phar $phar): array
 /**
  * Give every entry the same, chosen modification time.
  *
- * `Phar::addFile()` records `time()` at the moment the archive is flushed — not
- * the file's own modification time, and not anything this script can pass in.
+ * `Phar::addFile()` records `time()` as the archive is flushed — not the file's
+ * own modification time, and not anything that can be passed in.
  * `PharFileInfo::setMTime()` no longer exists, a custom `SplFileInfo` handed to
  * `buildFromIterator()` is ignored, and no released PHP consults
  * `SOURCE_DATE_EPOCH` (php-src#20570 will). So the timestamps are written into
  * the manifest directly and the signature is recalculated over the result.
  *
- * Everything is then checked against the bytes that were written, and the
+ * Every one of those is checked against the bytes that were written, and the
  * artifact is deleted if any of it does not hold: an archive this script
  * rewrote into something it merely believes is still a corrupt archive. The
- * version and round-trip checks further down are what prove that PHP itself can
- * still read it, and they run the archive in a process that has no cache of it.
+ * version and round-trip checks below are what prove PHP itself can still read
+ * it, and they run the archive in a process that has no cache of it.
  */
 function normaliseTimestamps(string $target, int $epoch): void
 {
@@ -573,17 +541,15 @@ function normaliseTimestamps(string $target, int $epoch): void
     }
 }
 
-// Paths
-
 $root = dirname(__DIR__);
 $build = $root . '/build';
 $deps = $build . '/deps';
 $app = $build . '/app';
 $target = $build . '/mdword.phar';
 
-// A `composer.phar` in the project root is preferred, since that is the same
-// version whoever installed the dependencies used; the `composer` on the PATH is
-// the next best thing.
+// A `composer.phar` in the project root is preferred: that is the version
+// whoever installed the dependencies used, and the `composer` on the PATH is
+// whatever the machine happens to carry.
 $composerPhar = $root . '/composer.phar';
 
 $composer = is_file($composerPhar)
@@ -597,17 +563,15 @@ if ($composer === '') {
     exit(1);
 }
 
-// The instant every part of the archive will be stamped with, resolved before
-// anything is copied so that it describes the sources rather than the staging
-// directory.
+// Resolved before anything is copied, so the stamp describes the sources rather
+// than the staging directory.
 $epoch = resolveEpoch($root);
 
 fwrite(STDOUT, sprintf("Building %s %s\n\n", Application::NAME, Application::VERSION));
 
-// Staging
-
-// Built from scratch every time, so a dependency that has since been removed
-// cannot linger in the archive.
+// Cleared rather than reused, so a dependency that has since been removed cannot
+// linger in the archive — and so one build at a time: two of them share this
+// directory, and the second one's `rm -rf` is the first one's staging tree.
 run(sprintf('rm -rf %s %s', escapeshellarg($deps), escapeshellarg($app)), 'clearing the build directory');
 mkdir($deps, 0o777, true);
 mkdir($app, 0o777, true);
@@ -618,8 +582,8 @@ fwrite(STDOUT, "\n  Runtime dependencies\n");
 // still matches and the exact versions this project was tested against are what
 // go into the archive.
 //
-// `--no-dev` then installs only the runtime ones *without re-resolving*, which
-// is also what lets this run on a PHP older than the test framework's floor: the
+// `--no-dev` then installs only the runtime ones *without re-resolving*, which is
+// also what lets this run on a PHP older than the test framework's floor: the
 // development requirements are read from the lock rather than resolved, and
 // skipped. `composer update --no-dev` would not do that — it still resolves them,
 // and fails outright on a version the framework does not support.
@@ -664,16 +628,13 @@ fwrite(STDOUT, sprintf(
 fwrite(STDOUT, sprintf("  %-44s%s\n", '  directories', implode(', ', $pruned['directories'])));
 fwrite(STDOUT, sprintf("  %-44s%s\n", '  files', implode(', ', $pruned['paths'])));
 
-// The permission bits go into the manifest, and a permission bit that came from
-// whatever umask the machine happened to have is one more thing that differs
-// between two machines building the same source.
+// The permission bits go into the manifest, so the umask the machine happened to
+// have would otherwise be one more thing that differs between two builds.
 run(
     sprintf('find %s -type f -exec chmod 644 {} +', escapeshellarg($app)),
     'normalising the staged file permissions',
 );
 chmod($app . '/bin/mdword', 0o755);
-
-// Build
 
 fwrite(STDOUT, "\n  Archive\n");
 
@@ -705,13 +666,13 @@ $phar->setStub(<<<'STUB'
     __HALT_COMPILER();
     STUB);
 
-// Everything under the staging directory goes in at a path relative to it, so
-// the archive has an /app root and the stub finds what it expects. The
-// directories are created implicitly by the files inside them.
+// Everything under the staging directory goes in at a path relative to it, so the
+// archive has an /app root the stub can find things under; the directories are
+// created by the files inside them.
 //
 // Sorted, because a directory iterator hands back whatever order the filesystem
-// felt like, and both the manifest and the file contents follow the order the
-// files were added in. Sorted, the archive is the same archive.
+// felt like and both the manifest and the contents follow the order the files
+// were added in. Sorted, the archive is the same archive.
 $paths = [];
 
 foreach (new RecursiveIteratorIterator(
@@ -728,9 +689,8 @@ foreach ($paths as $path) {
     $phar->addFile($path, 'app/' . substr($path, strlen($app) + 1));
 }
 
-// Compressed once everything is in, which is the only order `compressFiles()`
-// accepts. Nearly everything in the archive is text, and images are already
-// compressed, so this roughly halves it.
+// Compression is a pass over the whole archive rather than something `addFile()`
+// takes, so it comes last. Nearly everything in here is text.
 $phar->compressFiles(Phar::GZ);
 
 $phar->setMetadata([
@@ -747,7 +707,7 @@ try {
     normaliseTimestamps($target, $epoch);
 } catch (RuntimeException $problem) {
     // An archive whose manifest was rewritten but not verified is worse than no
-    // archive, so it does not survive the build that could not vouch for it.
+    // archive, so the build that could not vouch for it deletes it.
     @unlink($target);
 
     fwrite(STDERR, "\n" . $problem->getMessage() . "\n"
@@ -757,8 +717,6 @@ try {
 }
 
 fwrite(STDOUT, sprintf("  %-44s%s (%d files)\n", 'every entry stamped', gmdate('c', $epoch), count($paths)));
-
-// Verification
 
 fwrite(STDOUT, "\n  Verification\n");
 
@@ -781,19 +739,15 @@ if ($reported !== $expected) {
 
 fwrite(STDOUT, "ok\n");
 
-// A conversion in each direction, because an archive that reports its version
-// and then cannot convert anything is still broken. A `.docx` is a zip archive
-// and starts with `PK`, and a round trip has to come back with the heading in
-// it — together those two catch a missing dependency as well as a broken one.
-//
-// The magic bytes are read here rather than by piping the output through
-// `head` and `xxd` on the way in, because `xxd` is not part of PHP and is not
-// installed on the slim images a build runs in.
+// A conversion in each direction, because an archive that reports its version and
+// then cannot convert anything is still broken. A `.docx` is a zip archive and
+// starts with `PK`, and the round trip has to come back with the heading in it:
+// together those two catch a missing dependency as well as a broken one.
 //
 // The round trip goes through a file rather than a pipe, so that every command
 // here is a single command and closing its standard input is unambiguous. A
-// redirection written after a pipe binds to the wrong end of it, and the
-// reading end would get `/dev/null` instead of the document.
+// redirection written after a pipe binds to the wrong end of it, and the reading
+// end would get `/dev/null` instead of the document.
 $phar = escapeshellarg($target);
 $example = escapeshellarg($root . '/examples/markdown/01-kitchen-sink.md');
 $roundTrip = $build . '/round-trip.docx';

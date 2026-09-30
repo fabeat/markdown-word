@@ -12,20 +12,19 @@ declare(strict_types=1);
  *  - run as the phar: `php mdword.phar README.md -o README.docx`
  *  - installed on your `PATH` as `mdword`
  *
- * The autoloader is looked for inside the archive first and then next to this
- * file, which is what lets the identical script serve both a checkout and a
- * phar without either knowing about the other.
+ * The autoloader is looked for in both places rather than one, which is what lets
+ * the same script serve a checkout and a phar without either knowing about the
+ * other.
  */
 
 use MarkdownWord\Console\Application;
 
 (static function (): void {
     $candidates = [
-        // Inside a phar, and in a checkout: the bundled production dependencies.
-        // In a phar `__DIR__` is `phar://…/app/bin`, so this is the archive's own
-        // `app/vendor`; in a checkout it is the project's `vendor`.
+        // Inside a phar `__DIR__` is `phar://…/app/bin`, so this is the archive's
+        // own `app/vendor`; in a checkout it is the project's `vendor`.
         __DIR__ . '/../vendor/autoload.php',
-        // A checkout, or a composer install of the library as a dependency.
+        // A composer install of the library as somebody else's dependency.
         __DIR__ . '/../../../autoload.php',
     ];
 
