@@ -184,6 +184,13 @@ The distinctions Word does not record are options:
 | `headingSetext` | `false` | first- and second-level headings underlined |
 | `mediaDirectory` | `null` | a directory the images are taken out into |
 | `lineEnding` | newline | what the output file uses |
+| `maxPartBytes` | 256 MB | largest a part of the archive may be uncompressed |
+| `maxEntries` | `4096` | largest number of parts the archive may have |
+| `maxStyleDepth` | `32` | how far a `basedOn` chain of styles is followed |
+
+A document is not this library's, so the last three are what it is willing to be
+told: a `.docx` is a zip, and a zip says how its contents are laid out without
+saying how much room they will take up.
 
 ```php
 use MarkdownWord\Reverse\Options;
