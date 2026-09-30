@@ -33,7 +33,10 @@ final class Application
 {
     public const NAME = 'mdword';
 
-    public const VERSION = '1.0.0';
+    // The one place the version is written down. The phar reads it to stamp its
+    // own manifest, and the release job fails the run if this and the tag pushed
+    // disagree — so a bump here without a tag is caught, and not published over.
+    public const VERSION = '0.1.0';
 
     /**
      * Exit code for a run that did what it was asked: a conversion, or an answer

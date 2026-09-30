@@ -1,0 +1,22 @@
+# Keep the development-only half of the repository out of the dist archive that
+# Packagist serves. Without this a `composer require` downloads the test suite
+# (3,089 tests and the CommonMark and GFM spec fixtures, 741 KiB of the 1.4 MiB
+# tree) and this project's own CI, none of which the consumer can run: the only
+# dev dependency is the test framework, and it is not installed.
+#
+# Measured with `git archive --format=zip`: 407,227 bytes down to 151,503, a 63%
+# reduction. The entries below are the whole difference.
+#
+# What is *not* listed here ships, deliberately: `src/`, `bin/`, `composer.json`,
+# `composer.lock`, `README.md` and `LICENSE`. The lock file stays because a
+# reproducible install is worth 176 KiB, and `LICENSE` because the archive is
+# redistributed under its terms.
+/.github            export-ignore
+/tests              export-ignore
+/tools              export-ignore
+/examples           export-ignore
+/phpunit.xml.dist   export-ignore
+/smoke.php          export-ignore
+/stress.php         export-ignore
+/readme-check.php   export-ignore
+/sonar-project.properties export-ignore

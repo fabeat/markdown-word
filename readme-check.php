@@ -24,6 +24,7 @@ use MarkdownWord\Console\UpstreamDeprecations;
 use MarkdownWord\Converter;
 use MarkdownWord\MarkdownToWord;
 use MarkdownWord\Parser\CommonMarkParser;
+use MarkdownWord\Render\LinkPlaceholder;
 use MarkdownWord\Reverse\Options as ReverseOptions;
 use MarkdownWord\Template\MarkdownTemplate;
 use MarkdownWord\Text\TextExtractor;
@@ -229,6 +230,46 @@ $check('a round trip is two of them', function () use ($work): void {
     assertTrue(str_contains($back, 'A paragraph.'), 'the paragraph did not survive');
 });
 
+// --------------------------------------------------------------- installation
+
+// Neither of the two commands the page prints can be run here: one needs a
+// release that does not exist yet, the other a Composer install of the package
+// as a dependency. What is checked is everything behind them — the package name,
+// the `bin` entry the `vendor/bin/mdword` claim rests on, and the version the
+// phar block asks for.
+$check('installation: the package, the bin entry and the version', function (): void {
+    $composer = json_decode(
+        (string) file_get_contents(__DIR__ . '/composer.json'),
+        true,
+        flags: JSON_THROW_ON_ERROR,
+    );
+
+    assertTrue(
+        $composer['name'] === 'fabeat/markdown-word',
+        'the package is not named what the page asks for: ' . ($composer['name'] ?? '(no name)'),
+    );
+
+    // `composer require` puts the CLI in `vendor/bin` because of this entry, so a
+    // page naming `vendor/bin/mdword` and a `bin` naming something else is a page
+    // that is wrong.
+    assertTrue(
+        ($composer['bin'] ?? null) === ['bin/mdword'],
+        'the `bin` entry is not `["bin/mdword"]`: ' . json_encode($composer['bin'] ?? null),
+    );
+
+    assertTrue(is_file(__DIR__ . '/bin/mdword'), 'the file the `bin` entry names is not there');
+
+    // The phar block ends with `./mdword.phar --version`, and the archive's stub
+    // is this same script, so the version a release would report is this answer.
+    $version = self_cli(['--version']);
+
+    assertTrue($version['code'] === 0, '--version exited ' . $version['code'] . ': ' . $version['err']);
+    assertTrue(
+        trim($version['out']) === Application::NAME . ' ' . Application::VERSION,
+        'unexpected version output: ' . trim($version['out']),
+    );
+});
+
 // ------------------------------------------------------- the command line
 
 $check('the command line works the direction out for itself', function () use ($work): void {
@@ -293,6 +334,85 @@ $check('the reader takes its options from an array', function () use ($work): vo
     assertTrue(
         preg_match('/!\[[^\]]*\]\(([^)]+)\)/', $markdown, $match) === 1 && is_file($assets . '/' . basename($match[1])),
         'the image was not taken out of the document: ' . $markdown,
+    );
+});
+
+// Every loss the page lists under "What the round trip does not preserve",
+// reproduced rather than read out of the code: a list of what is lost is only
+// worth having while it is true, and a reader who trusts it is building on it.
+$check('what the round trip does not preserve', function () use ($work): void {
+    $back = static function (string $markdown, ?Configuration $config = null): string {
+        $config ??= new Configuration();
+        $document = (new MarkdownToWord($markdown, $config))->convert();
+
+        return (new WordToMarkdown($document))->convert();
+    };
+
+    // A table's header row comes back bold — the reader cannot tell the
+    // renderer's `tableHeaderBold` from the author's `**`.
+    $table = $back("| A | B |\n| --- | --- |\n| 1 | 2 |\n");
+
+    assertTrue(
+        str_contains($table, '| **A** | **B** |'),
+        "the header row did not come back bold:\n{$table}",
+    );
+
+    // The delimiter row is the part that is rewritten, and the page shows the
+    // rewrite, so both halves of that sentence are held up here.
+    assertTrue(
+        str_contains($table, '| :-- | :-- |'),
+        "the delimiter row is not what the page shows:\n{$table}",
+    );
+
+    // The alignment is *not* part of the loss. `---:` came back as `--:`.
+    $aligned = $back("| A | B | C |\n| :--- | ---: | :---: |\n| 1 | 2 | 3 |\n");
+
+    assertTrue(
+        str_contains($aligned, '| :-- | --: | :-: |'),
+        "the column alignment did not survive:\n{$aligned}",
+    );
+
+    // A fenced code block comes back without its language.
+    $fenced = $back("```php\n\$x = 1;\n\$y = 2;\n```\n");
+
+    assertTrue(
+        str_contains($fenced, "```\n\$x = 1;\n\$y = 2;\n```"),
+        "the fence did not survive:\n{$fenced}",
+    );
+    assertTrue(!str_contains($fenced, 'php'), "the language survived:\n{$fenced}");
+
+    // A fenced code block of one line is not read as a block at all: two or more
+    // monospaced paragraphs are, which is what `fenceCodeBlocks` says.
+    $oneLine = $back("```php\n\$x = 1;\n```\n");
+
+    assertTrue(trim($oneLine) === '`$x = 1;`', "a one-line block is not inline code:\n{$oneLine}");
+
+    // A quote configured as plain indentation rather than as a style is read as a
+    // plain paragraph: `>` is a paragraph style, and there is none to recognise.
+    $undecorated = Configuration::create()->withStyles([Styles::BLOCK_QUOTE => null]);
+    $quote = $back("> quoted\n", $undecorated);
+
+    assertTrue(trim($quote) === 'quoted', "the quote is not a plain paragraph:\n{$quote}");
+
+    // And with the default style it is a quote, so the loss is the configuration
+    // and not the reader.
+    assertTrue(trim($back("> quoted\n")) === '> quoted', 'the default quote style is not read as a quote');
+
+    // The last line carries no newline, whichever direction and line ending it is
+    // read with — the one case the reader appends one.
+    assertTrue($back("# Title\n") === '# Title', 'the last line gained a newline');
+    assertTrue($back("# Title\n\nBody.\n") === "# Title\n\nBody.", 'only the first newline should be lost');
+
+    (new MarkdownToWord("# Title\n"))->save($work . '/trailing.docx');
+
+    assertTrue(
+        (new WordToMarkdown($work . '/trailing.docx'))->convert() === '# Title',
+        'reading the written file gave a trailing newline',
+    );
+    assertTrue(
+        (new WordToMarkdown($work . '/trailing.docx', ReverseOptions::fromArray(['lineEnding' => "\r\n"])))->convert()
+            === "# Title\r\n",
+        'a crlf line ending did not append the terminator',
     );
 });
 
@@ -507,6 +627,36 @@ $check('the syntax tree is there for callers that want it', function (): void {
     $urls = array_column($pending, 'url');
 
     assertTrue($urls === ['https://example.test'], 'unexpected pending hyperlinks: ' . implode(', ', $urls));
+
+    // The shape as well as the URLs. The sample on the page is a shape, and
+    // checking only the URLs left nothing holding it up: a sample whose token had
+    // the marker on one side of the index rather than both survived a whole pass
+    // over this page, because the URL was right and nothing looked at the rest.
+    assertTrue(
+        array_keys($pending[0]) === ['placeholder', 'url', 'title', 'runs'],
+        'the pending hyperlink has the wrong keys: ' . implode(', ', array_keys($pending[0])),
+    );
+
+    // `MARKER . $index . MARKER`, twice over — which is what the sample shows.
+    $token = $pending[0]['placeholder'];
+
+    assertTrue(
+        $token === LinkPlaceholder::forIndex(0)
+            && str_starts_with($token, LinkPlaceholder::MARKER)
+            && str_ends_with($token, LinkPlaceholder::MARKER)
+            && substr_count($token, LinkPlaceholder::MARKER) === 2,
+        'the placeholder is not the marker on both sides of the index: ' . json_encode($token),
+    );
+
+    assertTrue(
+        $pending[0]['title'] === null,
+        'the title is not null: ' . var_export($pending[0]['title'], true),
+    );
+
+    assertTrue(
+        $pending[0]['runs'] !== [] && is_array($pending[0]['runs'][0]),
+        'the runs are not there: ' . json_encode($pending[0]['runs']),
+    );
 });
 
 $check('the reader hands back the block tree as well as the Markdown', function () use ($work): void {
@@ -527,6 +677,66 @@ $check('parser flavours', function (): void {
         $converter = new MarkdownToWord(null, new Configuration(), CommonMarkParser::{$flavour}());
         $converter->toPhpWord("# Title\n\n- a\n- b\n");
     }
+});
+
+// The two rows of the supported-Markdown table that name a parser, and the
+// mistake they had between them: task lists are GFM, GFM is the default, and a
+// table that says otherwise sends a reader looking for a reason to add an
+// extension they do not need while leaving them to think task lists are not
+// there by default. They are.
+$check('the default parser: what needs extended() and what does not', function (): void {
+    $back = static function (string $markdown, ?CommonMarkParser $parser = null): string {
+        $document = (new MarkdownToWord($markdown, new Configuration(), $parser))->convert();
+
+        return (new WordToMarkdown($document))->convert();
+    };
+
+    // A task list, through the default parser, unchanged in both directions —
+    // the round trip's missing trailing newline and all, which is a loss of its
+    // own and is listed as one on the page.
+    $tasks = "- [ ] todo\n- [x] done\n";
+    assertTrue(
+        $back($tasks) === "- [ ] todo\n- [x] done",
+        'a task list did not survive the default parser: ' . $back($tasks),
+    );
+
+    // What the document actually carries is the ballot box, not the bracket —
+    // which is the half of the table row that says what happens in Word.
+    $boxes = TextExtractor::fromPhpWord((new MarkdownToWord())->toPhpWord($tasks));
+
+    assertTrue(
+        $boxes === "\u{2610} todo\n\u{2612} done",
+        'the task list markers are not the ballot boxes: ' . json_encode($boxes),
+    );
+
+    // A footnote is not GFM. Without the extension the marker survives as
+    // escaped literal text, which is what makes the caveat on the page true for
+    // footnotes: the brackets are escaped, so it is not a footnote reference.
+    $footnote = "Text[^1]\n\n[^1]: A note.\n";
+    $plain = $back($footnote);
+
+    assertTrue(
+        str_contains($plain, '\[^1\]'),
+        'a footnote was recognised without extended(): ' . json_encode($plain),
+    );
+
+    // With the extension it is a real footnote, so the marker is consumed rather
+    // than escaped and the note text moves into the document body.
+    $extended = $back($footnote, CommonMarkParser::extended());
+
+    assertTrue(
+        !str_contains($extended, '[^1]'),
+        'a footnote was not recognised by extended(): ' . json_encode($extended),
+    );
+
+    // A description list is not either.
+    $description = "Term\n\n: Definition\n";
+
+    assertTrue(str_contains($back($description), ': Definition'), 'a description list was recognised without extended()');
+    assertTrue(
+        trim($back($description, CommonMarkParser::extended())) === 'Definition',
+        'a description list was not recognised by extended(): ' . $back($description, CommonMarkParser::extended()),
+    );
 });
 
 // -------------------------------------------------------------------- helpers

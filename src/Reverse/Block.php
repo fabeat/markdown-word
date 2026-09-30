@@ -24,7 +24,8 @@ final class Block
     public const QUOTE = 'quote';
 
     /**
-     * @param string               $kind     One of the `KIND` constants above.
+     * @param string               $kind     One of the `PARAGRAPH`, `RULE`, `CODE`,
+     *        `LIST`, `ITEM`, `TABLE`, `ROW`, `CELL` or `QUOTE` constants.
      * @param list<Block>          $children List items, a quote's body, a table's
      *        rows, and so on.
      * @param list<Inline>         $inlines  The inline content of a paragraph.

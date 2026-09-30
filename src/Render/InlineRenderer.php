@@ -165,12 +165,14 @@ final class InlineRenderer
         }
 
         // A link whose body is a bare image, as in `[![logo](logo.png)](url)`,
-        // is a hyperlink around a drawing rather than around text.
+        // is a hyperlink around a drawing rather than around text. Taking this
+        // branch is the whole of the decision: `ImageResolver` clears the link
+        // style on `isLink()`, so nothing needs to be told about it.
         if ($this->isOnlyImages($node)) {
             return $this->render(
                 $node->children(),
                 $target,
-                $linked->withImageLabel(),
+                $linked,
                 $onParagraphBreak,
             );
         }

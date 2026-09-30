@@ -34,6 +34,10 @@ use MarkdownWord\Configuration\Options;
 | the renderer as an int, because a wrong number changes the document instead of
 | being noticed.
 |
+| The group in the middle is about what a `null` means, which the two array entry
+| points answer differently on purpose, and about the one list they agree on.
+| tests/Unit/reverse-options-fixes.php is its twin.
+|
 */
 
 /**
@@ -179,6 +183,109 @@ it('round trips through the array form', function () {
     expect(Options::fromArray($options->toArray())->toArray())->toBe($options->toArray());
 });
 
+// -------------------------------------------------------------- what a null means
+
+/*
+| A `null` in an array is two different things, and the two entry points have to
+| read it differently because they are in different positions.
+|
+| `fromArray()` builds an object that does not exist yet, so there is nothing a
+| null could take away: it means "not configured" and the default stands.
+| `withAll()` is handed an object that already holds values, and every one of
+| them was asked for, so a null there means "not mentioned" and the value stays.
+|
+| Reading it the other way round — a merge resetting to the default — is the bug
+| these tests are about, and it is the more expensive of the two: a null is
+| exactly the shape an override array takes when a key is present with no value
+| for it, which is what `+` and a JSON config with explicit nulls both produce,
+| and the option it silently changes is one the caller never mentioned.
+|
+| The one thing the two entry points do agree on is which properties can hold a
+| null at all, since that is a property of the class rather than of the caller.
+| The group at the end pins that list against the constructor's declared types.
+*/
+
+/**
+ * The options of this class whose declared type accepts a `null`.
+ *
+ * Read off the constructor rather than written out here, so an option added
+ * later is in every test below from the moment it exists.
+ *
+ * @return list<string>
+ */
+function nullableForwardOptions(): array
+{
+    $nullable = [];
+
+    foreach ((new ReflectionClass(Options::class))->getConstructor()->getParameters() as $parameter) {
+        if ($parameter->getType()?->allowsNull() === true) {
+            $nullable[] = $parameter->getName();
+        }
+    }
+
+    return $nullable;
+}
+
+it('keeps a value a merge was not asked to change when a key arrives null', function (string $property, mixed $configured) {
+    // The shape: an object configured away from the defaults, merged with an
+    // array that names one of its options and gives it no value for it. Nothing
+    // about the object changes, so the whole array comes back as it went in —
+    // compared in full, so a merge that quietly put the class default back
+    // instead fails here whichever of the sixteen it was.
+    $base = Options::fromArray([$property => $configured]);
+
+    expect($base->withAll([$property => null])->toArray())
+        ->toBe($base->toArray(), "withAll(['{$property}' => null])");
+})->with([
+    'a width' => ['tableWidth', 2500],
+    'a depth' => ['maxHeadingLevel', 2],
+    'a switch' => ['tableBorders', false],
+    'a mode' => ['softBreak', Options::SOFT_BREAK_PARAGRAPH],
+    'a size' => ['imageMaxWidth', 8.5],
+]);
+
+it('applies the keys a merge was given and keeps the ones that arrived null', function () {
+    $base = configuredAwayFromTheDefaults();
+
+    $changed = $base->withAll([
+        'tableWidth' => null,
+        'maxHeadingLevel' => 2,
+    ]);
+
+    expect($changed->toArray())->toBe(array_replace($base->toArray(), ['maxHeadingLevel' => 2]));
+});
+
+it('reads a null for a nullable option as the value it is', function (string $property, string $configured) {
+    // The other half of the contract, and the reason the merge is keyed on which
+    // properties accept a null rather than on "is this null": `imageBasePath` is
+    // nullable by design, so `['imageBasePath' => null]` is how a base path is
+    // cleared. A merge that read that as "not mentioned" could not be undone,
+    // and the option that is meant to be "no base path" would be unreachable
+    // through the array form.
+    $base = Options::fromArray([$property => $configured]);
+
+    expect($base->withAll([$property => null])->{$property})->toBeNull()
+        ->and($base->withAll([$property => null])->toArray()[$property])->toBeNull();
+})->with([
+    'base path' => ['imageBasePath', '/srv/pics'],
+    'list suffix' => ['orderedListSuffix', 'space'],
+]);
+
+it('reads an empty string as a value rather than as an absence', function () {
+    // `''` is not the case `null` is, and this says which of the two it is. It
+    // is a value `cast()` knows how to read — for a nullable option, "no base
+    // path" — and it reads the same way in both ways in, so a merge that kept
+    // the configured path while `fromArray()` cleared it would make the two
+    // disagree about the same array. Passing `''` therefore clears the base
+    // path; the way to say "leave it as it is" is to leave the key out, or to
+    // pass a null.
+    $base = Options::fromArray(['imageBasePath' => '/srv/pics']);
+
+    expect($base->withAll(['imageBasePath' => ''])->imageBasePath)->toBeNull()
+        ->and(Options::fromArray(['imageBasePath' => ''])->imageBasePath)->toBeNull()
+        ->and($base->withAll(['imageBasePath' => null])->imageBasePath)->toBeNull();
+});
+
 // -------------------------------------------------------------------- casting
 
 it('gives every option the type the constructor promises', function () {
@@ -282,15 +389,16 @@ it('treats a key spelled out with no value as unconfigured', function () {
     // "let Word size it" value rather than the 5000 that was configured, and
     // that is a document that comes out wrong with nothing to show for it.
     $defaults = (new Options())->toArray();
+    $nullable = nullableForwardOptions();
 
     foreach (array_keys($defaults) as $property) {
         $configured = Options::fromArray([$property => null]);
 
-        // `imageBasePath` and `orderedListSuffix` are nullable by design, so a
-        // null is what they mean. Every other property takes the default.
-        $expected = in_array($property, ['imageBasePath', 'orderedListSuffix'], true)
-            ? null
-            : $defaults[$property];
+        // The properties that accept a null hold it, because a null is what they
+        // mean; every other property takes the default. Which ones those are is
+        // read off the constructor rather than written out here, so the two
+        // cannot drift apart.
+        $expected = in_array($property, $nullable, true) ? null : $defaults[$property];
 
         expect($configured->{$property})->toBe($expected, "options['{$property}'] = null");
     }
@@ -299,4 +407,44 @@ it('treats a key spelled out with no value as unconfigured', function () {
 it('ignores a key it does not know', function () {
     expect(Options::fromArray(['noSuchOption' => true, 'tableWidth' => 1000])->toArray())
         ->toBe(array_replace((new Options())->toArray(), ['tableWidth' => 1000]));
+});
+
+/*
+| The two invariants the null handling rests on, neither of which a test of
+| behaviour can hold on its own. Both are read off the constructor with
+| reflection, so an option added to the class without updating the class fails
+| one of them by name rather than by producing a document that is subtly wrong.
+*/
+
+it('lists exactly the options whose type accepts a null', function () {
+    // The list deciding that is hand-written, so a property added without a line
+    // in it is handled wrongly the moment a caller passes a null for it. In this
+    // direction the mistake is silent: `fromArray()` would clamp a `null` to 0
+    // and `withAll()` would reset the value, and neither raises.
+    $listed = (new ReflectionClass(Options::class))->getReflectionConstant('NULLABLE');
+
+    expect($listed)->toBeInstanceOf(
+        ReflectionClassConstant::class,
+        'Options has to say which of its properties accept a null.',
+    );
+
+    $declared = $listed->getValue();
+    $nullable = nullableForwardOptions();
+    sort($declared);
+    sort($nullable);
+
+    expect($declared)->toBe($nullable);
+});
+
+it('carries every property forward in toArray', function () {
+    // `withAll()` merges over `toArray()`, so an option missing from it is
+    // rebuilt from the default on the next merge — the same data loss as a setter
+    // that forgets its receiver, one array further along, and a `toBe` on the
+    // whole array is what says so.
+    $constructor = array_map(
+        static fn (ReflectionParameter $parameter): string => $parameter->getName(),
+        (new ReflectionClass(Options::class))->getConstructor()->getParameters(),
+    );
+
+    expect(array_keys((new Options())->toArray()))->toBe($constructor);
 });

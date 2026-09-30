@@ -66,6 +66,7 @@ it('does not claim again what the code does not do', function (string $claim) {
 })->with([
     'code block shading goes through a paragraph style, not a Font' => 'used for code block shading',
     'the round trip loses what Word does not record' => 'the round trip is exact',
+    'a link wrapping a bare image is marked by a flag nothing read' => 'imageLabel',
 ]);
 
 // ---------------------------------------------- what outlived the deletion

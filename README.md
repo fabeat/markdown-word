@@ -78,6 +78,31 @@ mdword README.md          # writes README.docx
 mdword README.docx        # writes README.md
 ```
 
+## Installation
+
+```sh
+composer require fabeat/markdown-word
+```
+
+That installs the command line along with the library, because `composer.json`
+declares `bin: ["bin/mdword"]` — after a Composer install it is at
+`vendor/bin/mdword`.
+
+Or the whole thing as one file, with nothing installed but PHP:
+
+```sh
+curl -L -o mdword.phar https://github.com/fabeat/markdown-word/releases/latest/download/mdword.phar
+chmod +x mdword.phar
+./mdword.phar --version
+```
+
+The `chmod +x` is not optional. A download from a GitHub release does not carry
+the executable bit, and without it `./mdword.phar` fails with *permission
+denied*.
+
+See [Requirements](#requirements) for what PHP and which extensions it needs.
+Where to get help: [the issue tracker][issues].
+
 ## Why it exists
 
 The obvious way to build a Markdown-to-Word converter is to render HTML and hand
@@ -98,14 +123,14 @@ says it should:
 | Suite | Examples |
 | --- | --- |
 | [CommonMark 0.31.2][cm-spec] | 654 |
-| [GitHub-Flavored Markdown][gfm-spec] | 646 |
+| [GitHub-Flavored Markdown 0.29][gfm-spec] | 646 |
 
 `league/commonmark` is a fully conforming parser, so the visible text of its HTML
 output *is* the specification's answer. Comparing the text of the generated Word
 document against that is a strong, automatic check — a construct that loses or
 invents text fails the build.
 
-```
+```sh
 composer check             # the lot, in the order continuous integration runs it
 composer test              # the test suite
 composer test:unit         # the unit tests alone
@@ -177,6 +202,8 @@ echo (new WordToMarkdown())->toMarkdown($bytes);          // bytes already in ha
 
 A Word document is a lower-fidelity form of the Markdown it came from, so the
 round trip preserves what Word was told to keep and is explicit about the rest.
+[What it does not preserve](#what-the-round-trip-does-not-preserve) is worth
+knowing before the options, which configure the reader rather than undo the loss.
 The distinctions Word does not record are options:
 
 | Option | Default | Meaning |
@@ -221,6 +248,53 @@ and struck-through text can only be GFM's `~~`.
 Markdown --> Word --> Markdown --> Word
              |------ same text -----|
 ```
+
+#### What the round trip does not preserve
+
+Word does not record these, so there is nothing for the reader to find. All five
+are what the round trip actually produces:
+
+- **A table's header row comes back bold.** A run is bold in the document, and
+  the document does not say whether the renderer or the author made it so:
+
+  ```markdown
+  | A | B |               | **A** | **B** |
+  | --- | --- |     →     | :-- | :-- |
+  | 1 | 2 |               | 1 | 2 |
+  ```
+
+  The alignment does survive — `:--`, `--:` and `:-:` say what `---`, `---:` and
+  `:---:` said — and the delimiter row is the only part rewritten. It is the
+  bold that is added, and `tableHeaderBold: false` is what stops it.
+
+- **A fenced code block comes back without its language.** The fence and the text
+  are in the file; the word that followed the fence is not:
+
+  ````markdown
+  ```php
+  $x = 1;
+  $y = 2;
+  ```
+  ````
+
+  comes back as the same two lines between plain fences, which is all the reader
+  has to go on.
+
+- **A fenced code block of one line comes back as inline code.** `fenceCodeBlocks`
+  reads *two or more* monospaced paragraphs as a block, so a single line is not
+  enough: ```` ```php\n$x = 1;\n``` ```` is written back as `` `$x = 1;` ``.
+
+- **A quote configured as plain indentation, rather than as a style, comes back
+  as a plain paragraph.** The `>` is a paragraph style in Word, and with
+  `blockQuote` set to `null` there is no style for the reader to recognise and no
+  option that puts one back. The paragraph *is* indented, but `quoteIndent` only
+  measures depth inside a quote already identified by its style.
+
+- **The last line has no newline after it.** The body of a document ends at its
+  last paragraph and records nothing about the end of the text, so the reader
+  writes no trailing newline: `"# Title\n"` comes back as `"# Title"`. It is the
+  first thing a `diff` shows. `lineEnding` set to `crlf` does add one, because
+  that is the one case where the writer appends its own.
 
 The round-trip suite runs all 1300 specification examples through both
 directions and checks that the second Word document says the same thing as the
@@ -275,13 +349,12 @@ The options both directions share:
 | --- | --- |
 | `-o, --output <file>` | where the result goes; `-` for standard output |
 | `--to <docx\|word\|markdown\|md>` | which way to convert; detected from the file otherwise |
-| `-c, --config <file.php>` | a file returning the styles and options to use |
-| `--plain` | no code colouring, no quote style, no table borders |
 
 `to-docx` also takes:
 
 | Option | Meaning |
 | --- | --- |
+| `-c, --config <file.php>` | a file returning the styles and options to use |
 | `-t, --template <file.docx>` | render into a Word template rather than a new document |
 | `--region <name>` | the template region to fill in, `body` by default |
 | `--define <name=value>` | a value for a single-line placeholder; repeatable |
@@ -289,6 +362,7 @@ The options both directions share:
 | `--no-images` | shorthand for `--images skip` |
 | `--image-base <dir>` | where relative image paths resolve from |
 | `--table-width <n>` | table width in fiftieths of a percent; `5000` is full width |
+| `--plain` | no code colouring, no quote style, no table borders |
 
 `to-markdown` also takes:
 
@@ -332,13 +406,14 @@ result by converting a document in both directions before reporting success.
 | `**bold**`, `*italic*`, `~~strike~~` | character formatting, nestable |
 | `` `code` ``, fenced and indented blocks | monospaced, shaded paragraphs |
 | Bullet and ordered lists, nested | real Word numbering, any depth |
+| Task lists | `☐` or `☒` at the start of the item, read back as `- [ ]` / `- [x]` |
 | `> block quotes`, nested | indented, styled paragraphs |
 | Tables with alignment | `w:tbl` with the alignment applied |
 | `[links](url)`, reference links, autolinks | `w:hyperlink`, including emphasis inside the label |
 | Images | embedded, or alt text when the file is missing |
 | `---` | a paragraph with a bottom border |
 | Raw HTML | rebuilt as Word content, or shown as text, or dropped |
-| Footnotes, description lists, task lists | with `CommonMarkParser::extended()` |
+| Footnotes, description lists | with `CommonMarkParser::extended()` |
 
 A link whose label contains formatting, such as `[**bold** link](url)`, becomes a
 genuine Word hyperlink *with* the bold applied. PHPWord cannot express that
@@ -586,8 +661,15 @@ $phpWord = $converter->toPhpWord('A [**bold** link](https://example.com).');
 TextExtractor::fromPhpWord($phpWord, TextExtractor::LINE_BREAK, $converter->pendingHyperlinks());
 
 $converter->pendingHyperlinks();
-// [['placeholder' => '…MDWL…0…', 'url' => 'https://example.com', 'title' => null, 'runs' => [...]]]
+// [['placeholder' => '⁣MDWL⁣0⁣MDWL⁣', 'url' => 'https://example.com', 'title' => null, 'runs' => [...]]]
 ```
+
+The `placeholder` is the token the writer looks for, and it is
+`LinkPlaceholder::MARKER` on *both* sides of the index — the string above is
+`"\u{2063}MDWL\u{2063}" . '0' . "\u{2063}MDWL\u{2063}"`, which is why the
+invisible separator appears twice. It is there so that the token can never
+collide with anything an author typed, and so that a run carrying it renders as
+nothing at all if the writer pass never runs.
 
 ## Requirements
 
@@ -613,10 +695,12 @@ php smoke.php build/mdword.phar
   content that is already escaped and wrong for everything else: a document
   containing a lone `<` or `&` — `a < b`, `AT&T` — otherwise gets raw markup in
   its XML and Word refuses to open it.
-- **Tables span the text column.** PHPWord's own default is `w:tblW w:w="0"`,
-  and a zero width makes every viewer shrink the table to its narrowest content.
-  The width is written as a percentage of the column, so it follows the page size
-  and the margins; `tableWidth` changes it.
+- **Tables span the text column.** Given no width, PHPWord writes no `w:tblW` at
+  all — its writer emits the element only when a width has been set — and a table
+  with no width is one every viewer shrinks to its narrowest content. This
+  library writes `<w:tblW w:w="5000" w:type="pct"/>` instead, as a percentage of
+  the column, so it follows the page size and the margins. `tableWidth` changes
+  it, and `0` hands the sizing back to Word.
 - **PHPWord 1.4 emits a deprecation on PHP 8.1+** (`Using null as an array
   offset`). It comes from `PhpWord\Style::getStyle()` being called with a null
   name while writing a paragraph that carries no numbering of its own, which
@@ -664,6 +748,7 @@ MIT — see [LICENSE](LICENSE). PHPWord, which this library builds on, is
 LGPL-3.0.
 
 [commonmark]: https://github.com/thephpleague/commonmark
+[issues]: https://github.com/fabeat/markdown-word/issues
 [sonarcloud]: https://sonarcloud.io/summary/new_code?id=fabeat_markdown-word
 [sonar-token]: https://sonarcloud.io/account/security
 [pest]: https://pestphp.com
