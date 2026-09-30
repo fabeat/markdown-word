@@ -105,7 +105,7 @@ it('escapes lists inside a template', function () {
 function escapeToFile(string $markdown): string
 {
     $file = Scratch::path('escape');
-    saveMarkdown($markdown, $file);
+    saveDocument($markdown, $file);
 
     return $file;
 }

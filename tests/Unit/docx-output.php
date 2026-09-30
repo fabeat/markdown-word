@@ -107,7 +107,7 @@ it('lists produce numbering definitions', function () {
 
 it('tables are written', function () {
     $file = Scratch::path('out');
-    saveMarkdown("| a | b |\n| --- | --- |\n| 1 | 2 |", $file);
+    saveDocument("| a | b |\n| --- | --- |\n| 1 | 2 |", $file);
 
     $xml = TemplateFactory::xmlOf($file);
 
@@ -118,7 +118,7 @@ it('tables are written', function () {
 
 it('tables span the full text column', function () {
     $file = Scratch::path('out');
-    saveMarkdown("| a | b |\n| --- | --- |\n| 1 | 2 |", $file);
+    saveDocument("| a | b |\n| --- | --- |\n| 1 | 2 |", $file);
 
     $xml = TemplateFactory::xmlOf($file);
 
@@ -263,7 +263,7 @@ it('an image that cannot be read falls back to its alt text', function () {
 function reportDocument(): string
 {
     $file = Scratch::path('out');
-    saveMarkdown(MARKDOWN . "\n", $file);
+    saveDocument(MARKDOWN . "\n", $file);
 
     return $file;
 }

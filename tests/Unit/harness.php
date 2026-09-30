@@ -100,7 +100,7 @@ it('leaves the output of a check running beside it alone', function () {
  */
 it('tells a document with a body that parses from one that does not', function () {
     $document = Scratch::path('openable');
-    saveMarkdown('# One', $document);
+    saveDocument('# One', $document);
 
     expect(TemplateFactory::xmlIsValid($document))->toBeTrue();
 

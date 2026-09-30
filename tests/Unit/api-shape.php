@@ -48,7 +48,7 @@ it('converts either direction through the interface alone', function () {
     $markdown = Scratch::path('iface', '.md');
     file_put_contents($markdown, "# Subject\n\nBody.\n");
     $document = Scratch::path('iface', '.docx');
-    saveMarkdown("# Subject\n\nBody.\n", $document);
+    saveDocument("# Subject\n\nBody.\n", $document);
 
     $toWord = new MarkdownToWord($markdown);
     $toMarkdown = new WordToMarkdown($document);
@@ -163,7 +163,7 @@ it('takes either a file or the content in both directions', function () {
     file_put_contents($markdown, "# Subject\n");
 
     $document = Scratch::path('shape', '.docx');
-    saveMarkdown("# Subject\n", $document);
+    saveDocument("# Subject\n", $document);
 
     // A path, and the bytes themselves, are both accepted — the same rule in
     // both directions, and the same rule the command line works by.

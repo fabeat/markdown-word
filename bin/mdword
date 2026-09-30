@@ -47,4 +47,7 @@ use MarkdownWord\Console\Application;
     exit(1);
 })();
 
-exit((new Application())->run(array_slice($argv, 1)));
+// `$argv` is defined by the CLI SAPI and by nothing else, so a file that also has
+// to be includable — and this one is the phar's stub — reads it guarded. The
+// empty case is the one the application already handles: it prints its usage.
+exit((new Application())->run(array_slice($argv ?? [], 1)));

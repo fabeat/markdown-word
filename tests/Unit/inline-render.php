@@ -139,7 +139,7 @@ it('keeps the title of a link', function () {
     // one is written as a real `w:hyperlink` with a tooltip instead. Asserting
     // on the element tree would only see the placeholder, so the file is checked.
     $file = Scratch::path('link-title');
-    saveMarkdown("[text](https://example.com \"The title\")\n", $file);
+    saveDocument("[text](https://example.com \"The title\")\n", $file);
 
     $xml = TemplateFactory::xmlOf($file);
 
