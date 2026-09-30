@@ -78,8 +78,6 @@ final class ParagraphStyle
     }
 
     /**
-     * The `table` style slot accepts an array of table properties.
-     *
      * @param  array<string, mixed>  $style
      * @return array<string, mixed>
      */

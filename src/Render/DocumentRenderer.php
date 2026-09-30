@@ -156,8 +156,6 @@ final class DocumentRenderer
     }
 
     /**
-     * Render the inline children of a block as one or more paragraphs.
-     *
      * The style slot is resolved here so its character half can be applied to the
      * runs: a Word paragraph carries no formatting of its own, so PHPWord would
      * discard it there.
@@ -339,8 +337,6 @@ final class DocumentRenderer
     }
 
     /**
-     * The paragraph style for a list item.
-     *
      * A list inside a block quote belongs to the quote, so it is indented by the
      * quote's depth. The quote's own named style cannot simply be reused: Word
      * resolves a named style wholesale, while a list item needs an indentation of
@@ -527,8 +523,6 @@ final class DocumentRenderer
     }
 
     /**
-     * The font forced onto every run of a cell.
-     *
      * @return array<string, mixed>
      */
     private function cellFont(mixed $configured, bool $isHeader, Options $options): array
@@ -635,8 +629,6 @@ final class DocumentRenderer
     }
 
     /**
-     * The style for a block, taking the surrounding context into account.
-     *
      * Inside a block quote an ordinary paragraph is drawn with the quote style
      * instead, which is what makes quoted text look quoted without the Markdown
      * author having to say so.
@@ -657,8 +649,6 @@ final class DocumentRenderer
     }
 
     /**
-     * Fold block-quote indentation into a paragraph style.
-     *
      * A quoted paragraph is indented by {@see self::QUOTE_INDENT} for each level
      * of nesting, so a quote inside a quote visibly steps in. The outermost level
      * uses a configured named style verbatim, because that style already carries

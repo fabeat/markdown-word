@@ -9,8 +9,10 @@ use MarkdownWord\Configuration\Styles;
 
 /**
  * Translates renderer concerns into concrete Word styles, so the rest of the
- * renderer never has to think about style names, defaults, or the "does the
- * template already define this?" question.
+ * renderer never has to think about style names or defaults.
+ *
+ * Whether a style is already defined in the target document is a different
+ * question, and {@see StyleRegistrar} is where that is answered.
  */
 final class StyleResolver
 {
