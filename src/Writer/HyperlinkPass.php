@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace MarkdownWord\Writer;
 
+use MarkdownWord\Xml;
+
 use MarkdownWord\Render\LinkPlaceholder;
 use ZipArchive;
 
@@ -207,34 +209,12 @@ final class HyperlinkPass
 
     private function loadDom(string $xml): \DOMDocument
     {
-        $dom = new \DOMDocument();
-        $previous = libxml_use_internal_errors(true);
-
-        $loaded = $dom->loadXML($xml, LIBXML_NOCDATA | LIBXML_NONET);
-        libxml_clear_errors();
-        libxml_use_internal_errors($previous);
-
-        if (!$loaded) {
-            throw new \RuntimeException('word/document.xml is not valid XML.');
-        }
-
-        return $dom;
+        return Xml::parseOrFail($xml, 'word/document.xml is not valid XML.');
     }
 
     private function loadRels(string $xml): \DOMDocument
     {
-        $dom = new \DOMDocument();
-        $previous = libxml_use_internal_errors(true);
-
-        $loaded = $dom->loadXML($xml, LIBXML_NOCDATA | LIBXML_NONET);
-        libxml_clear_errors();
-        libxml_use_internal_errors($previous);
-
-        if (!$loaded) {
-            throw new \RuntimeException('word/_rels/document.xml.rels is not valid XML.');
-        }
-
-        return $dom;
+        return Xml::parseOrFail($xml, 'word/_rels/document.xml.rels is not valid XML.');
     }
 
     private function saveXml(\DOMDocument $dom): string

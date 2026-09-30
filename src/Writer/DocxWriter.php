@@ -8,6 +8,7 @@ use MarkdownWord\Render\ImageDescriptionCollector;
 use MarkdownWord\Render\LinkPayloadCollector;
 use PhpOffice\PhpWord\IOFactory;
 use PhpOffice\PhpWord\PhpWord;
+use RuntimeException;
 
 /**
  * Writes a `PhpWord` document to `.docx`.
@@ -18,41 +19,53 @@ use PhpOffice\PhpWord\PhpWord;
  * and registering their relationships. Without it, links whose label contains
  * emphasis would lose either the link or the formatting, and filling in the
  * alternative text of the images, which PHPWord writes as an empty string.
+ *
+ * Both entry points stage the archive in the system temp directory first, so
+ * neither a document being written to disk nor one being handed back as a string
+ * is ever half-finished.
  */
 final class DocxWriter
 {
+    /**
+     * Write the document to a file, and hand back what was written.
+     *
+     * The bytes are read from the staged copy before it is moved into place, so
+     * a caller that wants both the file and the content gets them from one pass
+     * rather than by reading the file it has just written.
+     *
+     * @return string The `.docx` as written.
+     */
     public static function write(
         PhpWord $phpWord,
         string $path,
         ?LinkPayloadCollector $links = null,
         ?ImageDescriptionCollector $images = null,
-    ): void {
-        $temp = self::tempFile();
-        self::writePhpWord($phpWord, $temp);
+    ): string {
+        $temp = self::stage($phpWord, $links, $images);
 
-        self::patch($temp, $links, $images);
+        $contents = self::read($temp);
 
         self::move($temp, $path);
+
+        return $contents;
     }
 
+    /**
+     * Write the document and return it as a string, without touching the disk
+     * beyond the staging file.
+     */
     public static function toString(
         PhpWord $phpWord,
         ?LinkPayloadCollector $links = null,
         ?ImageDescriptionCollector $images = null,
     ): string {
-        $temp = self::tempFile();
-        self::writePhpWord($phpWord, $temp);
+        $temp = self::stage($phpWord, $links, $images);
 
-        self::patch($temp, $links, $images);
-
-        $contents = file_get_contents($temp);
-        @unlink($temp);
-
-        if ($contents === false) {
-            throw new \RuntimeException('Unable to read the generated .docx file.');
+        try {
+            return self::read($temp);
+        } finally {
+            @unlink($temp);
         }
-
-        return $contents;
     }
 
     /**
@@ -67,6 +80,32 @@ final class DocxWriter
     public static function patchHyperlinks(string $docxPath, array $payloads): void
     {
         (new HyperlinkPass($payloads))->applyTo($docxPath);
+    }
+
+    /**
+     * Write the archive to a temporary file and put it in order.
+     *
+     * @return string The path of the finished archive, for the caller to move or
+     *         to read. It is the caller's to clean up.
+     */
+    private static function stage(
+        PhpWord $phpWord,
+        ?LinkPayloadCollector $links,
+        ?ImageDescriptionCollector $images,
+    ): string {
+        $path = tempnam(sys_get_temp_dir(), 'mdword_');
+
+        if ($path === false) {
+            throw new RuntimeException('Unable to create a temporary file.');
+        }
+
+        Escaping::enabled(static function () use ($phpWord, $path): void {
+            IOFactory::createWriter($phpWord, 'Word2007')->save($path);
+        });
+
+        self::patch($path, $links, $images);
+
+        return $path;
     }
 
     /**
@@ -89,33 +128,29 @@ final class DocxWriter
         }
     }
 
-    private static function writePhpWord(PhpWord $phpWord, string $path): void
+    private static function read(string $path): string
     {
-        Escaping::enabled(static function () use ($phpWord, $path): void {
-            IOFactory::createWriter($phpWord, 'Word2007')->save($path);
-        });
-    }
+        $contents = file_get_contents($path);
 
-    private static function tempFile(): string
-    {
-        $path = tempnam(sys_get_temp_dir(), 'mdword_');
-
-        if ($path === false) {
-            throw new \RuntimeException('Unable to create a temporary file.');
+        if ($contents === false) {
+            throw new RuntimeException('Unable to read the generated .docx file.');
         }
 
-        return $path;
+        return $contents;
     }
 
     private static function move(string $from, string $to): void
     {
-        $directory = \dirname($to);
+        $directory = dirname($to);
+
+        // A path given to a converter rarely has its directory made for it, and
+        // `rename()` does not create one.
         if (!is_dir($directory) && !@mkdir($directory, 0o777, true) && !is_dir($directory)) {
-            throw new \RuntimeException(sprintf('Unable to create the directory "%s".', $directory));
+            throw new RuntimeException(sprintf('Unable to create the directory "%s".', $directory));
         }
 
         if (!rename($from, $to)) {
-            throw new \RuntimeException(sprintf('Unable to write the document to "%s".', $to));
+            throw new RuntimeException(sprintf('Unable to write the document to "%s".', $to));
         }
     }
 }

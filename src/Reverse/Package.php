@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MarkdownWord\Reverse;
 
 use MarkdownWord\Exception\FileNotWritable;
+use MarkdownWord\Xml;
 use MarkdownWord\Exception\MalformedDocument;
 use MarkdownWord\Exception\UnreadableDocument;
 use ZipArchive;
@@ -167,14 +168,9 @@ final class Package
             return $this->parts[$name] = null;
         }
 
-        $dom = new \DOMDocument();
-        $previous = libxml_use_internal_errors(true);
+        $dom = Xml::parse($xml);
 
-        $loaded = $dom->loadXML($xml, LIBXML_NOCDATA | LIBXML_NONET);
-        libxml_clear_errors();
-        libxml_use_internal_errors($previous);
-
-        if (!$loaded) {
+        if ($dom === null) {
             if ($required) {
                 throw new MalformedDocument(sprintf('"%s" is not valid XML.', $name));
             }

@@ -9,6 +9,7 @@ use DOMElement;
 use MarkdownWord\Exception\FileNotWritable;
 use MarkdownWord\Exception\MalformedDocument;
 use MarkdownWord\Exception\UnsupportedElement;
+use MarkdownWord\Xml;
 use PhpOffice\PhpWord\Element\AbstractElement;
 use PhpOffice\PhpWord\IOFactory;
 use PhpOffice\PhpWord\PhpWord;
@@ -142,13 +143,11 @@ final class NumberingMerger
             return $xml;
         }
 
-        $dom = new DOMDocument();
-        $previous = libxml_use_internal_errors(true);
-        $loaded = $dom->loadXML('<w xmlns:w="' . self::W_NS . '">' . $xml . '</w>');
-        libxml_clear_errors();
-        libxml_use_internal_errors($previous);
+        // Wrapped in a root carrying the namespace, so that a fragment using the
+        // `w:` prefix parses on its own.
+        $dom = Xml::parse('<w xmlns:w="' . self::W_NS . '">' . $xml . '</w>');
 
-        if (!$loaded) {
+        if ($dom === null) {
             return $xml;
         }
 
@@ -403,14 +402,8 @@ final class NumberingMerger
 
     private function load(DOMDocument $dom, string $xml): void
     {
-        $previous = libxml_use_internal_errors(true);
-        $loaded = $dom->loadXML($xml, LIBXML_NOCDATA | LIBXML_NONET);
-        libxml_clear_errors();
-        libxml_use_internal_errors($previous);
-
-        if (!$loaded) {
-            throw new MalformedDocument('The document contains invalid XML.');
-        }
+        Xml::parse($xml, flags: 0, into: $dom)
+            ?? throw new MalformedDocument('The document contains invalid XML.');
     }
 
     private function shortName(AbstractElement $element): string

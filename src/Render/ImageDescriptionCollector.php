@@ -32,11 +32,6 @@ final class ImageDescriptionCollector
         $this->descriptions[] = $description;
     }
 
-    public function hasDescriptions(): bool
-    {
-        return $this->descriptions !== [];
-    }
-
     /**
      * The alt texts added since the last call, and the start of the next batch.
      *
@@ -52,14 +47,5 @@ final class ImageDescriptionCollector
         $this->offset = count($this->descriptions);
 
         return $batch;
-    }
-
-    /**
-     * Forget everything recorded, for a document that was discarded.
-     */
-    public function reset(): void
-    {
-        $this->descriptions = [];
-        $this->offset = 0;
     }
 }
