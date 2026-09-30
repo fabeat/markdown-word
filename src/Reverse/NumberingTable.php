@@ -77,8 +77,8 @@ final class NumberingTable
      * whole list.
      *
      * A definition that declares no levels has no outermost one, which is not the
-     * same as declaring them out of order: the sort below tells the two apart,
-     * and it has nothing to say about an empty list.
+     * same as declaring them out of order, and it is not a definition the sort
+     * below says anything about.
      *
      * @return array{format: string, text: string, start: int}|null
      */

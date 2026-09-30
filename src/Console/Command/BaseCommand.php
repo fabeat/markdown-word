@@ -9,13 +9,9 @@ use MarkdownWord\Console\CommandLine;
 use MarkdownWord\Console\ConsoleException;
 
 /**
- * What the two directions have in common.
- *
- * Both are the same command with the ends swapped, so most of a run is the same
- * either way: take the options, deal with `--help`, check the argument says
- * nothing contradictory, work out where the result is going, and refuse to write
- * it over the file it came from. A subclass adds its own end of the conversion
- * and the options that configure it.
+ * What the two directions have in common: the same command with the ends swapped,
+ * so most of a run is the same either way. A subclass adds its own end of the
+ * conversion and the options that configure it.
  */
 abstract class BaseCommand implements Command
 {
@@ -74,17 +70,16 @@ abstract class BaseCommand implements Command
     /**
      * Refuse a result that would land on the file it was made from.
      *
-     * Called twice, and the second call is the point. The first happens here,
-     * before the conversion, so that a run which is going to be refused stops
-     * before spending the work. But a conversion is not instant, and anything
-     * with write access to the output directory can put the input's own inode at
-     * the output path in between — so each command looks again at the last
-     * moment, immediately before the write.
+     * Called twice, and the second call is the point. The first happens before the
+     * conversion, so that a run which is going to be refused stops before spending
+     * the work. But a conversion is not instant, and anything with write access to
+     * the output directory can put the input's own inode at the output path in
+     * between — so each command looks again at the last moment.
      *
      * That narrows the window rather than closing it: what is left is the space
-     * between the check and the write itself. Closing it needs the write to be
-     * conditional on what it is about to replace, which `rename()` cannot
-     * promise and `file_put_contents()` certainly does not.
+     * between the check and the write. Closing it needs the write to be conditional
+     * on what it is about to replace, which `rename()` cannot promise and
+     * `file_put_contents()` certainly does not.
      */
     final protected function guardAgainstOverwrite(?string $input, string $output): void
     {
@@ -106,19 +101,18 @@ abstract class BaseCommand implements Command
     /**
      * Whether the two paths are one file, whatever they happen to be called.
      *
-     * By inode rather than by name, because a name is not the file: on a
-     * case-insensitive filesystem — APFS and NTFS, which is what most macOS and
-     * Windows machines have — `Notes.md` and `notes.md` are two spellings of one
-     * inode, and `realpath()` hands each back in the case it was written in, so
-     * the two strings never match. A hard link is two paths to one inode for the
-     * same reason, and a symlink to the input is a third.
+     * By inode rather than by name: on a case-insensitive filesystem — APFS and
+     * NTFS, which is what most macOS and Windows machines have — `Notes.md` and
+     * `notes.md` are two spellings of one inode, and `realpath()` hands each back
+     * in the case it was written in, so the two strings never match. A hard link
+     * is two paths to one inode for the same reason, and a symlink to the input is
+     * a third.
      *
-     * A path that is not there cannot be the input, however it is spelled: there
-     * is nothing at it to lose. The one shape still worth catching is
-     * `sub/../notes.md`, and the detour in front of it is exactly why the
-     * comparison cannot be left to `realpath()`, which returns nothing at all
-     * for a path whose directory is missing. So the two are compared as text,
-     * with the `.` and `..` segments taken out by hand.
+     * A path that is not there cannot be the input, however it is spelled. The one
+     * shape still worth catching is `sub/../notes.md`, and the detour in front of
+     * it is exactly why the comparison cannot be left to `realpath()`, which
+     * returns nothing at all for a path whose directory is missing. So the two are
+     * compared as text, with the `.` and `..` segments taken out by hand.
      */
     private static function namesTheInput(string $input, string $output): bool
     {
@@ -192,8 +186,8 @@ abstract class BaseCommand implements Command
     }
 
     /**
-     * {@see Application::report()}, forwarded: the same sentence on the same
-     * stream, so a command does not have to know how the application says it.
+     * {@see Application::report()}, forwarded, so a command does not have to know
+     * how the application says it.
      */
     final protected function report(?string $input, string $output): void
     {
@@ -223,8 +217,6 @@ abstract class BaseCommand implements Command
     }
 
     /**
-     * The command in the other direction, for the options that are not this one's.
-     *
      * @return class-string<Command>
      */
     abstract protected static function other(): string;

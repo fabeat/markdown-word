@@ -23,19 +23,18 @@ use Throwable;
  *
  * The whole interface lives here rather than in a script so it can be tested like
  * the rest of the library, and so the same code serves both the phar and a plain
- * checkout of the source.
- *
- * The result goes to standard output and everything else — progress, warnings,
- * errors — goes to standard error, so `mdword to-docx in.md -o - | pbcopy`
- * does what it looks like it does. See {@see self::usage()} for the text itself.
+ * checkout of the source. The result goes to standard output and everything else
+ * to standard error, so `mdword to-docx in.md -o - | pbcopy` does what it looks
+ * like it does.
  */
 final class Application
 {
     public const NAME = 'mdword';
 
-    // The one place the version is written down. The phar reads it to stamp its
-    // own manifest, and the release job fails the run if this and the tag pushed
-    // disagree — so a bump here without a tag is caught, and not published over.
+    // The phar reads this to stamp its own manifest, and the release job fails the
+    // run when this and the tag pushed disagree. `CHANGELOG.md` carries the same
+    // number and a test holds the two together, so a bump here needs a heading
+    // there.
     public const VERSION = '0.1.0';
 
     /**
@@ -45,19 +44,15 @@ final class Application
     public const SUCCESS = 0;
 
     /**
-     * Exit code for a run that did not finish.
-     *
-     * One code for a mistake the caller can put right and for a defect they
-     * cannot: a program with only these two cannot report the difference any
-     * other way. What it printed says which it was.
+     * Exit code for a run that did not finish, whether the cause is a mistake the
+     * caller can put right or a defect they cannot. What it printed says which.
      */
     public const FAILURE = 1;
 
     /**
      * The commands, by the name they are typed under.
      *
-     * The one list the dispatcher, the usage text and the alias table all read,
-     * so a new direction is added in one place rather than in three.
+     * The one list the dispatcher, the usage text and the alias table all read.
      *
      * @var array<string, class-string<Command>>
      */
@@ -76,8 +71,8 @@ final class Application
     private $in;
 
     /**
-     * Bytes read from the input to work out its direction, held back and handed
-     * on again by {@see self::readInput()}.
+     * Bytes read from the input to work out its direction, handed on again by
+     * {@see self::readInput()}.
      */
     private string $peeked = '';
 
@@ -109,7 +104,7 @@ final class Application
     }
 
     /**
-     * The run itself, with the filter already in place.
+     * The run itself, with the deprecation filter already in place.
      *
      * @param list<string> $argv
      */
@@ -173,8 +168,6 @@ final class Application
     }
 
     /**
-     * Work out which way the data should go and run that command.
-     *
      * `--to` overrides what the file says, which is what makes reading from
      * standard input work at all: a pipe has no name to go on.
      *
@@ -326,11 +319,9 @@ final class Application
     }
 
     /**
-     * The text `mdword help` prints.
-     *
-     * One section per command, from {@see self::COMMANDS}, over the option
-     * table each command publishes for readers; {@see Command::options()} says
-     * why that is a second list.
+     * The text `mdword help` prints: one section per command over the option table
+     * each one publishes for readers. {@see Command::options()} says why that is a
+     * second list.
      */
     public function usage(): string
     {
@@ -395,8 +386,6 @@ final class Application
     }
 
     /**
-     * The help for a single command, as `--help` on that command prints it.
-     *
      * @param class-string<Command> $command
      */
     public static function commandHelp(string $command, string $summary): string
@@ -467,8 +456,6 @@ final class Application
     }
 
     /**
-     * The input, from a file or from standard input.
-     *
      * @throws ConsoleException
      */
     public function readInput(?string $path): string
@@ -542,8 +529,8 @@ final class Application
     /**
      * Where the result should go, when the user did not say.
      *
-     * A named input gives a name to derive from. Standard input does not, so the
-     * result goes to standard output rather than to a file nobody asked for.
+     * Standard input has no name to derive one from, so the result goes to
+     * standard output rather than to a file nobody asked for.
      */
     public function outputPath(?string $input, string $extension, ?string $requested): string
     {
@@ -573,10 +560,8 @@ final class Application
     }
 
     /**
-     * The converter, for callers that want the object rather than a written file.
-     *
-     * Typed as the interface rather than the class, so a caller holding one of
-     * the two directions cannot tell them apart by accident.
+     * Typed as the interface rather than the class, so a caller holding one of the
+     * two directions cannot tell them apart by accident.
      */
     public function converter(Configuration $config, ?string $source = null): Converter
     {
@@ -627,12 +612,10 @@ final class Application
     }
 
     /**
-     * Write to standard output.
-     *
-     * For the help, which is the only thing that goes out this way; a converted
-     * document leaves through {@see self::writeResult()}. Both go through
-     * `write()` rather than reaching for `STDOUT`, which is what makes a run
-     * drivable from a test.
+     * Write to standard output, for the help — the only thing that goes out this
+     * way; a converted document leaves through {@see self::writeResult()}. Both go
+     * through `write()` rather than reaching for `STDOUT`, which is what makes a
+     * run drivable from a test.
      *
      * @see self::error()
      */
@@ -642,10 +625,9 @@ final class Application
     }
 
     /**
-     * Say on standard error what a run converted and where it put it.
-     *
-     * `-` is how a stream is asked for, so a person is told which stream rather
-     * than being shown a dash.
+     * Say on standard error what a run converted and where it put it. `-` is how
+     * a stream is asked for, so a person is told which stream rather than being
+     * shown a dash.
      */
     public function report(?string $input, string $output): void
     {

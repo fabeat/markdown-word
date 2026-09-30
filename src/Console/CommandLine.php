@@ -16,20 +16,11 @@ use function substr;
  * The command line as the user typed it, split into options and operands.
  *
  * Parsed against a declared set of options, so an unknown or malformed one is
- * reported in a single place, in a message that names it.
- *
- * A value may be written three ways, which is what a person at a terminal
- * expects, while a flag takes two of them — it is on or off, so there is
- * nothing for a third spelling to carry:
- *
- * ```text
- * --output report.docx
- * --output=report.docx
- * -o report.docx
- * ```
- *
- * Everything after a bare `--` is an operand, so a file whose name begins with a
- * dash can still be converted.
+ * reported in a single place, in a message that names it. A value may be written
+ * `--output report.docx`, `--output=report.docx` or `-o report.docx`, which is
+ * what a person at a terminal expects; a flag takes two of them, there being
+ * nothing for a third spelling to carry. Everything after a bare `--` is an
+ * operand, so a file whose name begins with a dash can still be converted.
  */
 final class CommandLine
 {
@@ -50,10 +41,9 @@ final class CommandLine
     /**
      * Split raw arguments against a specification of what is allowed.
      *
-     * @param list<string> $argv The arguments, without the program name.
+     * @param list<string>         $argv    The arguments, without the program name.
      * @param array<string, string> $foreign Long names belonging to a *different*
-     *        command, mapped to that command's name, so a slip can be reported as
-     *        one.
+     *        command, mapped to that command's name, so a slip can be reported as one.
      *
      * @throws ConsoleException on an unknown option, a missing value, or a value
      *         given to an option that takes none.
@@ -170,7 +160,7 @@ final class CommandLine
     }
 
     /**
-     * Whether a token names an option rather than an operand. A bare `-` is the
+     * A token naming an option rather than an operand. A bare `-` is the
      * conventional "standard input", so it is an operand.
      */
     public static function looksLikeOption(string $token): bool
