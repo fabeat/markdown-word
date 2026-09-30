@@ -11,8 +11,11 @@ namespace MarkdownWord\Reverse;
  * containers, so the tree is deliberately flat: a run carries the four things
  * Markdown can express inline, and the serialiser rebuilds the nesting from
  * them. That is the inverse of what {@see \MarkdownWord\Render\InlineRenderer} does
- * on the way out, and the round trip is exact because neither side loses a
- * distinction the other needs.
+ * on the way out — and it preserves exactly what Word recorded, which is not the
+ * same thing as preserving the Markdown: a fenced code block comes back without
+ * its language, and a table is written with a header whether the document marked
+ * one. {@see \MarkdownWord\WordToMarkdown} lists the distinctions Word does not
+ * keep.
  */
 final class Inline
 {
@@ -22,7 +25,8 @@ final class Inline
     public const LINK = 'link';
 
     /**
-     * @param string                $kind     One of the `KIND` constants.
+     * @param string                $kind     One of the `TEXT`, `BREAK`, `IMAGE`
+     *        or `LINK` constants.
      * @param string                $text     The literal characters, for a text run.
      * @param bool                  $bold     Whether the run is bold.
      * @param bool                  $italic   Whether the run is italic.
@@ -79,18 +83,6 @@ final class Inline
     public static function link(string $url, ?string $title, array $children): self
     {
         return new self(self::LINK, url: $url, title: $title, children: $children);
-    }
-
-    /**
-     * Whether this run carries any of the formatting Markdown can express.
-     *
-     * Runs without it are merged with their neighbours, so a paragraph written
-     * as twenty runs by Word comes back out as one line of text rather than
-     * twenty fragments.
-     */
-    public function formatted(): bool
-    {
-        return $this->bold || $this->italic || $this->strike || $this->code;
     }
 
     public function is(string ...$kinds): bool

@@ -7,7 +7,7 @@ namespace MarkdownWord\Template;
 use MarkdownWord\Configuration;
 use MarkdownWord\Exception\FileNotWritable;
 use MarkdownWord\MarkdownToWord;
-use MarkdownWord\TemplateNotFound;
+use MarkdownWord\Exception\TemplateNotFound;
 use MarkdownWord\Writer\DocxWriter;
 use MarkdownWord\Writer\OutputEscaping;
 use MarkdownWord\Writer\NumberingMerger;

@@ -42,10 +42,19 @@ final class Application
 
     public const VERSION = '1.0.0';
 
-    /** Exit code for a run that converted something, and for a run that only answered a question. */
+    /**
+     * Exit code for a run that did what it was asked: a conversion, or an answer
+     * to `help`, `--version` or a command's own `--help`.
+     */
     public const SUCCESS = 0;
 
-    /** Exit code for a run that did not finish, whether the user can put it right or it is a defect. */
+    /**
+     * Exit code for a run that did not finish.
+     *
+     * One code for a mistake the caller can put right and for a defect they
+     * cannot, because a program with only these two cannot report the difference
+     * any other way. What it printed says which it was.
+     */
     public const FAILURE = 1;
 
     /**
@@ -125,9 +134,10 @@ final class Application
             // Anything arriving here is a defect rather than a mistake, so it is
             // reported in full: the message, the type, and where it happened.
             // A stack trace would be noise, since the phar has no source paths
-            // that mean anything to the person reading it. The exit code is the
-            // same as for a mistake, since a program that cannot report the
-            // difference has no better one to offer.
+            // that mean anything to the person reading it. The exit code is
+            // {@see self::FAILURE} as it is for a mistake, so the two cannot be
+            // told apart by the code alone; the type named above is what tells
+            // them.
             $this->error(sprintf('%s: %s', $e::class, $e->getMessage()));
             $this->error(sprintf('  at %s:%d', $e->getFile(), $e->getLine()));
 
