@@ -55,10 +55,14 @@ it('changes each behaviour through its own setter', function (string $method, mi
 ]);
 
 it('changes the image mode, and the two things that go with it, at once', function () {
-    $options = (new Options())->withImages(Options::IMAGE_PLACEHOLDER, '/tmp/pics', 8.5);
+    // A path inside the project rather than the system temp directory, which is
+    // where this repository keeps everything a test writes. The directory is only
+    // stored, never touched, so what matters is that it is one this project would
+    // not be surprised by.
+    $options = (new Options())->withImages(Options::IMAGE_PLACEHOLDER, 'assets', 8.5);
 
     expect($options->images)->toBe(Options::IMAGE_PLACEHOLDER)
-        ->and($options->imageBasePath)->toBe('/tmp/pics')
+        ->and($options->imageBasePath)->toBe('assets')
         ->and($options->imageMaxWidth)->toBe(8.5);
 });
 

@@ -51,6 +51,8 @@ can be written once:
 
 ```php
 use MarkdownWord\Converter;
+use MarkdownWord\MarkdownToWord;
+use MarkdownWord\WordToMarkdown;
 
 function convert(Converter $converter, string $target): void
 {
@@ -118,12 +120,14 @@ php examples/build.php     # a document for every example in examples/
 ```
 
 `stress.php` feeds deliberately awkward input — unterminated delimiters, control
-characters, lone `<` and `&`, very deep nesting — through nine configurations
-and the template renderer, and checks that every result is a valid `.docx`. It
-is what caught the escaping defect described below.
+characters, lone `<` and `&`, very deep nesting — through nine configurations,
+and then through a template with the seven of those that are not merely a choice
+of parser. Every result has to be a valid `.docx`. It is what caught the escaping
+defect described below.
 
-`readme-check.php` runs every example on this page, so the documentation cannot
-quietly stop describing what the code does.
+`readme-check.php` runs every PHP example on this page, and drives the `mdword`
+one-liners through the application, so the documentation cannot quietly stop
+describing what the code does.
 
 Tests are written with [Pest][pest] 5, against PHPUnit 13.
 
@@ -138,8 +142,10 @@ Tests are written with [Pest][pest] 5, against PHPUnit 13.
 PHP 8.2 is in the matrix too, but the test suite cannot run there: **Pest 5
 requires PHP 8.4**, while the library itself supports 8.2. That gap is covered by
 `smoke.php`, which uses no test framework and checks that both directions and the
-command line work on whatever PHP it is given. Between the two, every supported
-version is exercised.
+command line work on whatever PHP it is given, and by `stress.php` beside it.
+Pointed at a phar, `smoke.php` runs the archive as well — see
+[Requirements](#requirements). Between the two, every supported version is
+exercised.
 
 Everything installs what `composer.lock` pins, so a build is repeatable. A weekly
 `dependencies` job resolves afresh instead and runs the suite against the result,
@@ -166,7 +172,7 @@ use MarkdownWord\WordToMarkdown;
 
 echo (new WordToMarkdown('report.docx'))->convert();       // as a string
 (new WordToMarkdown('report.docx'))->save('report.md');   // straight to a file
-(new WordToMarkdown($bytes))->toMarkdown();               // bytes already in hand
+echo (new WordToMarkdown())->toMarkdown($bytes);          // bytes already in hand
 ```
 
 A Word document is a lower-fidelity form of the Markdown it came from, so the
@@ -196,6 +202,14 @@ saying how much room they will take up.
 use MarkdownWord\Reverse\Options;
 
 new WordToMarkdown(null, Options::fromArray(['mediaDirectory' => 'assets']));
+```
+
+`Reverse\Options::toArray()` gives the whole table back, which is handy in a config
+file or a log. And for a caller that wants the document rather than the Markdown
+— to index it, or to decide what to do with it before writing anything:
+
+```php
+$blocks = (new WordToMarkdown())->read('report.docx');   // list of Reverse\Block
 ```
 
 The output is GitHub-Flavored Markdown: a Word table can only be a GFM table,
@@ -260,7 +274,7 @@ The options both directions share:
 | Option | Meaning |
 | --- | --- |
 | `-o, --output <file>` | where the result goes; `-` for standard output |
-| `--to <docx\|markdown>` | which way to convert; detected from the file otherwise |
+| `--to <docx\|word\|markdown\|md>` | which way to convert; detected from the file otherwise |
 | `-c, --config <file.php>` | a file returning the styles and options to use |
 | `--plain` | no code colouring, no quote style, no table borders |
 
@@ -415,6 +429,27 @@ documents in a config file:
 Configuration::fromArray(require 'config/markdown.php');
 ```
 
+`withBuiltInHeadingStyles()` points every heading at the matching built-in Word
+style *and* moves the quote and list slots to the built-in list styles, which is
+not the default set — the defaults use `IntenseQuote` and numbering definitions
+of this library's own:
+
+```php
+$config = Configuration::create()->withBuiltInHeadingStyles();
+// blockQuote → Quote, bulletList → ListBullet, orderedList → ListNumber
+```
+
+Whatever a configuration holds can be read back as the array it came from, which
+is what to write into a config file, to log, or to compare:
+
+```php
+$config->toArray();   // ['styles' => [...], 'options' => [...]]
+```
+
+`Configuration\Styles` and `Configuration\Options` have a `toArray()` of their own,
+and so does `Reverse\Options` — which is how the reader's options are spelled as
+an array in the first place.
+
 ### Styles
 
 Each slot holds a styleId, an inline style array, or `null`.
@@ -439,6 +474,24 @@ Each slot holds a styleId, an inline style array, or `null`.
 > **StyleIds, not display names.** Word looks a style up by its *identifier*, so
 > the built-in headings are `Heading1`, not `Heading 1`, and `IntenseQuote`, not
 > `Intense Quote`. Use the identifier your template defines.
+
+A `Styles` object is the table above with your changes in it, and can be used on
+its own — through `Configuration::withStyles()`, or wherever the renderer asks a
+configuration for a slot:
+
+```php
+use MarkdownWord\Configuration\Styles;
+
+$styles = new Styles();                       // every slot at its default
+$styles = $styles->with(Styles::HEADING_1, 'CorpTitle');   // a new instance
+$styles->get(Styles::HEADING_1);              // 'CorpTitle', the original untouched
+$styles->heading(2);                          // the style for a heading level
+Styles::defaults();                           // the default table as an array
+$styles->toArray();                           // the whole table as an array
+```
+
+`heading()` clamps: a level past the sixth answers with the sixth, and a level
+below the first with the first, since there is no other heading style to give.
 
 ### Options
 
@@ -474,12 +527,21 @@ $markdown = "# Chapter one\n\n…";
 
 $section = $phpWord->addSection();
 $section->addTitle('Annual Report', 1);
-$converter->renderIntoContainer($markdown, $section, $phpWord);
 
 $phpWord->getDocInfo()->setTitle('Annual Report');
 
-// toDocx() takes that same document and hands back the finished bytes.
+// toDocx() takes that same document, renders the Markdown into the section that is
+// already there, and hands back the finished bytes.
 file_put_contents('report.docx', $converter->toDocx($markdown, $phpWord));
+```
+
+`toDocx()` renders the Markdown it is given into the document it is handed, so
+that document already has your own content in it. `renderIntoContainer()` is the
+same render into a container you name — a table cell, a header, a footer — for
+when you are writing the document out yourself:
+
+```php
+$converter->renderIntoContainer($markdown, $section, $phpWord);
 ```
 
 Recover the plain text of a rendered document, for indexing or an accessibility
@@ -503,13 +565,46 @@ new MarkdownToWord(null, $config, CommonMarkParser::withAllExtensions());
 
 Or implement `MarkdownParserInterface` for anything else.
 
+`parse()` is the parser on its own, for a caller that wants the syntax tree rather
+than a document — a linter, a table of contents, a search index:
+
+```php
+$tree = (new MarkdownToWord())->parse("# Hello\n\nBody.");   // a CommonMark Document
+```
+
+`pendingHyperlinks()` is the other half of the way into Word. A link whose label
+carries emphasis cannot be expressed by PHPWord's own element, so the renderer
+leaves a placeholder behind and rewrites the file while writing it; this is what
+is waiting to be rewritten, and the text of a document is only complete once it
+has been handed over:
+
+```php
+$converter = new MarkdownToWord();
+
+$phpWord = $converter->toPhpWord('A [**bold** link](https://example.com).');
+
+TextExtractor::fromPhpWord($phpWord, TextExtractor::LINE_BREAK, $converter->pendingHyperlinks());
+
+$converter->pendingHyperlinks();
+// [['placeholder' => '…MDWL…0…', 'url' => 'https://example.com', 'title' => null, 'runs' => [...]]]
+```
+
 ## Requirements
 
 PHP 8.2+ with `ext-zip`, `ext-dom`, `ext-mbstring` and `ext-gd`.
 
 Working on the library needs PHP 8.4+, because Pest 5 does. That is a floor for
-the *test suite* only: the published package installs on 8.2 and the phar runs on
-it, and `smoke.php` checks that it does.
+the *test suite* only: the published package installs on 8.2, and the library is
+checked on 8.2 by the `minimum` job, which runs `smoke.php` and `stress.php`
+there. The phar is a program with its own dependencies inside it, so the library
+passing says nothing about whether the archive runs — `smoke.php` takes the path
+to one and runs it in a child process, converting a document through it both
+ways:
+
+```sh
+composer build:phar
+php smoke.php build/mdword.phar
+```
 
 ## Notes
 

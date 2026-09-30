@@ -5,34 +5,128 @@ declare(strict_types=1);
 /**
  * Runs the examples from README.md so the documentation cannot drift from the
  * code. Not part of the test suite; run it with `php readme-check.php`.
+ *
+ * Every PHP block on that page is here, and the `mdword` one-liners are driven
+ * through the application. That is worth less than it sounds if half the examples
+ * are quietly absent — which is what happened: seven checks for nine examples, and
+ * a claim on the page that all of them ran. So the list below is meant to be read
+ * against the README rather than trusted, and a new example there is a new check
+ * here.
  */
 
 require __DIR__ . '/vendor/autoload.php';
 
-use MarkdownWord\Console\UpstreamDeprecations;
 use MarkdownWord\Configuration;
 use MarkdownWord\Configuration\Options;
 use MarkdownWord\Configuration\Styles;
+use MarkdownWord\Console\Application;
+use MarkdownWord\Console\UpstreamDeprecations;
+use MarkdownWord\Converter;
 use MarkdownWord\MarkdownToWord;
 use MarkdownWord\Parser\CommonMarkParser;
+use MarkdownWord\Reverse\Options as ReverseOptions;
 use MarkdownWord\Template\MarkdownTemplate;
 use MarkdownWord\Text\TextExtractor;
+use MarkdownWord\WordToMarkdown;
 use PhpOffice\PhpWord\IOFactory;
 use PhpOffice\PhpWord\PhpWord;
 use PhpOffice\PhpWord\Style\Paragraph;
+use PhpOffice\PhpWord\TemplateProcessor;
 
 // One dependency emits a deprecation for every list item it writes; see the class
 // for why. Without this a run prints thousands of lines of somebody else's
 // warning and buries anything real.
 UpstreamDeprecations::install();
 
-
 $work = __DIR__ . '/tmp/readme';
 @mkdir($work, 0o777, true);
 
-$failures = 0;
+/**
+ * Every part of a `.docx`, keyed by name, with what a clock changes taken out.
+ *
+ * Two things vary between two correct conversions of the same input, and neither
+ * is a difference in the document:
+ *
+ * - the zip's per-entry timestamps — two seconds of resolution, no sub-second
+ *   part, no time zone — which live in the container and not in the parts;
+ * - `docProps/core.xml`, which records when the document was created and last
+ *   modified, so it differs whenever the two conversions are not in the same
+ *   second.
+ *
+ * What has to match is everything else, so that is what this compares. The
+ * comparison is on the parts rather than on the archive because a check that
+ * compared the bytes failed about three times in four on any machine slow enough
+ * to cross a two-second boundary between the two writes.
+ *
+ * @return array<string, string>
+ */
+function documentParts(string $docx): array
+{
+    $path = tempnam(sys_get_temp_dir(), 'mdword-parts-');
 
-$check = static function (string $name, callable $body) use (&$failures): void {
+    if ($path === false) {
+        throw new RuntimeException('Unable to create a temporary file.');
+    }
+
+    try {
+        file_put_contents($path, $docx);
+
+        $zip = new ZipArchive();
+
+        if ($zip->open($path) !== true) {
+            throw new RuntimeException('The document is not a readable archive.');
+        }
+
+        $parts = [];
+
+        for ($index = 0; $index < $zip->numFiles; $index++) {
+            $stat = $zip->statIndex($index);
+
+            if ($stat === false || !is_string($stat['name'] ?? null)) {
+                continue;
+            }
+
+            // Every entry is wanted, the empty directories and all, so that a
+            // difference in what is present is a difference here too.
+            $content = (string) $zip->getFromIndex($index);
+
+            $parts[$stat['name']] = $stat['name'] === 'docProps/core.xml'
+                ? withoutTimestamps($content)
+                : $content;
+        }
+
+        $zip->close();
+
+        ksort($parts);
+
+        return $parts;
+    } finally {
+        @unlink($path);
+    }
+}
+
+/**
+ * A document's core properties with the two dates blanked.
+ *
+ * `dcterms:created` and `dcterms:modified` are the only parts of a `.docx` that
+ * say when it was made. Leaving them in makes this comparison a test of the
+ * clock.
+ */
+function withoutTimestamps(string $coreProperties): string
+{
+    return (string) preg_replace(
+        ['#<dcterms:(created|modified)[^>]*>.*?</dcterms:\1>#s', '#<dcterms:(created|modified)[^>]*/>#'],
+        '<dcterms:$1>whenever</dcterms:$1>',
+        $coreProperties,
+    );
+}
+
+$failures = 0;
+$checks = 0;
+
+$check = static function (string $name, callable $body) use (&$failures, &$checks): void {
+    $checks++;
+
     try {
         $body();
         echo "ok    {$name}\n";
@@ -42,13 +136,167 @@ $check = static function (string $name, callable $body) use (&$failures): void {
     }
 };
 
+// ------------------------------------------------------------------ the ways in
+
 // The very first example.
-$check('quick start', function () use ($work): void {
-    $md = __DIR__ . '/tmp/readme/README.md';
+$check('quick start: Markdown to Word', function () use ($work): void {
+    $md = $work . '/README.md';
     file_put_contents($md, "# Title\n\nBody.\n");
     (new MarkdownToWord($md))->save($work . '/quick.docx');
     assertTrue(is_file($work . '/quick.docx'), 'no file written');
 });
+
+$check('quick start: Word to Markdown', function () use ($work): void {
+    (new WordToMarkdown($work . '/quick.docx'))->save($work . '/quick.md');
+    assertTrue(str_contains((string) file_get_contents($work . '/quick.md'), '# Title'), 'the heading is missing');
+});
+
+$check('convert returns the result, save writes it', function () use ($work): void {
+    file_put_contents($work . '/notes.md', "# Notes\n\nSome **bold** text.\n");
+
+    $document = $work . '/four-ways.docx';
+    $markdown = $work . '/four-ways-back.md';
+
+    $bytes = (new MarkdownToWord($work . '/notes.md'))->convert();
+    usleep(1100000);
+    (new MarkdownToWord($work . '/notes.md'))->save($document);
+    $back = (new WordToMarkdown($document))->convert();
+    (new WordToMarkdown($document))->save($markdown);
+
+    assertTrue(str_starts_with($bytes, 'PK'), 'convert() did not return the document');
+
+    // Every part of the archive, not the archive itself. A zip records a
+    // timestamp per entry — two seconds of resolution, no sub-second part, no
+    // time zone — so two correct conversions whose writes fall either side of a
+    // boundary differ in those four bytes and agree in every other. Comparing
+    // the bytes made this check fail roughly three times in four on any machine
+    // slow enough to cross a boundary between the two writes.
+    assertTrue(
+        documentParts($bytes) === documentParts((string) file_get_contents($document)),
+        'save() wrote a different document from the one convert() returned',
+    );
+
+    assertTrue(str_contains($back, '**bold**'), 'convert() did not return the Markdown');
+    assertTrue(
+        (string) file_get_contents($markdown) === $back,
+        'save() wrote different Markdown from the one convert() returned',
+    );
+});
+
+$check('a string that names a file is read from it', function () use ($work): void {
+    file_put_contents($work . '/path-or-content.md', "# Either way\n");
+
+    // A path, and the same text handed over directly. Anything that is not a file
+    // is the content, so the two produce the same document.
+    $fromPath = (new MarkdownToWord($work . '/path-or-content.md'))->convert();
+    $fromText = (new MarkdownToWord(file_get_contents($work . '/path-or-content.md')))->convert();
+
+    assertTrue(str_starts_with($fromPath, 'PK'), 'the path produced no document');
+    assertTrue(str_starts_with($fromText, 'PK'), 'the text produced no document');
+
+    file_put_contents($work . '/from-path.docx', $fromPath);
+    file_put_contents($work . '/from-text.docx', $fromText);
+
+    assertTrue(
+        self_documentBody($work . '/from-path.docx') === self_documentBody($work . '/from-text.docx'),
+        'the two documents differ',
+    );
+});
+
+$check('both directions through the interface', function () use ($work): void {
+    file_put_contents($work . '/interface.md', "# Through the interface\n\nBody.\n");
+    (new MarkdownToWord($work . '/interface.md'))->save($work . '/interface.docx');
+
+    $convert = static function (Converter $converter, string $target): void {
+        $converter->save($target);
+    };
+
+    $convert(new MarkdownToWord($work . '/interface.md'), $work . '/interface-a.docx');
+    $convert(new WordToMarkdown($work . '/interface.docx'), $work . '/interface-a.md');
+
+    assertTrue(is_file($work . '/interface-a.docx'), 'the first direction wrote nothing');
+    assertTrue(
+        str_contains((string) file_get_contents($work . '/interface-a.md'), '# Through the interface'),
+        'the second direction lost the heading',
+    );
+});
+
+$check('a round trip is two of them', function () use ($work): void {
+    $word = new MarkdownToWord("# Round trip\n\nA paragraph.\n");
+    $back = (new WordToMarkdown($word->convert()))->convert();
+
+    assertTrue(str_contains($back, '# Round trip'), 'the heading did not survive');
+    assertTrue(str_contains($back, 'A paragraph.'), 'the paragraph did not survive');
+});
+
+// ------------------------------------------------------- the command line
+
+$check('the command line works the direction out for itself', function () use ($work): void {
+    file_put_contents($work . '/cli.md', "# From the command line\n");
+    (new MarkdownToWord($work . '/cli.md'))->save($work . '/cli.docx');
+
+    $fromMarkdown = self_cli(['to-docx', $work . '/cli.md', '-o', $work . '/cli-1.docx']);
+    $fromDocument = self_cli(['to-markdown', $work . '/cli.docx', '-o', $work . '/cli-1.md']);
+    $detected = self_cli([$work . '/cli.md', '-o', $work . '/cli-2.docx']);
+    $piped = self_cli(['--to', 'docx', '-', '-o', '-'], "# Piped in\n");
+
+    assertTrue($fromMarkdown['code'] === 0, 'to-docx exited ' . $fromMarkdown['code'] . ': ' . $fromMarkdown['err']);
+    assertTrue($fromDocument['code'] === 0, 'to-markdown exited ' . $fromDocument['code'] . ': ' . $fromDocument['err']);
+    assertTrue($detected['code'] === 0, 'the direction was not worked out from the file: ' . $detected['err']);
+    assertTrue($piped['code'] === 0, 'the piped conversion exited ' . $piped['code'] . ': ' . $piped['err']);
+    assertTrue(substr($piped['out'], 0, 2) === 'PK', 'nothing came out of the pipe');
+    assertTrue(
+        str_contains((string) file_get_contents($work . '/cli-1.md'), '# From the command line'),
+        'the document did not read back',
+    );
+
+    // `--to` takes a short name for either direction as well as the long one.
+    $short = self_cli(['--to', 'word', $work . '/cli.md', '-o', $work . '/cli-3.docx']);
+    $shorter = self_cli(['--to', 'md', $work . '/cli-3.docx', '-o', '-']);
+
+    assertTrue($short['code'] === 0, '--to word exited ' . $short['code'] . ': ' . $short['err']);
+    assertTrue($shorter['code'] === 0, '--to md exited ' . $shorter['code'] . ': ' . $shorter['err']);
+    assertTrue(str_contains($shorter['out'], '# From the command line'), '--to md produced nothing');
+});
+
+// ----------------------------------------------------- Word to Markdown
+
+$check('Word to Markdown: convert, save and toMarkdown', function () use ($work): void {
+    (new MarkdownToWord("# Bytes in hand\n"))->save($work . '/in-hand.docx');
+    $bytes = (string) file_get_contents($work . '/in-hand.docx');
+
+    $converted = (new WordToMarkdown($work . '/in-hand.docx'))->convert();
+    (new WordToMarkdown($work . '/in-hand.docx'))->save($work . '/in-hand.md');
+    $fromBytes = (new WordToMarkdown())->toMarkdown($bytes);
+
+    assertTrue(str_contains($converted, '# Bytes in hand'), 'convert() lost the heading');
+    assertTrue(str_contains($fromBytes, '# Bytes in hand'), 'toMarkdown() lost the heading');
+    assertTrue((string) file_get_contents($work . '/in-hand.md') === $converted, 'save() wrote something else');
+});
+
+$check('the reader takes its options from an array', function () use ($work): void {
+    // The example on the page names a directory beside the Markdown; here it is an
+    // absolute path inside the scratch directory, and the rest is as written.
+    $assets = $work . '/assets';
+    self_redSquare($work . '/red-square.png');
+
+    $config = Configuration::create()->withOptions([
+        'images' => Options::IMAGE_EMBED,
+        'imageBasePath' => $work,
+    ]);
+    (new MarkdownToWord('![A red square](red-square.png)', $config))->save($work . '/with-image.docx');
+
+    $options = ReverseOptions::fromArray(['mediaDirectory' => $assets]);
+    $markdown = (new WordToMarkdown($work . '/with-image.docx', $options))->convert();
+
+    assertTrue($options->mediaDirectory === $assets, 'the option did not take');
+    assertTrue(
+        preg_match('/!\[[^\]]*\]\(([^)]+)\)/', $markdown, $match) === 1 && is_file($assets . '/' . basename($match[1])),
+        'the image was not taken out of the document: ' . $markdown,
+    );
+});
+
+// ------------------------------------------------------------------ templates
 
 // The template example, including a template that defines its own styles.
 $check('template', function () use ($work): void {
@@ -98,6 +346,38 @@ $check('template', function () use ($work): void {
     assertTrue(str_contains($numbering, 'w:numFmt w:val="bullet"'), 'the list lost its numbering');
 });
 
+$check('renderIntoContainer renders into a container you name', function () use ($work): void {
+    // The same render as `toDocx()`, into a container rather than into a
+    // document. Nothing is written here, which is the point: the caller is writing
+    // the document out, so the destination is the authority on its styles.
+    $phpWord = new PhpWord();
+    $converter = new MarkdownToWord(null, new Configuration());
+
+    $header = $phpWord->addSection()->addHeader();
+    $converter->renderIntoContainer("# A running head\n", $header, $phpWord);
+
+    $output = $work . '/container.docx';
+    IOFactory::createWriter($phpWord, 'Word2007')->save($output);
+
+    $zip = new ZipArchive();
+    $zip->open($output);
+    $headerXml = (string) $zip->getFromName('word/header1.xml');
+    $zip->close();
+
+    assertTrue(str_contains($headerXml, 'A running head'), 'the header is empty');
+});
+
+$check('the template hands back PHPWord\'s own processor', function () use ($work): void {
+    $template = new MarkdownTemplate($work . '/report-template.docx');
+
+    assertTrue(
+        $template->processor() instanceof TemplateProcessor,
+        'processor() did not return a TemplateProcessor',
+    );
+});
+
+// ------------------------------------------------------------- configuration
+
 $check('configuration from a chain', function (): void {
     $config = Configuration::create()
         ->withStyles([Styles::CODE_FONT => ['name' => 'Fira Code', 'size' => 10]])
@@ -115,21 +395,94 @@ $check('configuration from an array', function () use ($work): void {
     assertTrue($config->getStyles()->get(Styles::HEADING_1) === 'Title', 'array config not applied');
 });
 
+$check('the built-in heading styles, and the rest of the built-in set', function (): void {
+    $styles = (new Configuration())->withBuiltInHeadingStyles()->getStyles();
+
+    // Not the defaults: the quote and list slots move to the built-in list styles,
+    // which is the whole point of asking for this one.
+    assertTrue($styles->get(Styles::HEADING_1) === 'Heading1', 'the heading is not the built-in one');
+    assertTrue($styles->get(Styles::BLOCK_QUOTE) === 'Quote', 'the quote style is not Quote');
+    assertTrue($styles->get(Styles::BULLET_LIST) === 'ListBullet', 'the bullet list is not ListBullet');
+    assertTrue($styles->get(Styles::ORDERED_LIST) === 'ListNumber', 'the ordered list is not ListNumber');
+});
+
+$check('a configuration gives its array back', function (): void {
+    $config = Configuration::create()->withOptions(['tableBorders' => false]);
+
+    $array = $config->toArray();
+
+    assertTrue(isset($array['styles'], $array['options']), 'the array is not in two parts');
+    assertTrue($array['styles'][Styles::HEADING_1] === 'Heading1', 'the styles are not in it');
+    assertTrue($array['options']['tableBorders'] === false, 'the options are not in it');
+    // Round trip: what comes out can go back in.
+    assertTrue(
+        Configuration::fromArray($array)->getOptions()->tableBorders === false,
+        'the array did not survive Configuration::fromArray()',
+    );
+    assertTrue(
+        $config->getStyles()->toArray() === $array['styles'],
+        'Styles::toArray() says something else',
+    );
+    assertTrue(
+        $config->getOptions()->toArray() === $array['options'],
+        'Options::toArray() says something else',
+    );
+});
+
+$check('the reader options survive the array they are written in', function (): void {
+    // The reader's options are the ones a config file is written in, so what they
+    // give back has to be what they take.
+    $reader = ReverseOptions::fromArray(['mediaDirectory' => 'assets', 'headingSetext' => true]);
+
+    assertTrue(
+        $reader->toArray() === ReverseOptions::fromArray($reader->toArray())->toArray(),
+        'the reader options do not survive fromArray()',
+    );
+    assertTrue($reader->mediaDirectory === 'assets', 'the media directory is not in them');
+    assertTrue($reader->headingSetext === true, 'the setext flag is not in them');
+});
+
+$check('the style slots can be read and replaced one at a time', function (): void {
+    $styles = new Styles();
+
+    // `defaults()` is what a new instance starts from, `heading()` resolves a
+    // level, and `with()` returns a new instance with one slot replaced.
+    assertTrue($styles->toArray() === Styles::defaults(), 'a new instance is not the defaults');
+    assertTrue($styles->heading(1) === 'Heading1', 'level 1 is not Heading1');
+    assertTrue($styles->heading(9) === 'Heading6', 'a level past the sixth is not the sixth');
+
+    $changed = $styles->with(Styles::HEADING_1, 'CorpTitle');
+
+    assertTrue($changed->get(Styles::HEADING_1) === 'CorpTitle', 'the slot was not replaced');
+    assertTrue($styles->get(Styles::HEADING_1) === 'Heading1', 'the original was changed');
+});
+
+// -------------------------------------------------------------- advanced use
+
 $check('advanced: compose with PhpWord', function () use ($work): void {
     $phpWord = new PhpWord();
     $converter = new MarkdownToWord(null, new Configuration());
 
+    $markdown = "# Chapter one\n\nBody.";
+
     $section = $phpWord->addSection();
     $section->addTitle('Annual Report', 1);
-    $converter->renderIntoContainer("# Chapter one\n\nBody.", $section, $phpWord);
 
     $phpWord->getDocInfo()->setTitle('Annual Report');
-    file_put_contents(
-        $work . '/report.docx',
-        $converter->toDocx("# Chapter one\n\nBody.", $phpWord),
-    );
+
+    $document = $converter->toDocx($markdown, $phpWord);
+    file_put_contents($work . '/report.docx', $document);
 
     assertTrue(is_file($work . '/report.docx'), 'no file written');
+
+    // `toDocx()` renders the Markdown into the document it is handed, so the
+    // example renders once. An example that also called `renderIntoContainer()`
+    // with the same section first would have the chapter in the document twice,
+    // and the count is what says so.
+    $readBack = (new WordToMarkdown($document))->convert();
+
+    assertTrue(str_contains($readBack, 'Annual Report'), 'the title went missing');
+    assertTrue(substr_count($readBack, '# Chapter one') === 1, "the chapter is in the document twice:\n{$readBack}");
 });
 
 $check('text extractor', function (): void {
@@ -139,12 +492,44 @@ $check('text extractor', function (): void {
     assertTrue($text === "Title\nBody with bold.", "unexpected text: {$text}");
 });
 
+$check('the syntax tree is there for callers that want it', function (): void {
+    $converter = new MarkdownToWord();
+
+    $tree = $converter->parse("# Parsed\n\nBody with a [link](https://example.com).");
+
+    assertTrue($tree instanceof League\CommonMark\Node\Block\Document, 'not a CommonMark document');
+
+    $converter->toDocx("A [link](https://example.com) and a [**bold** one](https://example.test).");
+
+    // Only the links PHPWord cannot express are left pending: a plain one becomes a
+    // `Link` element, while a label carrying emphasis has to wait for the writer.
+    $pending = $converter->pendingHyperlinks();
+    $urls = array_column($pending, 'url');
+
+    assertTrue($urls === ['https://example.test'], 'unexpected pending hyperlinks: ' . implode(', ', $urls));
+});
+
+$check('the reader hands back the block tree as well as the Markdown', function () use ($work): void {
+    (new MarkdownToWord("# Read back\n\n- one\n- two\n"))->save($work . '/blocks.docx');
+
+    $blocks = (new WordToMarkdown())->read($work . '/blocks.docx');
+
+    assertTrue($blocks !== [], 'no blocks came back');
+    assertTrue($blocks[0] instanceof MarkdownWord\Reverse\Block, 'not a block');
+    assertTrue(
+        str_contains((new WordToMarkdown($work . '/blocks.docx'))->convert(), '# Read back'),
+        'the same reader produced no Markdown',
+    );
+});
+
 $check('parser flavours', function (): void {
     foreach (['commonMarkOnly', 'extended', 'withAllExtensions'] as $flavour) {
         $converter = new MarkdownToWord(null, new Configuration(), CommonMarkParser::{$flavour}());
         $converter->toPhpWord("# Title\n\n- a\n- b\n");
     }
 });
+
+// -------------------------------------------------------------------- helpers
 
 function assertTrue(bool $condition, string $message): void
 {
@@ -153,6 +538,101 @@ function assertTrue(bool $condition, string $message): void
     }
 }
 
-echo $failures === 0 ? "\nAll examples work.\n" : "\n{$failures} example(s) failed.\n";
+/**
+ * `word/document.xml` out of a `.docx`, as bytes.
+ *
+ * Compared instead of the archive because a zip records an entry's timestamp, so
+ * two correct conversions of the same input are never byte-identical.
+ */
+function self_documentBody(string $docx): string
+{
+    $zip = new ZipArchive();
+
+    if ($zip->open($docx) !== true) {
+        throw new RuntimeException('not a zip archive');
+    }
+
+    $body = (string) $zip->getFromName('word/document.xml');
+    $zip->close();
+
+    return $body;
+}
+
+/**
+ * Run the command line in process, and hand back what it did.
+ *
+ * @param list<string> $argv
+ * @return array{code: int, out: string, err: string}
+ */
+function self_cli(array $argv, string $stdin = ''): array
+{
+    $out = fopen('php://memory', 'r+b');
+    $err = fopen('php://memory', 'r+b');
+    $in = fopen('php://memory', 'r+b');
+
+    fwrite($in, $stdin);
+    rewind($in);
+
+    $code = (new Application($out, $err, $in))->run($argv);
+
+    rewind($out);
+    rewind($err);
+
+    $result = [
+        'code' => $code,
+        'out' => (string) stream_get_contents($out),
+        'err' => (string) stream_get_contents($err),
+    ];
+
+    fclose($out);
+    fclose($err);
+    fclose($in);
+
+    return $result;
+}
+
+/**
+ * A small red square, for the example that takes an image out of a document.
+ */
+function self_redSquare(string $path): void
+{
+    $image = imagecreatetruecolor(16, 16);
+    imagefilledrectangle($image, 0, 0, 16, 16, imagecolorallocate($image, 0x8B, 0x1A, 0x1A));
+    imagepng($image, $path);
+}
+
+// ---------------------------------------------------------------------- done
+
+UpstreamDeprecations::restore();
+
+self_removeTree($work);
+
+echo $failures === 0
+    ? "\nAll {$checks} examples work.\n"
+    : "\n{$failures} of {$checks} example(s) failed.\n";
 
 exit($failures === 0 ? 0 : 1);
+
+/**
+ * Remove a directory and everything in it.
+ *
+ * The whole tree, because an example is allowed to make a directory of its own —
+ * the one that takes images out of a document does — and a check that leaves one
+ * behind is a check whose output is a mystery to whoever finds it next. Only this
+ * script's own directory goes: the suite writes to `tmp/pest` beside it and must
+ * not lose it.
+ */
+function self_removeTree(string $directory): void
+{
+    foreach (scandir($directory) ?: [] as $entry) {
+        if ($entry === '.' || $entry === '..') {
+            continue;
+        }
+
+        $path = $directory . '/' . $entry;
+
+        is_dir($path) ? self_removeTree($path) : @unlink($path);
+    }
+
+    @rmdir($directory);
+}

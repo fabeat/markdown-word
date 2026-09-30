@@ -74,9 +74,10 @@ it('prints help when given no command', function () {
     expect($run['out'])->toContain('to-markdown');
 });
 
-it('describes every option the parser accepts', function () {
-    // The help is built from the same lists the parser is given, so a run that
-    // lists an option in the help is asserting that much.
+it('prints an options section for each direction', function () {
+    // What this checks is that `--help` works at all for both commands and lists
+    // the options they share. That the help and the parser agree about which
+    // options there are is a different question, asked below.
     foreach (['to-docx', 'to-markdown'] as $command) {
         $run = runCli([$command, '--help']);
 
@@ -120,8 +121,7 @@ it('reports an option that is missing its value', function () {
 // ---------------------------------------------------------------- to-docx
 
 it('converts a file to a document', function () {
-    $input = Scratch::path('notes', '.md');
-    file_put_contents($input, "# Notes\n\nSome **bold** text.\n");
+    $input = inputFile('notes', "# Notes\n\nSome **bold** text.\n");
     $output = Scratch::path('notes');
 
     $run = runCli(['to-docx', $input, '-o', $output]);
@@ -133,8 +133,7 @@ it('converts a file to a document', function () {
 });
 
 it('names the output after the input when told nothing', function () {
-    $input = Scratch::path('report', '.md');
-    file_put_contents($input, '# Report');
+    $input = inputFile('report', '# Report');
 
     // The convention is the same one every other converter uses: the name with
     // its extension swapped, in the directory it was read from.
@@ -169,8 +168,7 @@ it('keeps progress off standard output', function () {
 });
 
 it('accepts an option value written with an equals sign', function () {
-    $input = Scratch::path('eq', '.md');
-    file_put_contents($input, '# Equals');
+    $input = inputFile('eq', '# Equals');
     $output = Scratch::path('eq');
 
     expect(runCli(['to-docx', $input, '--output=' . $output])['code'])->toBe(0);
@@ -178,8 +176,7 @@ it('accepts an option value written with an equals sign', function () {
 });
 
 it('reads a file whose name begins with a dash', function () {
-    $input = Scratch::path('--weird', '.md');
-    file_put_contents($input, '# Odd name');
+    $input = inputFile('--weird', '# Odd name');
     $output = Scratch::path('weird');
 
     // Everything after `--` is an operand, so the separator goes last.
@@ -188,8 +185,7 @@ it('reads a file whose name begins with a dash', function () {
 });
 
 it('renders without decoration when asked to', function () {
-    $input = Scratch::path('plain', '.md');
-    file_put_contents($input, "# Plain\n\n> quoted\n");
+    $input = inputFile('plain', "# Plain\n\n> quoted\n");
     $output = Scratch::path('plain');
 
     runCli(['to-docx', $input, '--plain', '-o', $output]);
@@ -202,8 +198,7 @@ it('renders without decoration when asked to', function () {
 it('leaves images out when told to', function () {
     Scratch::image('cli.png');
 
-    $input = Scratch::path('pic', '.md');
-    file_put_contents($input, '![Some words](cli.png)');
+    $input = inputFile('pic', '![Some words](cli.png)');
     $output = Scratch::path('pic');
 
     runCli(['to-docx', $input, '--no-images', '-o', $output]);
@@ -236,8 +231,7 @@ it('applies a configuration file', function () {
         return Configuration::fromArray(['styles' => ['heading.1' => 'ReportTitle']]);
         PHP);
 
-    $input = Scratch::path('conf', '.md');
-    file_put_contents($input, '# Styled');
+    $input = inputFile('conf', '# Styled');
     $output = Scratch::path('conf');
 
     runCli(['to-docx', $input, '-c', $config, '-o', $output]);
@@ -408,8 +402,7 @@ it('takes the images out beside the Markdown it writes', function () {
 // -------------------------------------------------------------- direction
 
 it('works the direction out from the file', function () {
-    $input = Scratch::path('detect', '.md');
-    file_put_contents($input, "# Detected\n\nSome **bold**.\n");
+    $input = inputFile('detect', "# Detected\n\nSome **bold**.\n");
 
     // No command in front: the file says which way it has to go.
     $run = runCli([$input]);
@@ -517,8 +510,7 @@ it('keeps the help and the parser specification in step', function () {
 });
 
 it('round trips a document through the command line unchanged', function () {
-    $input = Scratch::path('pipeline', '.md');
-    file_put_contents($input, <<<'MD'
+    $input = inputFile('pipeline', <<<'MD'
         # Heading
 
         A paragraph with **bold**, *italic*, `code` and a [link](https://example.com).

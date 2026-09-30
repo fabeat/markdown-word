@@ -143,6 +143,11 @@ it('keeps the title of a link', function () {
 
     $xml = TemplateFactory::xmlOf($file);
 
+    // The title, which is the whole of what this test is named after. Without
+    // this assertion a link that lost its title passed: the text and the
+    // destination are the same either way, and the tooltip is the only place the
+    // title appears.
+    expect($xml)->toContain('w:tooltip="The title"');
     expect(TemplateFactory::textOf($file))->toContain('text');
     expect(TemplateFactory::targetsOf($file))->toContain('https://example.com');
 });

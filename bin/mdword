@@ -21,10 +21,10 @@ use MarkdownWord\Console\Application;
 
 (static function (): void {
     $candidates = [
-        // Inside a phar: the bundled production dependencies.
+        // Inside a phar, and in a checkout: the bundled production dependencies.
+        // In a phar `__DIR__` is `phar://…/app/bin`, so this is the archive's own
+        // `app/vendor`; in a checkout it is the project's `vendor`.
         __DIR__ . '/../vendor/autoload.php',
-        // A phar built by tools/build-phar.php, which keeps them under /app.
-        'phar://' . __FILE__ . '/app/vendor/autoload.php',
         // A checkout, or a composer install of the library as a dependency.
         __DIR__ . '/../../../autoload.php',
     ];
@@ -42,7 +42,7 @@ use MarkdownWord\Console\Application;
         'mdword: the dependencies are not installed.' . PHP_EOL
         . 'Run `composer install` in the project directory, or download the phar from'
         . PHP_EOL
-        . 'https://github.com/fabiangrassl/markdown-word/releases' . PHP_EOL,
+        . 'https://github.com/fabeat/markdown-word/releases' . PHP_EOL,
     );
 
     exit(1);
