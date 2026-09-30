@@ -37,7 +37,7 @@ function documentBytes(string $markdown = "# Real\n\nBody.\n"): string
     return (new MarkdownToWord($markdown))->convert();
 }
 
-// ------------------------------------------------------------------ markdown
+// Markdown
 
 it('reads a file when the string names one', function () {
     $path = inputFile('notes.md', "# On disk\n");
@@ -95,7 +95,7 @@ it('reports a file it cannot read rather than pretending it is content', functio
     expect(fn () => Input::markdown($path))->toThrow(RuntimeException::class, 'Unable to read');
 });
 
-// ------------------------------------------------------------------ document
+// Document
 
 it('accepts the bytes of a document as they are', function () {
     $bytes = documentBytes();
@@ -151,7 +151,7 @@ it('rejects a document that begins like one and is not', function () {
         ->toThrow(RuntimeException::class);
 });
 
-// ------------------------------------------------------------------ the sniff
+// The sniff
 
 it('recognises a document by its first four bytes', function () {
     expect(Input::looksLikeDocument(documentBytes()))->toBeTrue();

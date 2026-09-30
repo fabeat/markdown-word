@@ -123,7 +123,7 @@ it('leaves the receiver alone', function () {
         ->and($base->maxPartBytes)->toBe(999999999);
 });
 
-// -------------------------------------------------------------- what a null means
+// What a null means
 
 /*
 | A `null` in an array is two different things, and the two entry points have to

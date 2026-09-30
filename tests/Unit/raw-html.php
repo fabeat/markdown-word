@@ -63,7 +63,7 @@ function isValidDocx(string $docx): bool
     return $valid;
 }
 
-// ------------------------------------------------------------- what it does
+// What it does
 
 it('keeps the text an element wraps and drops the element', function () {
     expect(renderText("Some <b>bold</b> text\n"))->toBe('Some bold text');
@@ -135,7 +135,7 @@ it('decodes entities to the characters they name', function () {
     expect(renderText("&lt;script&gt; &amp; &#60;\n"))->toBe('<script> & <');
 });
 
-// ------------------------------------------------------------ the three modes
+// The three modes
 
 it('keeps the markup as literal text when asked to preserve it', function () {
     $result = renderHtml("Some <b>bold</b> text\n", ['html' => Options::HTML_PRESERVE]);
@@ -171,7 +171,7 @@ it('drops a whole block of HTML, text and all', function () {
     expect(renderText("<div>a whole block</div>\n"))->toBe('a whole block');
 });
 
-// -------------------------------------------------------------- the security
+// The security
 
 it('never turns raw HTML into markup in the document', function () {
     // The claim is not that the text is safe, it is that the *structure* is ours.

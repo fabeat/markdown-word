@@ -37,7 +37,7 @@ declare(strict_types=1);
 
 use MarkdownWord\Console\Application;
 
-// ------------------------------------------------------------------ re-exec
+// Re-exec
 
 if (ini_get('phar.readonly')) {
     $command = sprintf(
@@ -67,7 +67,7 @@ if (!is_file($autoloader = __DIR__ . '/../vendor/autoload.php')) {
 
 require $autoloader;
 
-// ----------------------------------------------------------------- helpers
+// Helpers
 
 /**
  * Ask a yes/no question, defaulting to yes.
@@ -138,7 +138,7 @@ function copyInto(string $from, string $to): void
     );
 }
 
-// ------------------------------------------------------------------ pruning
+// Pruning
 
 /**
  * Directories that hold nothing the archive can use.
@@ -284,7 +284,7 @@ function prune(string $vendor): array
     return $pruned;
 }
 
-// -------------------------------------------------------- reproducibility
+// Reproducibility
 
 /**
  * The instant every part of the archive is stamped with.
@@ -343,7 +343,7 @@ function resolveEpoch(string $root): int
     return $newest === 0 ? time() : $newest;
 }
 
-// ------------------------------------------------------------ phar internals
+// Phar internals
 
 function readUint32(string $raw, int &$offset): int
 {
@@ -573,7 +573,7 @@ function normaliseTimestamps(string $target, int $epoch): void
     }
 }
 
-// ------------------------------------------------------------------- paths
+// Paths
 
 $root = dirname(__DIR__);
 $build = $root . '/build';
@@ -604,7 +604,7 @@ $epoch = resolveEpoch($root);
 
 fwrite(STDOUT, sprintf("Building %s %s\n\n", Application::NAME, Application::VERSION));
 
-// ----------------------------------------------------------------- staging
+// Staging
 
 // Built from scratch every time, so a dependency that has since been removed
 // cannot linger in the archive.
@@ -673,7 +673,7 @@ run(
 );
 chmod($app . '/bin/mdword', 0o755);
 
-// ------------------------------------------------------------------- build
+// Build
 
 fwrite(STDOUT, "\n  Archive\n");
 
@@ -758,7 +758,7 @@ try {
 
 fwrite(STDOUT, sprintf("  %-44s%s (%d files)\n", 'every entry stamped', gmdate('c', $epoch), count($paths)));
 
-// -------------------------------------------------------------- verification
+// Verification
 
 fwrite(STDOUT, "\n  Verification\n");
 

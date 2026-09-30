@@ -26,7 +26,7 @@ use MarkdownWord\Tests\Support\Upstream;
 beforeEach(fn () => Upstream::install());
 afterEach(fn () => Upstream::restore());
 
-// ------------------------------------------------- Configuration\Options
+// Configuration\Options
 
 it('offers a setter for every option it takes', function () {
     // The array form is the documented way in, and these are the convenience
@@ -92,7 +92,7 @@ it('ignores an option it does not know rather than refusing the file', function 
     expect(Options::fromArray(['noSuchOption' => true])->tableWidth)->toBe(5000);
 });
 
-// ------------------------------------------------------ Reverse\Options
+// Reverse\Options
 
 it('offers a setter for the media directory and for a batch of options', function () {
     expect((new ReverseOptions())->withMediaDirectory('assets')->mediaDirectory)->toBe('assets')
@@ -100,7 +100,7 @@ it('offers a setter for the media directory and for a batch of options', functio
         ->and((new ReverseOptions())->withAll(['headingSetext' => true])->headingSetext)->toBeTrue();
 });
 
-// ------------------------------------------------------ parser factories
+// Parser factories
 
 it('renders with a parser chosen for the dialect', function () {
     // The extras are what the extended flavours are for: none of these constructs
@@ -150,7 +150,7 @@ it('reads front matter when a YAML implementation is there, and says so when non
         ->toThrow(League\CommonMark\Exception\MissingDependencyException::class, 'symfony/yaml');
 });
 
-// ------------------------------------------------------- StyleResolver
+// StyleResolver
 
 it('uses a style named as a string only when it is the whole of the formatting', function () {
     // A named style cannot be combined with anything else in a run, so a run
@@ -166,7 +166,7 @@ it('uses a style named as a string only when it is the whole of the formatting',
         ->toBeArray();
 });
 
-// ------------------------------------------------------------ Application
+// Application
 
 it('reports a version the release tag can be compared against', function () {
     // The phar stamps this into its own manifest and the release job fails when

@@ -67,7 +67,7 @@ function configuredAwayFromTheDefaults(): Options
     ]);
 }
 
-// ---------------------------------------------------------------- the setters
+// The setters
 
 it('changes one option without disturbing the other fifteen', function (string $method, mixed $argument, string $property) {
     $base = configuredAwayFromTheDefaults();
@@ -143,7 +143,7 @@ it('leaves the receiver of a setter alone', function () {
         ->and($original->imageBasePath)->toBe('/srv/pics');
 });
 
-// ------------------------------------------------------------- the array forms
+// The array forms
 
 it('merges withAll over the current state', function () {
     $changed = configuredAwayFromTheDefaults()->withAll([
@@ -183,7 +183,7 @@ it('round trips through the array form', function () {
     expect(Options::fromArray($options->toArray())->toArray())->toBe($options->toArray());
 });
 
-// -------------------------------------------------------------- what a null means
+// What a null means
 
 /*
 | A `null` in an array is two different things, and the two entry points have to
@@ -286,7 +286,7 @@ it('reads an empty string as a value rather than as an absence', function () {
         ->and($base->withAll(['imageBasePath' => null])->imageBasePath)->toBeNull();
 });
 
-// -------------------------------------------------------------------- casting
+// Casting
 
 it('gives every option the type the constructor promises', function () {
     // Fed as the strings a JSON or YAML config file produces, and read back as

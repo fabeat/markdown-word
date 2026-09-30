@@ -37,7 +37,7 @@ use MarkdownWord\Xml;
 beforeEach(fn () => Upstream::install());
 afterEach(fn () => Upstream::restore());
 
-// ------------------------------------------------------------------- helpers
+// Helpers
 
 /**
  * A `.docx` written by hand, part by part.
@@ -244,7 +244,7 @@ function fileFixInChildProcess(string $code, string $memoryLimit = '16M'): array
     return [$status, implode("\n", $output)];
 }
 
-// ------------------------------------------------ writing the Markdown out
+// Writing the Markdown out
 
 it('says so when the Markdown cannot be written, rather than reporting success', function () {
     $document = fileFixArchive([]);
@@ -309,7 +309,7 @@ it('does not truncate the document it is reading when the output is a hard link 
     expect((string) file_get_contents($alias))->toBe($markdown);
 });
 
-// --------------------------------------------------- taking images out
+// Taking images out
 
 it('writes nothing for an image the document named after a script', function () {
     // The relationship is the name of the file, and the archive is what is put
@@ -456,7 +456,7 @@ it('does not write a file that only looks like a metafile header', function () {
     expect(fileFixDirectoryContents($media))->toBe([]);
 });
 
-// ------------------------------------------------------ the size of a part
+// The size of a part
 
 it('refuses a document whose parts declare more bytes than the budget allows', function () {
     // The declared size is checked before the part is inflated, so the budget
@@ -533,7 +533,7 @@ it('refuses an archive with more entries in it than the budget allows', function
     expect($root)->toBe('document');
 });
 
-// ------------------------------------------------------- the options object
+// The options object
 
 it('casts the values that arrive from a configuration file', function () {
     // A JSON or YAML file has no types, and `fromArray()` used to hand whatever
