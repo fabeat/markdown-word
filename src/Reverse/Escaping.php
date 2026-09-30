@@ -258,14 +258,33 @@ final class Escaping
             && str_contains('!"#$%&\'()*+,-./:;<=>?@[\]^_`{|}~', $character);
     }
 
-    private static function longestRun(string $text, string $character): int
+    /**
+     * The length of the longest run of a character in the text.
+     *
+     * Markdown delimits a code span or fences a code block with a run of
+     * backticks, and the run has to be one longer than any the content holds or
+     * the span or block would end at the wrong place. Finding that run is a
+     * single pass over the text: growing a candidate and searching the text
+     * again for each of them costs a search per character and time quadratic in
+     * the size of the text, which a document with a long run in it would feel.
+     *
+     * @param string $text      The text to look through.
+     * @param string $character The character to count. It has to be a single
+     *        character, since the count is in characters and the text is walked a
+     *        byte at a time.
+     */
+    public static function longestRun(string $text, string $character): int
     {
         $longest = 0;
         $current = 0;
+        $length = strlen($text);
 
-        foreach (str_split($text) as $letter) {
-            $current = $letter === $character ? $current + 1 : 0;
-            $longest = max($longest, $current);
+        for ($index = 0; $index < $length; $index++) {
+            $current = $text[$index] === $character ? $current + 1 : 0;
+
+            if ($current > $longest) {
+                $longest = $current;
+            }
         }
 
         return $longest;

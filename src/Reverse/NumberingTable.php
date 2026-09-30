@@ -76,14 +76,23 @@ final class NumberingTable
      * The format of the outermost level, which is what decides the marker style
      * of the whole list.
      *
+     * A definition that declares no levels has no outermost one, which is not the
+     * same as a definition that declares them out of order: the sort below is
+     * what tells the two apart, and it has nothing to say about an empty list.
+     *
      * @return array{format: string, text: string, start: int}|null
      */
     public function root(int $numId): ?array
     {
         $levels = $this->levels[$numId] ?? [];
+
+        if ($levels === []) {
+            return null;
+        }
+
         ksort($levels);
 
-        return $levels[array_key_first($levels)] ?? null;
+        return $levels[array_key_first($levels)];
     }
 
     /**

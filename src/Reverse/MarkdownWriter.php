@@ -12,6 +12,18 @@ namespace MarkdownWord\Reverse;
  * are the escaping of literal text — delegated to {@see Escaping} — and the
  * marker of a list item, which has to reproduce the numbering definition the
  * document carried, including a start value other than one.
+ *
+ * Nothing here throws: a block tree goes in and Markdown comes out, and every
+ * construct the writer can be handed has a string it can be written as. The
+ * exceptions a conversion raises come from the package around it — opening one
+ * and parsing its parts — so they belong to {@see Package}, which raises
+ * {@see \MarkdownWord\Exception\UnreadableDocument} for bytes that are not a zip
+ * archive, {@see \MarkdownWord\Exception\MalformedDocument} for a required part
+ * that is missing or will not parse, and
+ * {@see \MarkdownWord\Exception\FileNotWritable} when the scratch file a package
+ * held in memory needs cannot be written. The middle of those three is the one
+ * {@see \MarkdownWord\Xml::parseOrFail()} raises in the other direction, when it
+ * is asked to load a part of a document it is rewriting rather than reading.
  */
 final class MarkdownWriter
 {
@@ -27,16 +39,21 @@ final class MarkdownWriter
      */
     public function write(array $blocks): string
     {
-        $markdown = $this->blocks($blocks);
-
-        // Blocks are separated by a blank line, which is what makes a list loose
-        // again after it has been interrupted.
-        $markdown = (string) preg_replace("/\n{3,}/", "\n\n", $markdown);
-
-        return rtrim($markdown, "\n");
+        return rtrim($this->blocks($blocks), "\n");
     }
 
     /**
+     * The blocks, one after another, separated by the blank line that makes a
+     * list loose again after it has been interrupted.
+     *
+     * The blocks are kept apart until here rather than joined first and tidied
+     * afterwards, because the space between two blocks and the space inside one
+     * are different things. A blank line inside a verbatim block is content — the
+     * gap in a log excerpt, the paragraph break in a fixture — while a run of
+     * them between two blocks is only ever a way of writing a blank line.
+     * Tidying the finished document could not tell the two apart and lost the
+     * first; keeping the blocks apart until they are joined cannot.
+     *
      * @param list<Block> $blocks
      * @param string       $separator What goes between the blocks, which is a
      *        single newline in a tight list and a blank line in a loose one.
@@ -49,7 +66,11 @@ final class MarkdownWriter
             $part = $this->block($block);
 
             if ($part !== '') {
-                $parts[] = $part;
+                // A block never begins or ends with a line break of its own, and
+                // saying so here means the separator alone decides how far apart
+                // two blocks stand: whatever the reader left between them, the
+                // Markdown has one blank line.
+                $parts[] = trim($part, "\n");
             }
         }
 
@@ -108,11 +129,11 @@ final class MarkdownWriter
         $info = (string) $block->attr('info', '');
 
         // A run of backticks in the content has to be shorter than the fence, or
-        // it would close the block early.
-        $length = 3;
-        while (str_contains($text, str_repeat('`', $length))) {
-            $length++;
-        }
+        // it would close the block early. The longest run is found in one pass
+        // rather than by looking for three backticks and then four and then five:
+        // that is a search of the whole content per backtick, and time quadratic
+        // in its length, which a document with a long run in it would feel.
+        $length = max(3, Escaping::longestRun($text, '`') + 1);
 
         $fence = str_repeat('`', $length);
 
@@ -243,7 +264,9 @@ final class MarkdownWriter
      * The numbering a `w:numFmt` value stands for.
      *
      * Markdown spells these as marker text, so a Word list numbered `a, b, c`
-     * comes back as `a. b. c.` rather than as a paragraph per item.
+     * comes back as `a. b. c.` rather than as a paragraph per item. A format the
+     * table does not know is written as the number itself, which is at least
+     * something a reader can still make sense of.
      */
     private function marker(string $format, int $number): string
     {
@@ -252,18 +275,51 @@ final class MarkdownWriter
             'upperLetter' => $this->alphabet($number, true),
             'lowerRoman' => strtolower($this->roman($number)),
             'upperRoman' => $this->roman($number),
-            'decimalZero' => str_pad((string) $number, 2, '0', STR_PAD_LEFT),
+            'decimalZero' => $this->decimalZero($number),
             default => (string) $number,
         };
     }
 
+    /**
+     * The letters of a spreadsheet column, which is how Word goes on numbering a
+     * list past the twenty-sixth item: `a` to `z`, then `aa`, `ab` and so on.
+     *
+     * The count has no zero in it, which is what makes the run continue instead
+     * of starting again. One off the number is the letter to write, and it is
+     * never over `z`, so what is left of the count is written in front of it and
+     * the twenty-seventh item is `aa` rather than `a` a second time.
+     */
     private function alphabet(int $number, bool $upper): string
     {
-        $letter = chr(ord('a') + (($number - 1) % 26));
+        if ($number < 1) {
+            return (string) $number;
+        }
 
-        return $upper ? strtoupper($letter) : $letter;
+        $letters = '';
+
+        while ($number > 0) {
+            $letters = chr(ord('a') + ($number - 1) % 26) . $letters;
+            $number = intdiv($number - 1, 26);
+        }
+
+        return $upper ? strtoupper($letters) : $letters;
     }
 
+    /**
+     * A number padded to two digits, which is the whole of what `decimalZero`
+     * means. Past ninety-nine there is nothing left to pad to, and Word writes
+     * the number out as it stands.
+     */
+    private function decimalZero(int $number): string
+    {
+        return str_pad((string) $number, 2, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * A Roman numeral, which carries on past fifty as readily as `LI` and `LII`.
+     * There is no numeral for a number above three thousand nine hundred and
+     * ninety-nine, so past that the number itself is written.
+     */
     private function roman(int $number): string
     {
         if ($number < 1 || $number > 3999) {
@@ -304,8 +360,12 @@ final class MarkdownWriter
 
         $width = max(array_map('count', $cells));
 
-        // GFM tables always have a header row and a delimiter row, and a Word
-        // table records neither, so the first row becomes the header.
+        // GFM tables always have a header row and a delimiter row. A Word table
+        // records neither: the delimiter row is a row of dashes Markdown invents
+        // and there is nothing in the document to derive it from, and a header is
+        // marked with `w:trPr/w:tblHeader`, which both PHPWord and Word write and
+        // the reader here does not look for. So the first row becomes the header
+        // on the assumption that is usually right.
         [$header, $body] = $this->options->tableHeader
             ? [array_shift($cells), $cells]
             : [[], $cells];
@@ -379,12 +439,16 @@ final class MarkdownWriter
      * Write a run of inlines as Markdown.
      *
      * The emphasis delimiters are held open across runs rather than opened and
-     * closed one run at a time. That is what makes a bold run followed by a bold
-     * italic one come out as `**a *b***` rather than as `**a*****b***`, where the
-     * run of five asterisks is ambiguous and the parser may not agree on where
-     * the spans start and stop.
+     * closed one run at a time. A bold run followed by a bold italic one then
+     * comes out as `**a*b***`: the `**` opened by the first run is still open
+     * when the second one adds its `*`, so the two spans meet rather than
+     * beginning and ending twice over. Closing each run on its own would give
+     * `**a*****b***`, where the run of five asterisks in the middle is ambiguous
+     * and a parser may not agree on where the spans start and stop.
      *
      * @param list<Inline> $inlines
+     * @param bool         $inTable  Whether the runs sit inside a table cell,
+     *        where a pipe would end the cell.
      */
     private function inlines(array $inlines, bool $inTable = false): string
     {
@@ -439,8 +503,14 @@ final class MarkdownWriter
     /**
      * Write one text run, keeping open any emphasis the neighbouring runs share.
      *
-     * @param list<string>                                            $open
-     * @param array<string, mixed>                                    $unused
+     * @param string         $out       Everything written before this run.
+     * @param list<string>   $open      The delimiters still open around it,
+     *        outermost first, which this run may close, add to or leave alone.
+     * @param Inline         $inline    The run to write.
+     * @param bool           $lineStart Whether the run begins a line, where a
+     *        `#`, a `-` or a `1.` would otherwise start a block.
+     * @param bool           $inTable  Whether the run sits inside a table cell,
+     *        where a pipe would end the cell.
      */
     private function emphasis(string $out, array &$open, Inline $inline, bool $lineStart, bool $inTable): string
     {
@@ -566,8 +636,8 @@ final class MarkdownWriter
         $alt = Escaping::text($inline->alt, lineStart: false, inTable: true);
         $target = Escaping::text($inline->target, lineStart: false, inTable: true);
 
-        // A destination holding a space or a bracket has to be put in angle
-        // brackets, which is the only form that can carry one.
+        // A destination holding whitespace, a parenthesis or an angle bracket has
+        // to be put in angle brackets, which is the only form that can carry one.
         if (preg_match('/[\s()<>]/', $target) === 1) {
             $target = '<' . str_replace(['<', '>'], ['\\<', '\\>'], $target) . '>';
         }
