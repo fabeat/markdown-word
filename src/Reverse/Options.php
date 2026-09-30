@@ -200,9 +200,16 @@ final class Options
         return $this->with('maxStyleDepth', $depth);
     }
 
+    /**
+     * Change one option and leave the rest as they are.
+     *
+     * Merging through `withAll()` is the whole point: the archive limits live on
+     * this object too, so replacing it wholesale would quietly undo a tightened
+     * `maxPartBytes` or `maxStyleDepth` on the next unrelated call.
+     */
     private function with(string $property, mixed $value): self
     {
-        return self::fromArray([$property => $value]);
+        return $this->withAll([$property => $value]);
     }
 
     /**
