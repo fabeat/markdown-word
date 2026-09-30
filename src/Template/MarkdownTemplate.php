@@ -9,7 +9,7 @@ use MarkdownWord\Exception\FileNotWritable;
 use MarkdownWord\MarkdownToWord;
 use MarkdownWord\TemplateNotFound;
 use MarkdownWord\Writer\DocxWriter;
-use MarkdownWord\Writer\Escaping;
+use MarkdownWord\Writer\OutputEscaping;
 use MarkdownWord\Writer\NumberingMerger;
 use PhpOffice\PhpWord\Element\AbstractElement;
 use PhpOffice\PhpWord\PhpWord;
@@ -122,7 +122,7 @@ final class MarkdownTemplate
         // PHPWord leaves output escaping off by default, which would write a
         // value containing `<` or `&` into the document as raw markup and
         // produce a file Word cannot open.
-        Escaping::enabled(function () use ($name, $value): void {
+        OutputEscaping::enabled(function () use ($name, $value): void {
             $this->processor->setValue($name, $value);
         });
 
@@ -202,7 +202,7 @@ final class MarkdownTemplate
         $temp = self::stage();
 
         try {
-            Escaping::enabled(function () use ($temp): void {
+            OutputEscaping::enabled(function () use ($temp): void {
                 $this->processor->saveAs($temp);
             });
 
@@ -234,7 +234,7 @@ final class MarkdownTemplate
         $temp = self::stage();
 
         try {
-            Escaping::enabled(function () use ($temp): void {
+            OutputEscaping::enabled(function () use ($temp): void {
                 $this->processor->saveAs($temp);
             });
 
@@ -288,16 +288,66 @@ final class MarkdownTemplate
         return $temp;
     }
 
+    /**
+     * Put the staged document where the caller asked for it.
+     *
+     * The same three problems {@see \MarkdownWord\Writer\DocxWriter::move()}
+     * solves, so this is deliberately its shape rather than a second one: a
+     * symlink is followed instead of replaced, a `rename()` that fails because
+     * the two paths are on different filesystems falls back to a copy, and a
+     * copy that fails part way does not leave a half-written document behind.
+     */
     private static function move(string $from, string $to): void
     {
-        $directory = \dirname($to);
+        $to = self::followLink($to);
+        $directory = dirname($to);
 
         if (!is_dir($directory) && !@mkdir($directory, 0o777, true) && !is_dir($directory)) {
             throw new FileNotWritable(sprintf('Unable to create the directory "%s".', $directory));
         }
 
-        if (!rename($from, $to)) {
-            throw new FileNotWritable(sprintf('Unable to write the document to "%s".', $to));
+        if (@rename($from, $to)) {
+            return;
         }
+
+        // Two paths on different filesystems cannot be renamed between, which is
+        // the normal case when the output is on a mounted volume.
+        $existed = file_exists($to);
+
+        if (@copy($from, $to)) {
+            @unlink($from);
+
+            return;
+        }
+
+        if (!$existed) {
+            @unlink($to);
+        }
+
+        throw new FileNotWritable(sprintf('Unable to write the document to "%s".', $to));
+    }
+
+    /**
+     * Write to what a symlink points at, rather than replacing the link.
+     *
+     * @see \MarkdownWord\Writer\DocxWriter::move()
+     */
+    private static function followLink(string $path): string
+    {
+        $seen = 0;
+
+        while (is_link($path) && $seen++ < 32) {
+            $target = readlink($path);
+
+            if ($target === false) {
+                break;
+            }
+
+            $path = str_starts_with($target, '/')
+                ? $target
+                : dirname($path) . '/' . $target;
+        }
+
+        return $path;
     }
 }

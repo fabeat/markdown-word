@@ -519,8 +519,28 @@ final class Application
             throw new ConsoleException(sprintf('Unable to create the directory "%s".', $directory));
         }
 
-        if (file_put_contents($path, $contents) === false) {
+        // Staged beside the target and renamed, because `file_put_contents()`
+        // opens an existing file with O_TRUNC: writing to a name that is a hard
+        // link to the input would truncate the input itself, which the guard in
+        // `BaseCommand` cannot see through.
+        $temp = tempnam($directory, '.mdword_');
+
+        if ($temp === false) {
             throw new ConsoleException(sprintf('Unable to write "%s".', $path));
+        }
+
+        try {
+            if (@file_put_contents($temp, $contents) === false) {
+                throw new ConsoleException(sprintf('Unable to write "%s".', $path));
+            }
+
+            if (!@rename($temp, $path)) {
+                throw new ConsoleException(sprintf('Unable to write "%s".', $path));
+            }
+        } finally {
+            if (is_file($temp)) {
+                @unlink($temp);
+            }
         }
     }
 
