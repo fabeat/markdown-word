@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MarkdownWord;
 
 use League\CommonMark\Node\Block\Document;
+use MarkdownWord\Exception\NothingToConvert;
 use MarkdownWord\Parser\CommonMarkParser;
 use MarkdownWord\Parser\MarkdownParserInterface;
 use MarkdownWord\Render\DocumentRenderer;
@@ -19,7 +20,6 @@ use MarkdownWord\Render\StyleResolver;
 use MarkdownWord\Writer\DocxWriter;
 use PhpOffice\PhpWord\Element\AbstractContainer;
 use PhpOffice\PhpWord\PhpWord;
-use RuntimeException;
 
 /**
  * Converts Markdown into a Word document.
@@ -125,7 +125,7 @@ final class MarkdownToWord implements Converter
     public function convert(?string $target = null): string
     {
         if ($this->source === null) {
-            throw new RuntimeException(
+            throw new NothingToConvert(
                 'There is no Markdown to convert. Give some to the constructor, '
                 . 'or to ' . self::class . '::toDocx().',
             );

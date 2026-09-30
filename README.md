@@ -541,7 +541,8 @@ it, and `smoke.php` checks that it does.
 
 ## Licence
 
-MIT. PHPWord, which this library builds on, is LGPL-3.0.
+MIT — see [LICENSE](LICENSE). PHPWord, which this library builds on, is
+LGPL-3.0.
 
 [commonmark]: https://github.com/thephpleague/commonmark
 [pest]: https://pestphp.com

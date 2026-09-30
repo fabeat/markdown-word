@@ -25,16 +25,19 @@ jobs:
           coverage: none
           tools: composer:v2
 
-      # A manifest that does not validate, or a lock file that disagrees with it,
-      # is not worth running anything else against.
+      # A manifest that does not validate is not worth running anything else
+      # against. There is no lock file to check here: this is a library, and one
+      # is deliberately not committed.
       - name: Validate composer.json
         run: composer validate --strict
 
-      - name: Known security advisories
-        run: composer audit --no-interaction
-
+      # Installed before the audit, because the audit reads what was installed —
+      # run first it has nothing to look at.
       - name: Install
         run: composer update --prefer-dist --no-interaction --no-progress
+
+      - name: Known security advisories
+        run: composer audit --no-interaction
 
       # Every code block in the README is executed, so the documentation cannot
       # quietly stop describing what the code does.
@@ -49,9 +52,9 @@ jobs:
   # The library on the oldest PHP it claims to support.
   #
   # Pest 5 needs PHP 8.4, so the test suite cannot run here. What can — and must —
-  # is proof that the library itself works on this version: that it parses, writes,
-  # reads back and its command line runs. A version-specific syntax error or a
-  # broken autoloader is exactly what this catches.
+  # is proof that the library itself works on this version: that it parses,
+  # writes, reads back and that its command line runs. A version-specific syntax
+  # error or a broken autoloader is exactly what this catches.
   minimum:
     name: php 8.2 (minimum)
     runs-on: ubuntu-latest
@@ -64,8 +67,22 @@ jobs:
           coverage: none
           tools: composer:v2
 
-      - name: Install runtime dependencies only
-        run: composer update --prefer-dist --no-interaction --no-progress --no-dev
+      # `composer update --no-dev` would not do: the development requirements are
+      # still resolved even when they are not installed, so a test framework
+      # needing PHP 8.4 blocks the install here. The runtime-only manifest
+      # installs what a consumer installs, resolved fresh — so a runtime
+      # dependency dropping 8.2 still fails this job.
+      - name: Install the runtime dependencies
+        run: |
+          php tools/resolve-runtime.php
+          COMPOSER=composer.runtime.json composer update --prefer-dist --no-interaction --no-progress
+
+      # Names the version and every requirement if something below fails for a
+      # platform reason, rather than leaving it to be inferred.
+      - name: The platform is what we asked for
+        run: |
+          php -v
+          COMPOSER=composer.runtime.json composer check-platform-reqs
 
       - name: The library works on this version
         run: php smoke.php

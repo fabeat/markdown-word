@@ -5,6 +5,8 @@
 # for whoever happens to clone it. Continuous integration resolves them afresh, so
 # a new release of a dependency is tested the day it appears.
 /composer.lock
+/composer.runtime.json
+/composer.runtime.lock
 
 # Everything the build produces.
 

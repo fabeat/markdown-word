@@ -139,19 +139,33 @@ mkdir($app, 0o777, true);
 
 fwrite(STDOUT, "\n  Runtime dependencies\n");
 
-// The manifest and the lock file are copied verbatim, so the lock's content hash
-// still matches and the exact versions this project was tested against are what
-// go into the archive. Only the install is narrowed, to the runtime ones.
-copyInto($root . '/composer.json', $deps);
-copyInto($root . '/composer.lock', $deps);
-
+// The manifest is written into the staging directory, so the vendor directory
+// that goes with it is the staging one. Resolving from the project itself would
+// replace the test tools in `vendor/` with a bare runtime set, and the next
+// `composer test` would find nothing to run.
 run(
     sprintf(
-        '%s install --no-dev --no-interaction --no-progress --optimize-autoloader --working-dir=%s',
+        '%s %s %s',
+        escapeshellarg(PHP_BINARY),
+        escapeshellarg($root . '/tools/resolve-runtime.php'),
+        escapeshellarg($deps . '/composer.json'),
+    ),
+    'writing the runtime-only manifest',
+);
+
+// Resolved from that manifest rather than from this project with `--no-dev`,
+// because that flag still *resolves* the development requirements — they are
+// only not installed. On a PHP older than the test framework's floor that fails
+// outright, and the archive would need a newer PHP than the library claims to
+// support. There is no lock file: one is deliberately not committed, and the
+// archive is built from whatever the runtime dependencies are today.
+run(
+    sprintf(
+        '%s update --no-interaction --no-progress --optimize-autoloader --working-dir=%s',
         $composer,
         escapeshellarg($deps),
     ),
-    'installing without development dependencies',
+    'resolving the runtime dependencies',
 );
 
 fwrite(STDOUT, "\n  Application\n");

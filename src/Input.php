@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace MarkdownWord;
 
-use RuntimeException;
+use MarkdownWord\Exception\UnreadableDocument;
+use MarkdownWord\Exception\UnreadableFile;
 
 /**
  * Where the input of a conversion came from.
@@ -56,7 +57,7 @@ final class Input
             $bytes = self::read($input);
 
             if (!str_starts_with($bytes, self::DOCUMENT_MAGIC)) {
-                throw new RuntimeException(sprintf(
+                throw new UnreadableDocument(sprintf(
                     '"%s" is not a Word document. A .docx is a zip archive, so its first four bytes are "PK".',
                     $input,
                 ));
@@ -65,7 +66,7 @@ final class Input
             return $bytes;
         }
 
-        throw new RuntimeException(
+        throw new UnreadableDocument(
             'The input is neither a Word document nor the name of one. '
             . 'A .docx is a zip archive, so its first four bytes are "PK".',
         );
@@ -87,7 +88,7 @@ final class Input
         $contents = @file_get_contents($path);
 
         if ($contents === false) {
-            throw new RuntimeException(sprintf('Unable to read "%s".', $path));
+            throw new UnreadableFile(sprintf('Unable to read "%s".', $path));
         }
 
         return $contents;
