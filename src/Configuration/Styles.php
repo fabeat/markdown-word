@@ -115,8 +115,37 @@ final class Styles
     }
 
     /**
-     * Resolve the style for a heading level, falling back to the paragraph style
-     * when that level has not been configured.
+     * Resolve the style for a heading level.
+     *
+     * This is the one place the level-to-slot-name mapping is written down, and
+     * the renderer is expected to go through it: `DocumentRenderer` should ask
+     * for the slot name and `StyleRegistrar` should ask for the style, rather
+     * than either of them composing `'heading.' . $level` by hand.
+     *
+     * At the moment three call sites do compose it by hand, and they are not
+     * interchangeable with this method:
+     *
+     *  - `DocumentRenderer::renderHeading()` needs the *name*, to hand to
+     *    `emitParagraph()` so that the paragraph's character half can be pushed
+     *    into the runs. It wants `Styles::HEADING_$level`, not a resolved style.
+     *  - `StyleRegistrar::register()` compares a slot against a built-in id to
+     *    decide whether to define it, so it needs the raw `get()` too.
+     *  - `Configuration::withBuiltInHeadingStyles()` writes the six names out.
+     *
+     * Routing the renderer through here means giving it a name it can use, which
+     * is a change in `DocumentRenderer` and so is out of scope here; the
+     * duplication is recorded in tests/Unit/styles-fixes.php, which pins the
+     * constants to the composed names so the two sides cannot drift apart
+     * unnoticed in the meantime.
+     *
+     * A level explicitly set to `null` resolves to the paragraph style, so that
+     * a heading can be given up without the heading's own default spacing and
+     * size. Only an explicit `null`: the constructor merges the defaults in, so
+     * a level nobody mentioned always has a slot of its own, and treating "not
+     * configured" as "not mentioned" would resolve every heading to the
+     * paragraph style under the default configuration.
+     *
+     * @param int $level A heading level; anything outside 1-6 is clamped into it.
      */
     public function heading(int $level): mixed
     {
