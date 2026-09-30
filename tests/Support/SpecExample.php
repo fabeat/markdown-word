@@ -4,9 +4,6 @@ declare(strict_types=1);
 
 namespace MarkdownWord\Tests\Support;
 
-/**
- * A single specification example: Markdown in, expected HTML out.
- */
 final class SpecExample
 {
     public function __construct(

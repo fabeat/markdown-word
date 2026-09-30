@@ -12,7 +12,7 @@ use MarkdownWord\Text\TextExtractor;
 /**
  * Converts every example from the specification suites to Word and back to
  * Markdown, and checks that the second Word document says the same thing as the
- * first.
+ * first:
  *
  * ```text
  * Markdown ──▶ Word ──▶ Markdown ──▶ Word
@@ -45,9 +45,6 @@ it('actually loads the corpora for the round trip', function () {
     expectSpecificationCorpora();
 });
 
-/**
- * Markdown in, the text of the document it became out.
- */
 function roundTripTextOf(MarkdownToWord $converter, string $markdown): string
 {
     return normaliseDocumentText(TextExtractor::fromPhpWord(

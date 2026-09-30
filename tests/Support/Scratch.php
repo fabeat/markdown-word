@@ -9,9 +9,8 @@ use RuntimeException;
 /**
  * A place for the files a test creates, and their removal.
  *
- * Everything lands in `tmp/pest` inside the project rather than in the system
- * temp directory, so a failing test leaves its documents where they can be opened
- * and looked at instead of somewhere that gets swept away. The directory is
+ * Everything lands in `tmp/pest` inside the project, never in the system temp
+ * directory, so a run writes nothing outside the repository; the directory is
  * ignored by git.
  *
  * The subdirectory is the whole point of it. `tmp` is shared: the checks at the
@@ -24,17 +23,10 @@ use RuntimeException;
  */
 final class Scratch
 {
-    /**
-     * The directory the suite owns, relative to the project's own `tmp`.
-     */
     private const SUBDIRECTORY = 'pest';
 
-    /** @var array<string, true> Paths created since the last clean-up. */
     private static array $paths = [];
 
-    /**
-     * The directory documents are written to, created if it is not there.
-     */
     public static function directory(): string
     {
         $directory = dirname(__DIR__, 2) . '/tmp/' . self::SUBDIRECTORY;
@@ -47,8 +39,7 @@ final class Scratch
     }
 
     /**
-     * A path for a document the caller is about to write, remembered so that it
-     * can be removed when the test ends.
+     * A path no other test is using.
      */
     public static function path(string $prefix = 'docx', string $extension = '.docx'): string
     {
@@ -59,9 +50,6 @@ final class Scratch
         return $path;
     }
 
-    /**
-     * Remember a path that something else created.
-     */
     public static function remember(string $path): string
     {
         self::$paths[$path] = true;
@@ -70,7 +58,7 @@ final class Scratch
     }
 
     /**
-     * Empty the scratch directory, and nothing outside it.
+     * Empty the scratch directory.
      *
      * The whole of `tmp/pest` rather than only the paths that were remembered,
      * because a test cannot know every file it caused to be written: a converter
@@ -78,9 +66,6 @@ final class Scratch
      * a media directory appears out of nowhere. A run that leaked those would
      * fill the disk quietly, which is worse than losing a scratch file after a
      * failure — the names are random either way, so there is little to look at.
-     *
-     * Nothing outside that one directory is touched, so a check running beside
-     * the suite keeps the output it was writing.
      */
     public static function cleanUp(): void
     {
@@ -118,9 +103,6 @@ final class Scratch
         @rmdir($directory);
     }
 
-    /**
-     * A small image, for the tests that need a real file to point at.
-     */
     public static function image(string $name = 'fixture.png'): string
     {
         $path = self::remember(self::directory() . '/' . $name);
