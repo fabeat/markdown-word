@@ -16,20 +16,11 @@ use PhpOffice\PhpWord\PhpWord;
 use PhpOffice\PhpWord\TemplateProcessor;
 
 /**
- * Renders Markdown into an existing Word document used as a template.
+ * Renders Markdown into an existing Word document used as a template: the
+ * template supplies the styles and decides where the content goes.
  *
- * Two things make this different from a plain conversion:
- *
- *  - the template supplies the styles. Headings, quotes and lists reference the
- *    style names the template defines, so pointing the configuration at them
- *    reproduces that look exactly, and
- *  - the template decides *where* the content goes.
- *
- * ## Where the content goes
- *
- * Markdown is inserted into a *region*: a `${name}` marker, a `${slot}` marker
- * on its own paragraph, and a matching `${/name}` marker. The region is cloned
- * once per rendered block and the slot paragraph of each clone is replaced:
+ * Content is inserted into a *region* — a `${name}` marker, a `${slot}` marker on
+ * a paragraph of its own, and a matching `${/name}` marker:
  *
  * ```
  * Report for ${customer}
@@ -38,27 +29,25 @@ use PhpOffice\PhpWord\TemplateProcessor;
  * ${/body}
  * ```
  *
- * A plain `${name}` macro is for single-line values ({@see self::set()}). A
- * region whose slot is named differently, such as `${line}`, repeats once per
- * row of data instead ({@see self::repeat()}).
+ * The region is cloned once per rendered block and the slot paragraph of each
+ * clone is replaced. A plain `${name}` macro is for single-line values
+ * ({@see self::set()}); a region whose slot is named differently repeats once per
+ * row of data ({@see self::repeat()}).
  *
- * Only a template that is not there is a {@see TemplateNotFound}. Every other
- * way this can fail is something to do with the disk — a staging file that
- * cannot be created, a directory that cannot be made, a document that cannot be
- * written — and those are a {@see FileNotWritable}, which is the difference
- * between the caller being told what is wrong with the template and being told
- * what is wrong with the machine.
+ * Only a template that is not there is a {@see TemplateNotFound}. Every other way
+ * this can fail is something to do with the disk — a staging file that cannot be
+ * created, a directory that cannot be made, a document that cannot be written —
+ * and those are a {@see FileNotWritable}, which is the difference between the
+ * caller being told what is wrong with the template and being told what is wrong
+ * with the machine.
  *
- * Note that the staged document is moved into place rather than written there,
- * so the template on disk is never opened for writing: a path that is a hard
- * link to it would otherwise empty it.
+ * The staged document is moved into place rather than written there, so the
+ * template on disk is never opened for writing: a path that is a hard link to it
+ * would otherwise empty it.
  */
 final class MarkdownTemplate
 {
-    /**
-     * The variable the renderer fills inside a region. The region is cloned once
-     * per rendered block and this marker is replaced in each copy.
-     */
+    /** The variable the renderer fills inside a region. */
     public const SLOT = 'slot';
 
     private readonly TemplateProcessor $processor;
@@ -84,9 +73,9 @@ final class MarkdownTemplate
 
         $this->processor = new TemplateProcessor($template);
 
-        // The elements rendered below are copied into the template, which is a
-        // different document, so hyperlinks are written as placeholders and
-        // resolved once the output document exists.
+        // The elements rendered below are copied into a different document, so
+        // hyperlinks are written as placeholders and resolved once the output
+        // document exists.
         $this->converter = new MarkdownToWord(
             null,
             $config->withOptions(['deferredHyperlinks' => true]),
@@ -130,10 +119,9 @@ final class MarkdownTemplate
     }
 
     /**
-     * Insert rendered Markdown into a `${name}`…`${/name}` region.
-     *
-     * The region must contain a `${slot}` paragraph, which is where the content
-     * lands; see the class docblock for the shape of the template.
+     * Insert rendered Markdown into a `${name}`…`${/name}` region. The region
+     * must contain a `${slot}` paragraph, which is where the content lands; see
+     * the class docblock for the shape of the template.
      *
      * @throws FileNotWritable when the region cannot be resolved into the
      *         document, or the document cannot be written.
@@ -162,11 +150,10 @@ final class MarkdownTemplate
     }
 
     /**
-     * Repeat a `${name}`…`${/name}` region once per row.
-     *
-     * The region holds one macro per column, so a row of
-     * `['item' => 'Consulting', 'price' => '42 EUR']` fills `${item}` and
-     * `${price}` in the first copy, the second copy, and so on.
+     * Repeat a `${name}`…`${/name}` region once per row. The region holds one
+     * macro per column, so a row of `['item' => 'Consulting', 'price' => '42
+     * EUR']` fills `${item}` and `${price}` in the first copy, the second copy,
+     * and so on.
      *
      * @param list<array<string, string|int|float>> $rows
      * @throws FileNotWritable when the region cannot be resolved into the
@@ -251,8 +238,6 @@ final class MarkdownTemplate
     }
 
     /**
-     * Render Markdown into the shared scratch document and return its elements.
-     *
      * @return list<AbstractElement>
      */
     private function render(string $markdown): array
@@ -266,10 +251,8 @@ final class MarkdownTemplate
     }
 
     /**
-     * A file to build the document in, which both output paths need.
-     *
-     * PHPWord writes a document through a file rather than to a string, so there
-     * is one whether the caller wants the bytes or the file; it is removed by
+     * A file to build the document in, which both output paths need: PHPWord
+     * writes a document through a file rather than to a string. It is removed by
      * the caller on the way out.
      *
      * @throws FileNotWritable when no such file can be made.
@@ -289,13 +272,11 @@ final class MarkdownTemplate
     }
 
     /**
-     * Put the staged document where the caller asked for it.
-     *
-     * The same three problems {@see \MarkdownWord\Writer\DocxWriter::move()}
-     * solves, so this is deliberately its shape rather than a second one: a
-     * symlink is followed instead of replaced, a `rename()` that fails because
-     * the two paths are on different filesystems falls back to a copy, and a
-     * copy that fails part way does not leave a half-written document behind.
+     * Deliberately the shape of {@see \MarkdownWord\Writer\DocxWriter::move()}
+     * rather than a second one: a symlink is followed instead of replaced, a
+     * `rename()` that fails because the two paths are on different filesystems
+     * falls back to a copy, and a copy that fails part way does not leave a
+     * half-written document behind.
      */
     private static function move(string $from, string $to): void
     {

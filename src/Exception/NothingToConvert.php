@@ -5,11 +5,9 @@ declare(strict_types=1);
 namespace MarkdownWord\Exception;
 
 /**
- * The converter was given nothing to convert.
- *
  * A converter takes its subject in its constructor, so reaching this means it
- * was built without one and the string-returning method that takes its own
- * argument was not the one that was called.
+ * was built without one and {@see \MarkdownWord\Converter::convert()} was called
+ * rather than a method that takes its own argument.
  */
 final class NothingToConvert extends InvalidInput
 {

@@ -27,10 +27,10 @@ use League\CommonMark\Parser\MarkdownParser;
  * extensions (tables, strikethrough, task lists, autolinks) and a few extras
  * that are common in READMEs.
  *
- * The important part is what this returns: the *abstract syntax tree*. Nothing
- * is lost on the way through HTML, so the renderer sees exactly what the
- * Markdown author wrote — emphasis nesting, hard breaks, entity references and
- * link reference definitions included.
+ * The important part is what this returns: the *abstract syntax tree*. Nothing is
+ * lost on the way through HTML, so the renderer sees exactly what the Markdown
+ * author wrote — emphasis nesting, hard breaks, entity references and link
+ * reference definitions included.
  */
 final class CommonMarkParser implements MarkdownParserInterface
 {
@@ -126,8 +126,6 @@ final class CommonMarkParser implements MarkdownParserInterface
             $environment->addExtension(new $extension());
         }
 
-        // The plain parser is used deliberately: this renderer walks the syntax
-        // tree itself and never needs the HTML output.
         return (new MarkdownParser($environment))->parse($markdown);
     }
 }

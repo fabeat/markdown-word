@@ -16,44 +16,27 @@ use MarkdownWord\Reverse\Package;
 use MarkdownWord\Reverse\StyleTable;
 
 /**
- * Converts a Word document back into Markdown.
+ * Converts a Word document back into Markdown — the inverse of
+ * {@see \MarkdownWord\MarkdownToWord}, so a document can be checked by converting
+ * it to Word, back to Markdown, and comparing the text the reader ends up with.
  *
- * ```php
- * // A file, named once and converted to a string.
- * echo (new WordToMarkdown('report.docx'))->convert();
+ * The round trip preserves what Word was told to keep and is honest about the
+ * rest. The distinctions Word does not record, listed in full on
+ * {@see Reverse\Options}:
  *
- * // File to file.
- * (new WordToMarkdown('report.docx'))->save('report.md');
+ *  - a fenced code block comes back without its language;
+ *  - a table is written with a header whether the document marked one or not;
+ *  - a quote configured as plain indentation rather than as a style is read as an
+ *    indented paragraph.
  *
- * // Bytes already in hand.
- * echo (new WordToMarkdown($bytes))->toMarkdown();
- * ```
- *
- * This is the inverse of {@see \MarkdownWord\MarkdownToWord}, and the two together
- * make a round trip possible: a document can be checked by converting it to
- * Word, back to Markdown, and comparing the text the reader ends up with.
- *
- * The other direction is {@see MarkdownToWord}, and the two implement the same
- * {@see Converter} interface so that either can stand in for the other.
- *
- * A Word document is a lower-fidelity form of the same content, so the round
- * trip preserves everything Word was told to keep and is honest about the rest.
- * The distinctions Word does not record are listed on {@see Options}; a fenced
- * code block comes back without its language, a table is written with a header
- * whether the document marked one or not, and a quote configured as plain
- * indentation rather than as a style is read as an indented paragraph.
- *
- * The document is not this library's. It arrives as bytes from wherever the
- * caller found it, and both the names in it and the contents of what it names
- * are the sender's to choose — so the file that comes out is written from a
- * staged copy rather than opened in place, and an image is only written out
- * once both its name and its bytes say that it is an image.
+ * The document is not this library's: the names in it and the contents of what
+ * it names are the sender's to choose. So the result is written from a staged
+ * copy rather than opened in place, and an image is only written out once both
+ * its name and its bytes say that it is an image.
  */
 final class WordToMarkdown implements Converter
 {
     /**
-     * The image formats a `.docx` is allowed to carry, by extension.
-     *
      * The formats Word embeds, and no others: a name outside this list is a
      * document asking for a file to be written under a name the sender chose.
      */
@@ -62,8 +45,9 @@ final class WordToMarkdown implements Converter
     ];
 
     /**
-     * @param string|null $source The document to convert: a path, or the bytes
-     *        of one. Null leaves the choice to {@see self::toMarkdown()}.
+     * @param string|null $source The document to convert: a path, or the bytes of
+     *        one, read as {@see Input} reads a string. Null leaves the choice to
+     *        {@see self::toMarkdown()}.
      */
     public function __construct(
         private readonly ?string $source = null,
@@ -77,16 +61,13 @@ final class WordToMarkdown implements Converter
     }
 
     /**
-     * Convert the source given to the constructor.
-     *
-     * Written to `$target` when there is one, and returned either way, so the
-     * same call serves a string and a file.
-     *
      * @throws NothingToConvert   when no source was given.
      * @throws FileNotWritable    when there is a target and it cannot be written.
+     * @throws \MarkdownWord\Exception\UnreadableFile     when the source names a
+     *         file that cannot be read.
      * @throws \MarkdownWord\Exception\UnreadableDocument when the source is not a
      *         document this can read, or is too large to be worth reading.
-     * @throws \MarkdownWord\Exception\MalformedDocument when a part of it is
+     * @throws \MarkdownWord\Exception\MalformedDocument  when a part of it is
      *         missing or does not parse.
      */
     public function convert(?string $target = null): string
@@ -114,8 +95,6 @@ final class WordToMarkdown implements Converter
     }
 
     /**
-     * Convert the source and write the Markdown to a file.
-     *
      * @throws FileNotWritable when the target cannot be written.
      */
     public function save(string $target): void
@@ -187,16 +166,15 @@ final class WordToMarkdown implements Converter
      *
      * The file is moved into place rather than opened where it lies, because
      * `file_put_contents()` opens an existing name with `O_TRUNC` and a name can
-     * be a hard link: `mdword to-markdown original.docx -o alias.docx`, where
-     * `alias.docx` and `original.docx` are one inode under two names, would
-     * empty the document the conversion is still reading. `realpath()` sees two
-     * different paths, so an overwrite guard built on it cannot see the case
-     * either. Moving replaces the name and leaves the inode alone, which matters
-     * twice over here: for the Markdown a caller named, and for an image, whose
-     * name came out of the document being read.
+     * be a hard link: `mdword to-markdown original.docx -o alias.docx`, where the
+     * two are one inode, would empty the document still being read. `realpath()`
+     * sees two paths, so an overwrite guard built on it cannot see the case
+     * either. Moving replaces the name and leaves the inode alone — which matters
+     * for the Markdown a caller named and for an image, whose name came out of
+     * the document being read.
      *
-     * The staged copy is a file in the target's own directory, because that is
-     * the only one `rename()` can move within a single filesystem.
+     * The staged copy is a file in the target's own directory, the only one
+     * `rename()` can move within a single filesystem.
      *
      * @throws FileNotWritable when the target cannot be written.
      */
@@ -215,7 +193,7 @@ final class WordToMarkdown implements Converter
         if ($staged === false || realpath(\dirname($staged)) !== realpath($directory)) {
             // A directory that cannot be written to takes the staging file
             // somewhere else, and a rename across a filesystem boundary fails;
-            // either way the target is not writable and that is the fact worth
+            // either way the target is not writable, and that is the fact worth
             // reporting.
             throw new FileNotWritable(sprintf('Unable to write "%s".', $target));
         }
@@ -241,12 +219,12 @@ final class WordToMarkdown implements Converter
     /**
      * Write every image the document uses into the configured media directory.
      *
-     * A file is only written when both halves of the document agree about it:
-     * the name it is written under has to be one of the image formats Word
-     * embeds, and the bytes have to be an image. The document chooses both, so
-     * either one on its own is a request to write a file the sender named — a
-     * `.php` next to the Markdown, or an `.htaccess` that makes the server treat
-     * every other file in the directory as one.
+     * A file is only written when both halves of the document agree about it: the
+     * name it is written under has to be one of the image formats Word embeds, and
+     * the bytes have to be an image. The document chooses both, so either one on
+     * its own is a request to write a file the sender named — a `.php` next to
+     * the Markdown, or an `.htaccess` that makes the server treat every other
+     * file in the directory as one.
      *
      * An image whose name is already taken in the directory is left as it is
      * rather than replaced. The document does not get to overwrite a file that
@@ -289,12 +267,9 @@ final class WordToMarkdown implements Converter
 
     /**
      * The paths the document's images are written to, as the Markdown refers to
-     * them.
-     *
-     * With a media directory configured these are the paths beside the Markdown
-     * rather than the names inside the archive, because the reader has already
-     * had them rewritten; {@see self::extractMedia()} recovers the archive name
-     * from the last segment of each one.
+     * them. With a media directory configured these are the paths beside the
+     * Markdown rather than the names inside the archive, because the reader has
+     * already had them rewritten.
      *
      * @param list<Block> $blocks
      * @return list<string>
@@ -331,8 +306,8 @@ final class WordToMarkdown implements Converter
      * The bytes are checked because the name is chosen by the sender, and an
      * extension is a claim rather than a fact. `getimagesize()` knows the
      * raster formats and says so by returning false for everything else, which
-     * includes the two vector formats Word embeds: those are recognised by
-     * their own headers instead, or the document would lose a chart.
+     * includes the two vector formats Word embeds: those are recognised by their
+     * own headers instead, or the document would lose a chart.
      */
     private function isImage(string $name, string $bytes): bool
     {
@@ -356,11 +331,9 @@ final class WordToMarkdown implements Converter
     /**
      * An enhanced metafile: an `EMR_HEADER` record, which is record type 1 and
      * carries the signature ` EMF` at a fixed offset, and a header that fits in
-     * the bytes there are.
-     *
-     * The signature is what makes this a check rather than a coincidence: four
-     * bytes at the start of a file are not evidence of anything, and `<?php` is
-     * not four zero bytes.
+     * the bytes there are. The signature is what makes this a check rather than
+     * a coincidence: four bytes at the start of a file are not evidence of
+     * anything, and `<?php` is not four zero bytes.
      */
     private static function isEnhancedMetafile(string $bytes): bool
     {
@@ -381,11 +354,10 @@ final class WordToMarkdown implements Converter
     /**
      * A Windows metafile: either a bare `METAHEADER` record, or the Aldus
      * placeable wrapper around one — a fixed 30-byte header, after which comes
-     * the very record a bare metafile begins with.
-     *
-     * The placeable form is checked through to that record rather than on its
-     * key alone: the key is four fixed bytes at the start of a file, which is
-     * the easiest possible thing for a script to begin with.
+     * the very record a bare metafile begins with. The placeable form is checked
+     * through to that record rather than on its key alone, because the key is
+     * four fixed bytes at the start of a file, which is the easiest possible
+     * thing for a script to begin with.
      */
     private static function isMetafile(string $bytes): bool
     {
