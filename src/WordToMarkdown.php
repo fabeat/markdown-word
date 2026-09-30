@@ -32,6 +32,9 @@ use RuntimeException;
  * make a round trip possible: a document can be checked by converting it to
  * Word, back to Markdown, and comparing the text the reader ends up with.
  *
+ * The other direction is {@see MarkdownToWord}, and the two implement the same
+ * {@see Converter} interface so that either can stand in for the other.
+ *
  * A Word document is a lower-fidelity form of the same content, so the round
  * trip preserves everything Word was told to keep and is honest about the rest.
  * The distinctions Word does not record are listed on {@see Options}; a fenced
@@ -39,7 +42,7 @@ use RuntimeException;
  * its first row was a header, and a quote configured as plain indentation
  * rather than as a style is read as an indented paragraph.
  */
-final class WordToMarkdown
+final class WordToMarkdown implements Converter
 {
     /**
      * @param string|null $source The document to convert: a path, or the bytes

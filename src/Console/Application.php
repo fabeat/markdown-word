@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MarkdownWord\Console;
 
 use MarkdownWord\Configuration;
+use MarkdownWord\Converter;
 use MarkdownWord\Console\CommandLine;
 use MarkdownWord\Console\Command\Command;
 use MarkdownWord\Console\Command\ToDocx;
@@ -535,13 +536,19 @@ final class Application
 
     /**
      * The converter, for callers that want the object rather than a written file.
+     *
+     * Typed as the interface rather than the class, so a caller holding one of
+     * the two directions cannot tell them apart by accident.
      */
-    public function converter(Configuration $config, ?string $source = null): MarkdownToWord
+    public function converter(Configuration $config, ?string $source = null): Converter
     {
         return new MarkdownToWord($source, $config);
     }
 
-    public function reader(ReverseOptions $options, ?string $source = null): WordToMarkdown
+    /**
+     * The other direction, the same contract.
+     */
+    public function reader(ReverseOptions $options, ?string $source = null): Converter
     {
         return new WordToMarkdown($source, $options);
     }

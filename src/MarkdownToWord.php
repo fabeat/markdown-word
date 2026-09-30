@@ -39,8 +39,11 @@ use RuntimeException;
  * The parser is `league/commonmark`, so CommonMark and GitHub-Flavored Markdown
  * are both fully supported — the renderer walks the syntax tree directly instead
  * of going through HTML, which is what keeps the output faithful.
+ *
+ * The other direction is {@see WordToMarkdown}, and the two implement the same
+ * {@see Converter} interface so that either can stand in for the other.
  */
-final class MarkdownToWord
+final class MarkdownToWord implements Converter
 {
     private ?LinkPayloadCollector $links = null;
 

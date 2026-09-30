@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use MarkdownWord\Console\UpstreamDeprecations;
+use MarkdownWord\Converter;
 use MarkdownWord\MarkdownToWord;
 use MarkdownWord\WordToMarkdown;
 use MarkdownWord\Tests\Support\Scratch;
@@ -11,16 +12,75 @@ use MarkdownWord\Tests\Support\Scratch;
  * The shape of the public interface.
  *
  * The two directions are the same operation, so the classes that do them should
- * look alike. They did not at first: `save()` took `(content, path)` in one and
- * `(path, path)` in the other — the same name and the same arity, meaning
- * opposite things, so a caller who learned one got the other wrong silently.
+ * look alike, and both should be described by one {@see Converter}. They did
+ * not at first: `save()` took `(content, path)` in one and `(path, path)` in the
+ * other — the same name and the same arity, meaning opposite things, so a caller
+ * who learned one got the other wrong silently.
  *
  * These tests are what holds them together. Nothing else notices a method being
- * renamed on one side only.
+ * renamed on one side only, and an interface nothing is written against is
+ * decoration.
  */
 
 beforeEach(fn () => UpstreamDeprecations::install());
 afterEach(fn () => UpstreamDeprecations::restore());
+
+/**
+ * Both directions, as the interface rather than as two classes.
+ *
+ * @return array<string, class-string<Converter>>
+ */
+function bothDirections(): array
+{
+    return [
+        MarkdownToWord::class => MarkdownToWord::class,
+        WordToMarkdown::class => WordToMarkdown::class,
+    ];
+}
+
+it('describes both directions with one interface', function () {
+    foreach (bothDirections() as $class) {
+        expect($class)->toImplement(Converter::class);
+    }
+});
+
+it('converts either direction through the interface alone', function () {
+    // The whole point: a caller holding a Converter cannot tell the two apart,
+    // and does not have to.
+    $markdown = Scratch::path('iface', '.md');
+    file_put_contents($markdown, "# Subject\n\nBody.\n");
+    $document = Scratch::path('iface', '.docx');
+    saveMarkdown("# Subject\n\nBody.\n", $document);
+
+    $toWord = new MarkdownToWord($markdown);
+    $toMarkdown = new WordToMarkdown($document);
+
+    expect($toWord)->toBeInstanceOf(Converter::class);
+    expect($toMarkdown)->toBeInstanceOf(Converter::class);
+
+    /** @var list<Converter> $converters */
+    $converters = [$toWord, $toMarkdown];
+
+    foreach ($converters as $index => $converter) {
+        $bytes = $converter->convert();
+        $target = Scratch::path('iface-out-' . $index);
+        $converter->save($target);
+
+        expect($bytes)->toBeString();
+        expect(is_file($target))->toBeTrue();
+        // Whatever it produced is the same whether returned or written.
+        expect((string) file_get_contents($target))->toBe($bytes);
+    }
+});
+
+it('sends both directions to the same place through the interface', function () {
+    // A round trip written once, against the interface, with no reference to
+    // either class.
+    $toWord = new MarkdownToWord("# Through the interface\n");
+    $toMarkdown = new WordToMarkdown($toWord->convert());
+
+    expect($toMarkdown->convert())->toContain('# Through the interface');
+});
 
 /**
  * The public methods a caller of either direction would reach for.
@@ -47,9 +107,11 @@ it('gives both classes the same operations', function () {
     }
 
     // Each has one string-in, string-out method, named after the direction it
-    // produces rather than after the verb.
+    // produces rather than after the verb. That is deliberately not on the
+    // interface: it is the one thing the two do differently.
     expect($markdown)->toContain('toDocx');
     expect($document)->toContain('toMarkdown');
+    expect(get_class_methods(Converter::class))->toBe(['convert', 'save']);
 });
 
 it('takes the subject to convert as the first argument to both', function () {

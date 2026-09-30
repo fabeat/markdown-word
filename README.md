@@ -35,6 +35,28 @@ constructor — a path, or the content itself — and `convert()` is the verb:
 (new WordToMarkdown('notes.docx'))->save('notes.md'); // → a file
 ```
 
+Both implement one interface, so code that does not care which way the data goes
+can be written once:
+
+```php
+use MarkdownWord\Converter;
+
+function convert(Converter $converter, string $target): void
+{
+    $converter->save($target);   // Markdown in, or a document in — either works
+}
+
+convert(new MarkdownToWord('notes.md'), 'notes.docx');
+convert(new WordToMarkdown('report.docx'), 'report.md');
+```
+
+A round trip is two of them and nothing else:
+
+```php
+$word = new MarkdownToWord(file_get_contents('notes.md'));
+$back = (new WordToMarkdown($word->convert()))->convert();
+```
+
 Or from a terminal, with no PHP to write. The direction is worked out from the
 file, so there is nothing to choose:
 
@@ -109,7 +131,7 @@ version is exercised.
 
 ## Word to Markdown
 
-The same mapping runs in reverse, and the interface mirrors the way in:
+The same mapping runs in reverse, and the class mirrors the way in:
 
 ```php
 use MarkdownWord\WordToMarkdown;
