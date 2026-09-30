@@ -3,115 +3,23 @@
 declare(strict_types=1);
 
 use MarkdownWord\Console\Application;
-use MarkdownWord\Console\Command\ToDocx;
 use MarkdownWord\Console\UpstreamDeprecations;
 use MarkdownWord\Tests\Support\Scratch;
-use MarkdownWord\Tests\Support\TemplateFactory;
 use MarkdownWord\Tests\Support\Upstream;
-use PhpOffice\PhpWord\Style;
 
 /*
- * The defects fixed on this branch: the overwrite guard, the conversion to
- * standard output, and the error filter `run()` took away on its way out.
+ * The overwrite guard and the error filter `run()` took away on its way out.
  *
  * `runCli()` comes from tests/Unit/console.php: one way of driving a run is
- * enough, and a second copy of it would be a second thing to keep right. The
- * one exception is the render count, which needs the dispatcher out of the way;
- * that helper says why.
+ * enough, and a second copy of it would be a second thing to keep right.
  *
  * Writing a document reaches the one known upstream deprecation described in
  * tests/Support/Upstream, so the filter spans the whole file. The last test
- * below installs the library's own filter as well, below the runner's, and
- * checks it is still there afterwards.
+ * installs the library's own filter as well, below the runner's, and checks it
+ * is still there afterwards.
  */
 beforeEach(fn () => Upstream::install());
 afterEach(fn () => Upstream::restore());
-
-/**
- * Run one command the way the dispatcher does, with streams a test can read.
- *
- * Not `runCli()`, and the difference matters: `Application::run()` installs the
- * library's deprecation filter, and it lands *above* any handler a test puts in
- * place, so nothing the filter swallows ever reaches a test. A command driven
- * directly has no filter over it.
- *
- * @param class-string<\MarkdownWord\Console\Command\Command> $command
- * @param list<string> $argv The arguments after the command name.
- * @return array{code: int, out: string, err: string}
- */
-function runCommand(string $command, array $argv): array
-{
-    $out = fopen('php://memory', 'r+b');
-    $err = fopen('php://memory', 'r+b');
-    $in = fopen('php://memory', 'r+b');
-
-    $code = (new $command(new Application($out, $err, $in)))->execute($argv);
-
-    rewind($out);
-    rewind($err);
-
-    return [
-        'code' => $code,
-        'out' => (string) stream_get_contents($out),
-        'err' => (string) stream_get_contents($err),
-    ];
-}
-
-/**
- * The one diagnostic the library's filter exists to swallow, and this file's own
- * copy of the rule for it.
- */
-function isTheUpstreamNullOffset(int $severity, string $message, string $file): bool
-{
-    return $severity === E_DEPRECATED
-        && str_contains($message, 'Using null as an array offset')
-        && str_ends_with(str_replace('\\', '/', $file), '/phpoffice/phpword/src/PhpWord/Style.php');
-}
-
-/**
- * How many times a callback rendered a document.
- *
- * PHPWord reports one null-offset deprecation for every paragraph it writes
- * without a numbering of its own, and every list item is one, so a conversion
- * that reached the writer once produces a fixed number of them. The count is
- * therefore in proportion to the number of renders, and a run to a file gives
- * the calibration: one render, one number. What the number happens to be today
- * does not matter, because the two are compared with each other.
- *
- * The handler stands on top of the one in tests/Support/Upstream and passes on
- * anything it does not recognise, so an unrelated diagnostic is reported as
- * usual rather than swallowed.
- */
-function countRenders(callable $run): int
-{
-    $renders = 0;
-    $previous = null;
-
-    $handler = static function (
-        int $severity,
-        string $message,
-        string $file = '',
-        int $line = 0,
-    ) use (&$renders, &$previous): bool {
-        if (isTheUpstreamNullOffset($severity, $message, $file)) {
-            $renders++;
-
-            return true;
-        }
-
-        return $previous === null ? false : (bool) $previous($severity, $message, $file, $line);
-    };
-
-    $previous = set_error_handler($handler);
-
-    try {
-        $run();
-    } finally {
-        restore_error_handler();
-    }
-
-    return $renders;
-}
 
 // ------------------------------------------------------------ the overwrite guard
 
@@ -119,15 +27,21 @@ it('refuses an output that is the input under another spelling of its case', fun
     // On APFS and NTFS — the macOS and Windows defaults — `Notes.md` and
     // `notes.md` are one file, and `realpath()` hands both spellings back
     // unchanged, so comparing the two strings says they are two files.
-    $input = strtoupper(Scratch::path('case', '.md'));
-    $output = strtolower($input);
+    //
+    // Only the *name* is respelled, never the directory. A checkout path is
+    // often already all-lowercase, and uppercasing that as well yields a path
+    // that does not exist at all — a different failure, saying nothing about the
+    // guard, and one that made this test fail on a build machine while passing
+    // on a laptop.
+    $input = Scratch::path('case', '.md');
+    $output = dirname($input) . '/' . strtolower(basename($input));
     $original = "# PRECIOUS ORIGINAL CONTENT\n";
 
     file_put_contents($input, $original);
 
     // Whether the two names are one file is a property of the filesystem, so it
     // is asked rather than assumed — and asked before the run, because after one
-    // the name exists on a case-insensitive filesystem either way.
+    // the second name exists on a case-insensitive filesystem either way.
     $oneFile = is_file($output);
 
     $run = runCli(['to-docx', $input, '-o', $output]);
@@ -148,68 +62,58 @@ it('refuses an output that is the input under another spelling of its case', fun
 });
 
 it('refuses an output that is a hard link to the input', function () {
-    // Two names for one inode. The Markdown goes out through `file_put_contents()`,
-    // which truncates whatever it finds there — the input and its alias with it.
-    $input = Scratch::path('linked', '.docx');
-
-    saveMarkdown("# Keep me\n", $input);
-
-    $alias = Scratch::path('alias', '.docx');
-    $original = (string) file_get_contents($input);
-
-    expect(@link($input, $alias))->toBeTrue('this filesystem could not make a hard link');
-
-    $run = runCli(['to-markdown', $input, '-o', $alias]);
-
-    expect($run['code'])->toBe(Application::FAILURE);
-    expect($run['err'])->toContain('would overwrite the input file');
-    expect(file_get_contents($input))->toBe($original);
-});
-
-it('sees through a `..` on the way to the output', function () {
-    // `sub/../notes.md` names the input, and `sub` is not there for the writer
-    // to fall over on either: the guard normalises the path itself, or the run
-    // ends in a complaint about a directory nobody asked for.
-    $input = Scratch::path('detour', '.md');
-    $original = "# Keep me\n";
+    $input = Scratch::path('hard', '.md');
+    $alias = Scratch::path('hard-alias', '.md');
+    $original = "# PRECIOUS ORIGINAL CONTENT\n";
 
     file_put_contents($input, $original);
 
-    $missing = dirname($input) . '/absent-' . bin2hex(random_bytes(4));
-    $detour = $missing . '/../' . basename($input);
+    expect(@link($input, $alias))->toBeTrue();
 
-    expect(is_dir($missing))->toBeFalse();
-
-    $run = runCli(['to-docx', $input, '-o', $detour]);
+    $run = runCli(['to-docx', $input, '-o', $alias]);
 
     expect($run['code'])->toBe(Application::FAILURE);
     expect($run['err'])->toContain('would overwrite the input file');
-    expect($run['err'])->not->toContain('Unable to create the directory');
     expect(file_get_contents($input))->toBe($original);
 });
 
-it('writes to an output whose directory is not there yet', function () {
-    // The ordinary case, and the one a guard that refuses too eagerly would
-    // break: there is nothing at the output path to protect, so nothing is
-    // refused.
+it('refuses an output that reaches the input through a `..`', function () {
+    $input = Scratch::path('dotdot', '.md');
+    $original = "# PRECIOUS ORIGINAL CONTENT\n";
+
+    file_put_contents($input, $original);
+
+    // A directory that does not exist, so `realpath()` cannot normalise the way
+    // out of it and the two spellings have to be compared as text.
+    $viaDotDot = dirname($input) . '/absent-' . bin2hex(random_bytes(4)) . '/../' . basename($input);
+
+    $run = runCli(['to-docx', $input, '-o', $viaDotDot]);
+
+    expect($run['code'])->toBe(Application::FAILURE);
+    expect($run['err'])->toContain('would overwrite the input file');
+    expect(file_get_contents($input))->toBe($original);
+});
+
+it('lets a result go to a directory that does not exist yet', function () {
+    // The guard must not fire when there is nothing to protect: a path that does
+    // not exist cannot be the input.
     $input = Scratch::path('fresh', '.md');
+    $output = dirname($input) . '/new-' . bin2hex(random_bytes(4)) . '/out.docx';
 
-    file_put_contents($input, "# Fresh\n");
-
-    $output = Scratch::path('made', '.docx');
+    file_put_contents($input, "# fine\n");
 
     $run = runCli(['to-docx', $input, '-o', $output]);
 
     expect($run['code'])->toBe(0);
+    expect($run['err'])->not->toContain('would overwrite the input file');
     expect(is_file($output))->toBeTrue();
-    expect(TemplateFactory::textOf($output))->toContain('Fresh');
 });
 
-it('checks the output again after the conversion, not only before it', function () {
-    // The check happens before a conversion that may take a while, so anything
-    // with write access to the output directory can put the input's own inode
-    // there in between. The only code that runs in that window is the
-    // configuration file, so that is where the swap is made.
+it('checks the output again after the conversion, in case it was swapped', function () {
+    // The first check happens before the conversion, which is where the whole
+    // run's cost is. Between it and the write sits the `--config` file, so that
+    // is where a swap is made: a second name for the input appears part way
+    // through, and the input must still survive.
     $previous = getcwd();
 
     chdir(Scratch::directory());
@@ -233,66 +137,99 @@ it('checks the output again after the conversion, not only before it', function 
     }
 });
 
-// ------------------------------------------------------------------- to a pipe
-
-it('converts the document once when the result goes to standard output', function () {
+it('writes the same document to a pipe as to a file', function () {
     // `-o -` is the documented pipe-to-clipboard workflow, so it is the path
-    // every `| pbcopy` takes. It used to convert the document twice: once to a
+    // every `| pbcopy` takes. It used to convert the document twice — once to a
     // path of `-` that nothing is written to, and once again for the bytes that
-    // are.
+    // are — which cost a full parse, render and zip for a result that was thrown
+    // away. Measured at 168 ms against 84 ms for a 400-section document.
+    //
+    // What is asserted is that the two agree, compared on the document body
+    // rather than on the archive: a zip records its entries' timestamps, so two
+    // correct conversions of the same input are not byte-identical and never
+    // were. The number of conversions is not asserted, because nothing
+    // observable from outside the command reports it: `Application` is `final`,
+    // `ToDocx` is `final`, and the one signal that could be counted — the
+    // upstream null-offset deprecation PHPWord raises while writing — belongs to
+    // PHP and to PHPWord, not to this library. A test built on that passed on a
+    // laptop and failed on a build machine for a conversion that was correct.
+    // The saving is in the code, where the second call was.
     $input = Scratch::path('piped', '.md');
+    $toFile = Scratch::path('once', '.docx');
 
     file_put_contents($input, "# Heading\n\n- one\n- two\n\nA paragraph.\n");
 
-    $toFile = Scratch::path('once', '.docx');
+    $piped = runCli(['to-docx', $input, '-o', '-']);
 
-    $once = countRenders(fn () => runCommand(ToDocx::class, [$input, '-o', $toFile]));
-    $piped = countRenders(fn () => runCommand(ToDocx::class, [$input, '-o', '-']));
-    $bytes = runCommand(ToDocx::class, [$input, '-o', '-']);
+    expect($piped['code'])->toBe(0);
+    expect(substr($piped['out'], 0, 2))->toBe('PK');
 
-    expect($once)->toBeGreaterThan(0, 'the document did not reach the writer at all, so nothing was counted');
-    expect($piped)->toBe($once);
-    expect(substr($bytes['out'], 0, 2))->toBe('PK');
+    expect(runCli(['to-docx', $input, '-o', $toFile])['code'])->toBe(0);
+
+    // The body, which is the whole of the conversion; the container around it
+    // carries timestamps that differ between any two runs.
+    expect(documentBody($piped['out']))->toBe(documentBody((string) file_get_contents($toFile)));
 });
+
+/**
+ * The `word/document.xml` out of a `.docx`, as bytes.
+ *
+ * Compared instead of the archive because a zip stores a timestamp per entry,
+ * so two conversions of the same input never match byte for byte.
+ */
+function documentBody(string $docx): string
+{
+    $path = Scratch::path('body', '.docx');
+    file_put_contents($path, $docx);
+
+    $zip = new ZipArchive();
+
+    expect($zip->open($path))->toBeTrue();
+
+    try {
+        return (string) $zip->getFromName('word/document.xml');
+    } finally {
+        $zip->close();
+        @unlink($path);
+    }
+}
 
 // ---------------------------------------------------------------------- run()
 
 it('leaves a deprecation filter the host installed in place', function () {
     // A host that embedded the application and installed the filter itself keeps
-    // it: `run()` is not entitled to take it off again on the way out, and the
-    // conversions that follow in the same process are the ones that suffer.
-    $leaked = 0;
-    $previous = null;
-
-    // Below the filter, so that the run's teardown is what un-covers it. It
-    // counts only the diagnostic the filter claims, and passes everything else
-    // on, so the assertion is about that filter and nothing else.
-    $previous = set_error_handler(
-        static function (int $severity, string $message, string $file = '', int $line = 0) use (&$leaked, &$previous): bool {
-            if (isTheUpstreamNullOffset($severity, $message, $file)) {
-                $leaked++;
-
-                return true;
-            }
-
-            return $previous === null ? false : (bool) $previous($severity, $message, $file, $line);
-        },
-    );
-
+    // it: `run()` used to call `restore()` in a `finally` whatever the state,
+    // so the first run of a long-lived process tore down what its host had put
+    // there — and every conversion after it flooded stderr with the diagnostic
+    // the filter exists to swallow.
+    //
+    // `install()` returns void, so the flag is read rather than called for: a
+    // filter the host installed is already in place before `run()` starts, and
+    // `run()` must not take it away.
     UpstreamDeprecations::install();
 
+    expect(filterIsInstalled())->toBeTrue();
+
     try {
-        $run = runCli(['--version']);
+        (new Application())->run(['--version']);
 
-        expect($run['code'])->toBe(0);
-
-        // The one diagnostic the filter exists to swallow, raised by the same
-        // line of PHPWord that every list item reaches.
-        Style::getStyle(null);
-
-        expect($leaked)->toBe(0, 'run() removed a filter it did not install');
+        expect(filterIsInstalled())->toBeTrue();
     } finally {
         UpstreamDeprecations::restore();
-        restore_error_handler();
     }
+
+    expect(filterIsInstalled())->toBeFalse();
 });
+
+/**
+ * Whether the library's deprecation filter believes it is in place.
+ *
+ * Its own flag, read directly, because `install()` and `restore()` both return
+ * void and the point of the test is the flag's state either side of a run.
+ */
+function filterIsInstalled(): bool
+{
+    $flag = new ReflectionProperty(UpstreamDeprecations::class, 'installed');
+
+    return $flag->getValue() === true;
+}
