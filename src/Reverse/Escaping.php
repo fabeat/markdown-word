@@ -68,15 +68,6 @@ final class Escaping
     }
 
     /**
-     * Escape a run that is already inside a Markdown span, such as the label of
-     * a link. Only the characters that would end the span early matter.
-     */
-    public static function insideSpan(string $text): string
-    {
-        return self::text($text, lineStart: false, inTable: false);
-    }
-
-    /**
      * Wrap a code span's content in a backtick fence that cannot occur inside it.
      *
      * The specification strips one space from each end of a code span when both

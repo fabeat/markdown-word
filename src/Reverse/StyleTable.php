@@ -75,11 +75,6 @@ final class StyleTable
         }
     }
 
-    public function has(string $id): bool
-    {
-        return isset($this->styles[$id]);
-    }
-
     /**
      * The left indentation, in twips, a style contributes.
      */

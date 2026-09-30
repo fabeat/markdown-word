@@ -7,37 +7,24 @@ namespace MarkdownWord;
 /**
  * A conversion in one direction.
  *
- * The two directions are the same operation with the ends swapped, so they are
- * described by one interface. Before this they shared a shape by agreement,
- * which is worth nothing: a method could be renamed on one side and every caller
- * using the other would be the only thing to notice.
+ * The two directions are the same operation with the ends swapped, so one
+ * interface describes both — worth nothing unless both are held to it. That is
+ * why the constructor is not part of the contract: what an implementation takes
+ * first is the thing to convert, and the configuration comes second, but the
+ * second argument differs by direction ({@see Configuration} for
+ * {@see MarkdownToWord}, {@see Reverse\Options} for {@see WordToMarkdown}) and no
+ * signature covers both.
  *
  * ```php
- * function convert(Converter $converter, string $target): void
- * {
- *     $converter->save($target);   // Markdown in, or a document in — either works
- * }
- * ```
- *
- * ## What the subject is
- *
- * An implementation is given the thing it converts in its constructor, as the
- * first argument: a path, or the content itself. A string naming a file that
- * exists is read from it, and anything else is taken as the content — the rule
- * {@see Input} applies, and the same one the command line works by.
- *
- * The second argument is what configures the conversion, and it differs by
- * direction: {@see MarkdownToWord} takes a {@see Configuration}, and
- * {@see WordToMarkdown} takes a {@see Reverse\Options}. That is why the
- * constructor is not part of this contract: there is no signature both could
- * honour. Pass `null` to skip it.
- *
- * ```php
- * new MarkdownToWord('notes.md');                          // the defaults
- * new MarkdownToWord('notes.md', Configuration::create()); // configured
- * new WordToMarkdown('report.docx');
+ * new MarkdownToWord('notes.md', Configuration::create());
  * new WordToMarkdown($bytes, Options::fromArray([...]));
  * ```
+ *
+ * A string is a path to read when it names a file that exists and the content
+ * itself otherwise — but only for Markdown. A Word document is a zip archive, so
+ * {@see WordToMarkdown} insists on the `PK\x03\x04` header rather than taking an
+ * unrecognised string for bytes: the rule {@see Input} applies, and the one the
+ * command line works by.
  */
 interface Converter
 {
@@ -53,7 +40,17 @@ interface Converter
      *        path.
      * @return string The converted document or Markdown.
      *
-     * @throws \RuntimeException when the converter was given nothing to convert.
+     * @throws Exception\NothingToConvert   when the converter was built without
+     *        a source.
+     * @throws Exception\UnreadableFile     when the source names a file that
+     *        cannot be read.
+     * @throws Exception\UnreadableDocument when the source is not a Word
+     *        document that can be opened — only WordToMarkdown reads a source
+     *        this way, but both re-open the archive they have just written.
+     * @throws Exception\MalformedDocument  when a part of it is missing or does
+     *        not parse.
+     * @throws Exception\FileNotWritable    when there is a target and it cannot
+     *        be written.
      */
     public function convert(?string $target = null): string;
 
@@ -61,7 +58,8 @@ interface Converter
      * Convert whatever the converter was given and write the result to a file.
      *
      * The counterpart of {@see self::convert()} for when the result is wanted on
-     * disk and its value is not.
+     * disk and its value is not. Throws what {@see self::convert()} throws, and
+     * never less.
      *
      * @param string $target Where to write the result.
      */

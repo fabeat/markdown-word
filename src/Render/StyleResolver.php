@@ -6,7 +6,6 @@ namespace MarkdownWord\Render;
 
 use MarkdownWord\Configuration;
 use MarkdownWord\Configuration\Styles;
-use PhpOffice\PhpWord\Style\Font;
 
 /**
  * Translates renderer concerns into concrete Word styles.
@@ -21,7 +20,7 @@ final class StyleResolver
     {
     }
 
-    public function styles(): Styles
+    private function styles(): Styles
     {
         return $this->config->getStyles();
     }
@@ -110,13 +109,6 @@ final class StyleResolver
         return is_string($value) || is_array($value) || $value === null ? $value : null;
     }
 
-    public function headingStyle(int $level): string|array|null
-    {
-        $value = $this->styles()->heading($level);
-
-        return is_string($value) || is_array($value) ? $value : null;
-    }
-
     public function softBreakMode(): string
     {
         return $this->config->getOptions()->softBreak;
@@ -135,8 +127,15 @@ final class StyleResolver
     }
 
     /**
-     * Turn the loose `color`/shading shorthand used in the default style
-     * definitions into the exact keys PHPWord's Font style understands.
+     * Translate the shorthand a style definition may use into the keys PHPWord's
+     * Font style understands.
+     *
+     * Only `shading` needs translating: it is spelled `bgColor` there, and a key
+     * Font has no setter for is silently dropped by `setStyleByArray()`. `color`
+     * is already a Font key and passes through untouched, and no shipped default
+     * carries a `shading` key — this is here for a style definition of the
+     * caller's own. Paragraph shading is a different thing entirely and never
+     * reaches this: it is a paragraph property, added by the renderer.
      *
      * @param  array<string, mixed>  $font
      * @return array<string, mixed>
@@ -147,17 +146,6 @@ final class StyleResolver
             $font['bgColor'] = $font['shading'];
         }
         unset($font['shading']);
-
-        return $font;
-    }
-
-    /**
-     * Build a Font style object, used for code block shading.
-     */
-    public static function font(array $definition): Font
-    {
-        $font = new Font();
-        $font->setStyleByArray($definition);
 
         return $font;
     }
