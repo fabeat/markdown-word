@@ -103,8 +103,8 @@ it('different lists get distinct numbering', function () {
 
     // Reusing one identifier for both would make the bullets render as
     // numbers, or the numbers continue where the bullets left off.
-    expect(substr_count($numbering, 'w:numFmt w:val="bullet"'))->toBe(9);
-    expect(substr_count($numbering, 'w:numFmt w:val="decimal"'))->toBe(9);
+    expect(substr_count($numbering, 'w:numFmt w:val="bullet"'))->toBe(NUMBERING_LEVELS);
+    expect(substr_count($numbering, 'w:numFmt w:val="decimal"'))->toBe(NUMBERING_LEVELS);
 });
 
 it('repeated identical lists share one definition', function () {
@@ -119,7 +119,7 @@ it('repeated identical lists share one definition', function () {
 
     // Identical lists need only one definition; duplicating them would bloat
     // the file for no benefit.
-    expect(substr_count(TemplateFactory::xmlOf($output, 'word/numbering.xml'), 'w:numFmt w:val="bullet"'))->toBe(9);
+    expect(substr_count(TemplateFactory::xmlOf($output, 'word/numbering.xml'), 'w:numFmt w:val="bullet"'))->toBe(NUMBERING_LEVELS);
 });
 
 it('tables survive template insertion', function () {

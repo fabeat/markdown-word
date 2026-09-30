@@ -16,8 +16,15 @@ declare(strict_types=1);
  * `stress.php` only exercises the way into Word.
  *
  * ```sh
- * php smoke.php
+ * php smoke.php                  # the library, from a checkout
+ * php smoke.php build/mdword.phar   # a phar as well, if one has been built
  * ```
+ *
+ * The phar is a separate program with its own dependencies inside it, so the
+ * library passing says nothing about whether the archive that ships it runs.
+ * Pointed at one, this runs it in a child process and converts a document through
+ * it both ways — which is the only way to check that a phar works, since the
+ * extensions and `phar.readonly` it needs belong to the PHP that runs it.
  */
 
 require __DIR__ . '/vendor/autoload.php';
@@ -29,6 +36,7 @@ use MarkdownWord\WordToMarkdown;
 
 $checks = 0;
 $failures = 0;
+$phar = $argv[1] ?? getenv('MDWORD_PHAR') ?: null;
 
 // One dependency emits a deprecation for every list item it writes; see the class
 // for why. Without this the run prints thousands of lines of somebody else's
@@ -200,7 +208,17 @@ foreach ([
     'the code itself' => '$y = sqrt($x);',
     'a table' => '| 1 | 2 |',
 ] as $what => $needle) {
-    check('the round trip keeps ' . $what, static function () use (&$markdown, $needle): bool|string {
+    // Skipped rather than failed when the conversion above produced nothing: the
+    // eleven checks below all look for the same thing in the same empty string, so
+    // reporting them one by one would turn one defect into twelve.
+    if ($markdown === '') {
+        echo 'SKIP  the round trip keeps ' . $what . ": nothing was read back\n";
+        $checks++;
+
+        continue;
+    }
+
+    check('the round trip keeps ' . $what, static function () use ($markdown, $needle): bool|string {
         return str_contains($markdown, $needle)
             ? true
             : 'no "' . $needle . '" in the Markdown read back';
@@ -304,16 +322,132 @@ check('the command line reports its version', static function (): bool|string {
         : 'exited ' . $exit . ' saying "' . trim($text) . '"';
 });
 
+// ------------------------------------------------------------------ the phar
+
+if ($phar !== null && $phar !== '') {
+    $havePhar = is_file($phar);
+
+    check('there is a phar at that path', static function () use ($phar, $havePhar): bool|string {
+        return $havePhar ? true : 'there is no file at "' . $phar . '"';
+    });
+
+    if (!$havePhar) {
+        // Reported once: the two checks below would only say it again, in the past
+        // tense, about a file that is not there.
+        echo "SKIP  the phar was not run: there is nothing at that path\n";
+    } else {
+        check('the phar runs on this version of PHP', static function () use ($phar): bool|string {
+            // A child process, because a phar is a program of its own: what is
+            // being checked is that *that* program starts, with whatever it carries
+            // inside it, rather than that this process can reach inside the
+            // archive.
+            $code = runPhar([$phar, '--version']);
+
+            if ($code === null) {
+                return true;
+            }
+
+            return $code === 0 ? true : 'it exited ' . $code;
+        });
+
+        check('the phar converts in both directions', static function () use ($phar, $work): bool|string {
+            $source = $work . '/phar.md';
+            $document = $work . '/phar.docx';
+            $readBack = $work . '/phar-back.md';
+
+            file_put_contents($source, "# Built\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n");
+
+            $forward = runPhar([$phar, 'to-docx', $source, '-o', $document]);
+
+            if ($forward === null) {
+                return true;
+            }
+
+            if ($forward !== 0) {
+                return 'to-docx exited ' . $forward;
+            }
+
+            $reverse = runPhar([$phar, 'to-markdown', $document, '-o', $readBack]);
+
+            if ($reverse === null) {
+                return true;
+            }
+
+            if ($reverse !== 0) {
+                return 'to-markdown exited ' . $reverse;
+            }
+
+            return is_file($readBack) && str_contains((string) @file_get_contents($readBack), '# Built')
+                ? true
+                : 'nothing came back out of the phar';
+        });
+    }
+}
+
 // --------------------------------------------------------------------- done
 
 echo "\n{$checks} checks, {$failures} failure(s)\n";
 
 UpstreamDeprecations::restore();
 
-foreach (glob($work . '/*') ?: [] as $file) {
-    @unlink($file);
-}
-
-@rmdir($work);
+removeTree($work);
 
 exit($failures === 0 ? 0 : 1);
+
+/**
+ * Remove a directory and everything in it, and only that.
+ *
+ * `tmp` is shared with the test suite and with the other checks at the root of the
+ * repository, so nothing outside this run's own directory is touched.
+ */
+function removeTree(string $directory): void
+{
+    foreach (scandir($directory) ?: [] as $entry) {
+        if ($entry === '.' || $entry === '..') {
+            continue;
+        }
+
+        $path = $directory . '/' . $entry;
+
+        is_dir($path) ? removeTree($path) : @unlink($path);
+    }
+
+    @rmdir($directory);
+}
+
+/**
+ * Run the phar in a child process and hand back its exit code.
+ *
+ * Null where no child process could be started — `proc_open` disabled, which some
+ * build hosts do — so the caller can skip rather than report a phar that was never
+ * asked a question. A phar needs the extensions of the PHP that runs it, so this
+ * is the only place a check like this can honestly live.
+ *
+ * The command is an array, so it is executed directly rather than through a shell
+ * and nothing here has to be quoted: a path with a space in it is one argument
+ * rather than two, and a path that is not there fails the way a missing file
+ * should.
+ *
+ * @param list<string> $arguments
+ */
+function runPhar(array $arguments): ?int
+{
+    $pipes = [];
+    $process = function_exists('proc_open')
+        ? @proc_open(array_merge([PHP_BINARY], $arguments), [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes)
+        : null;
+
+    if (!is_resource($process)) {
+        echo "SKIP  no child process could be started, so the phar was not run\n";
+
+        return null;
+    }
+
+    echo (string) stream_get_contents($pipes[1]);
+    echo (string) stream_get_contents($pipes[2]);
+
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+
+    return proc_close($process);
+}

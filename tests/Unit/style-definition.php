@@ -5,6 +5,7 @@ declare(strict_types=1);
 use MarkdownWord\Configuration;
 use MarkdownWord\Configuration\Styles;
 use MarkdownWord\MarkdownToWord;
+use MarkdownWord\Render\NumberingRegistry;
 use MarkdownWord\Tests\Support\Scratch;
 use MarkdownWord\Tests\Support\TemplateFactory;
 use PhpOffice\PhpWord\PhpWord;
@@ -62,7 +63,25 @@ it('defines every bullet level', function () {
     // A nested list points at level 1 of the same numbering. If that level is
     // undefined the renderer falls back to a different list, and a sub-list of
     // bullets comes out numbered.
-    expect(substr_count(TemplateFactory::xmlOf($file, 'word/numbering.xml'), 'w:numFmt w:val="bullet"'))->toBe(9);
+    expect(substr_count(TemplateFactory::xmlOf($file, 'word/numbering.xml'), 'w:numFmt w:val="bullet"'))->toBe(NUMBERING_LEVELS);
+});
+
+it('writes a level for every level Word supports', function () {
+    // The count the tests above assert against, read back off the renderer that
+    // produces it. Written out as a number in five places it was a trap: changing
+    // the number failed five tests whose only complaint was that a count was not
+    // what it had been, with nothing saying which loop had moved.
+    //
+    // The loops are the renderer's own, so they are asked rather than
+    // reimplemented here; a rename in `NumberingRegistry` fails this test by name.
+    $registry = new NumberingRegistry(new Configuration(), new PhpWord());
+
+    $levels = static fn (string $method, array $arguments = []): int => count(
+        (new ReflectionMethod($registry, $method))->invokeArgs($registry, $arguments),
+    );
+
+    expect($levels('bulletLevels'))->toBe(NUMBERING_LEVELS)
+        ->and($levels('orderedLevels', [1, '.']))->toBe(NUMBERING_LEVELS);
 });
 
 it('gives nested bullets distinct characters', function () {
@@ -82,7 +101,7 @@ it('defines every level of an ordered list', function () {
 
     $numbering = TemplateFactory::xmlOf($file, 'word/numbering.xml');
 
-    expect(substr_count($numbering, 'w:numFmt w:val="decimal"'))->toBe(9);
+    expect(substr_count($numbering, 'w:numFmt w:val="decimal"'))->toBe(NUMBERING_LEVELS);
 });
 
 it('does not redefine a style on a second render', function () {

@@ -42,47 +42,57 @@ it('carries every GFM example through Word and back', function (SpecExample $exa
 })->with('gfmExamples');
 
 it('actually loads the corpora for the round trip', function () {
-    expect(specExamples(__DIR__ . '/../fixtures/spec/commonmark-spec.txt', 'commonmark'))
-        ->toHaveCount(654);
-    expect(specExamples(__DIR__ . '/../fixtures/spec/gfm-spec.txt', 'gfm'))
-        ->toHaveCount(646);
+    expectSpecificationCorpora();
 });
 
-function assertExampleSurvives(SpecExample $example): void
-{
-    withoutUpstreamDeprecations(static function () use ($example): void {
-        $first = new MarkdownToWord(null, roundTripConfiguration());
-        $docx = $first->toDocx($example->markdown);
-        $before = normaliseRoundTripText($first, $example->markdown);
-
-        $markdown = (new WordToMarkdown($docx))->convert();
-
-        $second = new MarkdownToWord(null, roundTripConfiguration());
-        $second->toPhpWord($markdown);
-        $after = normaliseRoundTripText($second, $markdown);
-
-    expect($after)->toBe(
-        $before,
-        sprintf(
-            "The text changed on the way through Word for %s.\n"
-            . "--- Source Markdown ---\n%s\n--- Markdown read back ---\n%s\n--- Text before ---\n%s\n--- Text after ---\n%s",
-            $example->label(),
-            $example->markdown,
-            $markdown,
-            $before,
-            $after,
-        ),
-        );
-    });
-}
-
-function normaliseRoundTripText(MarkdownToWord $converter, string $markdown): string
+/**
+ * Markdown in, the text of the document it became out.
+ */
+function roundTripTextOf(MarkdownToWord $converter, string $markdown): string
 {
     return normaliseDocumentText(TextExtractor::fromPhpWord(
         $converter->toPhpWord($markdown),
         TextExtractor::LINE_BREAK,
         $converter->pendingHyperlinks(),
     ));
+}
+
+function assertExampleSurvives(SpecExample $example): void
+{
+    withoutUpstreamDeprecations(static function () use ($example): void {
+        // Three renders per example, and no more. One for the document that goes
+        // into Word, one for the text of that document to compare with, and one
+        // for the Markdown that comes back — the leg in the middle is a document
+        // written and read, not a re-render.
+        //
+        // The first two cannot be one render: `toDocx()` renders the Markdown
+        // into the `PhpWord` it is handed, so handing it the document the text
+        // came from would put the same content in it twice, and the comparison
+        // would be of a document against itself. Getting to two needs a way to
+        // write a document that has already been rendered, which the library does
+        // not have.
+        $first = new MarkdownToWord(null, roundTripConfiguration());
+        $docx = $first->toDocx($example->markdown);
+        $before = roundTripTextOf($first, $example->markdown);
+
+        $markdown = (new WordToMarkdown($docx))->convert();
+
+        $second = new MarkdownToWord(null, roundTripConfiguration());
+        $after = roundTripTextOf($second, $markdown);
+
+        expect($after)->toBe(
+            $before,
+            sprintf(
+                "The text changed on the way through Word for %s.\n"
+                . "--- Source Markdown ---\n%s\n--- Markdown read back ---\n%s\n--- Text before ---\n%s\n--- Text after ---\n%s",
+                $example->label(),
+                $example->markdown,
+                $markdown,
+                $before,
+                $after,
+            ),
+        );
+    });
 }
 
 /**

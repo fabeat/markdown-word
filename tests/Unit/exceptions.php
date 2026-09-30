@@ -110,12 +110,7 @@ it('reports a document whose XML does not parse', function () {
 });
 
 it('reports a file it cannot read as such', function () {
-    if (function_exists('posix_geteuid') && posix_geteuid() === 0) {
-        // Running as root, which can read anything; the check would be vacuous.
-        expect(true)->toBeTrue();
-
-        return;
-    }
+    skipWithoutPermissions('A file with no read bit is still readable as root');
 
     $path = Scratch::path('unreadable');
     file_put_contents($path, "# Secret\n");
@@ -134,11 +129,7 @@ it('reports being given nothing to convert', function () {
 });
 
 it('reports a media directory it cannot create', function () {
-    if (function_exists('posix_geteuid') && posix_geteuid() === 0) {
-        expect(true)->toBeTrue();
-
-        return;
-    }
+    skipWithoutPermissions('A path whose parent is a file is still usable as root');
 
     $document = Scratch::path('media', '.docx');
     saveMarkdown("# Real\n", $document);

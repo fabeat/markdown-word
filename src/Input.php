@@ -29,7 +29,7 @@ final class Input
     /**
      * Markdown: the file if the string names one, otherwise the text.
      *
-     * @throws RuntimeException when the string names a file that cannot be read.
+     * @throws UnreadableFile when the string names a file that cannot be read.
      */
     public static function markdown(string $input): string
     {
@@ -44,7 +44,7 @@ final class Input
      * whoever passed it was talking about a file and would not expect to be told
      * about bytes.
      *
-     * @throws RuntimeException when the input is neither a document nor one.
+     * @throws UnreadableDocument when the input is neither a document nor one.
      */
     public static function document(string $input): string
     {

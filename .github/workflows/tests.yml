@@ -52,6 +52,71 @@ jobs:
       - name: The command line runs
         run: php bin/mdword --version
 
+  # Static analysis, on every pull request including a fork's.
+  #
+  # SonarCloud below is the richer analysis, and it only runs on `main` and on
+  # pull requests from this repository. A pull request from a fork gets nothing,
+  # which is exactly where a second pair of eyes matters most. This is that
+  # second pair: it runs everywhere, and it is a different tool, so a rule
+  # SonarCloud does not carry can still fail a change here.
+  #
+  # It is deliberately not a development dependency. PHPStan is pinned to a
+  # version and a checksum below rather than resolved through the lock file,
+  # because adding it to `require-dev` means rewriting `composer.lock`, and a
+  # lock file that disagrees with `composer.json` fails `composer validate
+  # --strict` and breaks `composer install`. Moving it in is a one-line change
+  # to `require-dev` and a `composer update phpstan/phpstan`; the job below
+  # would then be one `composer analyse` away.
+  static:
+    name: static analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.5'
+          coverage: none
+          tools: composer:v2
+
+      - name: Install
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      # The version and the checksum of one file, rather than a range and a
+      # download. A range would be a different analyser next month and a green
+      # run would mean nothing; the checksum says the bytes are the bytes this
+      # level was chosen against.
+      - name: Fetch PHPStan
+        run: |
+          mkdir -p tmp
+          curl --fail --silent --show-error --location --output tmp/phpstan.phar \
+            https://github.com/phpstan/phpstan/releases/download/2.2.16/phpstan.phar
+          echo '1a2fb5460c142502d3cd06272529c18b19fda004ada974bd2581cb9fd6c0a53b  tmp/phpstan.phar' \
+            | sha256sum --check --strict
+
+      # Level 1, because that is the highest level this code passes without a
+      # single `ignoreErrors`, a baseline or a suppression comment. It is not a
+      # weak gate: it catches unknown classes, unknown functions, wrong argument
+      # counts and types, and methods called on things that do not have them.
+      #
+      # Level 2 finds 50 more, and they are worth having. Fourteen are in `src/`
+      # and every one is real: three `@throws` tags naming a
+      # `MarkdownWord\RuntimeException` that does not exist, two `@var` tags
+      # naming a variable the loop does not have, and nine calls to
+      # `getAttribute()`/`setAttribute()` on a `DOMNodeList<DOMNode>` that
+      # really holds `DOMElement`s. The rest are in the tests, where Pest's
+      # dynamic `test()`/`expect()` leave PHPStan nothing to infer from without
+      # the plugin. Fixing the library's fourteen means editing `src/`, so the
+      # level moves when they are fixed rather than the findings being hidden
+      # until then. Nothing here is suppressed to get a green run.
+      - name: Analyse
+        run: |
+          php tmp/phpstan.phar analyse \
+            --level=1 \
+            --autoload-file=vendor/autoload.php \
+            --no-progress \
+            src bin tools tests
+
   # The library on the oldest PHP it claims to support.
   #
   # Pest 5 needs PHP 8.4, so the test suite cannot run here. What can — and must —
@@ -120,13 +185,17 @@ jobs:
 
       # A coverage report on its own says little; this fails if the reported
       # figure is a placeholder, or if the code stops being covered at all.
+      # 91 rather than 80, which is where it was: the suite measures 93.0%, so
+      # 80 let a thirteen-point regression through without anybody noticing.
+      # Two points is thin but real, and it is the gap between a gate and a
+      # report that only moves when the library changes shape.
       #
       # The JUnit report goes in the same run because the analysis job needs both
       # and would otherwise have to produce the second one again.
       - name: Coverage
         if: matrix.php == '8.5'
         run: |
-          vendor/bin/pest --coverage --min=80 \
+          vendor/bin/pest --coverage --min=91 \
             --coverage-clover=build/coverage/clover.xml \
             --coverage-html=build/coverage/html \
             --log-junit build/coverage/junit.xml
@@ -186,7 +255,7 @@ jobs:
       # machine-readable one.
       - name: Coverage and test results for the analysis
         run: |
-          vendor/bin/pest --coverage --min=80 \
+          vendor/bin/pest --coverage --min=91 \
             --coverage-clover=build/coverage/clover.xml \
             --log-junit build/coverage/junit.xml
 
