@@ -146,14 +146,52 @@ final class TemplateFactory
 
         $parts = [];
         foreach ($xpath->query('//w:p') ?: [] as $paragraph) {
-            $text = '';
-            foreach ($xpath->query('.//w:t', $paragraph) ?: [] as $node) {
-                $text .= $node->textContent;
-            }
-            $parts[] = trim($text);
+            $parts[] = trim(self::textIn($xpath, $paragraph));
         }
 
         return trim(implode("\n", $parts));
+    }
+
+    /**
+     * The visible text of a document, with no regard for where it is broken up.
+     *
+     * Every `w:t` under a node, in document order. What a reader sees is the
+     * concatenation, so a run boundary is a detail of the writer rather than of
+     * the text — which is what makes this the right thing to compare when the
+     * question is whether the words survived, and the wrong thing when it is
+     * whether a paragraph is where it should be. {@see self::textOf()} is that.
+     *
+     * @param \DOMXPath|\DOMNode $context
+     */
+    public static function textIn(\DOMXPath $xpath, \DOMNode $context): string
+    {
+        $text = '';
+        foreach ($xpath->query('.//w:t', $context) ?: [] as $node) {
+            $text .= $node->textContent;
+        }
+
+        return $text;
+    }
+
+    /**
+     * Whether a document's XML parses.
+     *
+     * A `.docx` whose `word/document.xml` does not parse is one Word refuses to
+     * open, and it is the failure the escaping and raw-HTML tests are about. The
+     * part is read through {@see self::xmlOf()}, so a document that is not an
+     * archive, or has no body, throws rather than reporting itself valid.
+     */
+    public static function xmlIsValid(string $docx, string $part = 'word/document.xml'): bool
+    {
+        $dom = new \DOMDocument();
+        $previous = libxml_use_internal_errors(true);
+
+        try {
+            return $dom->loadXML(self::read($docx, $part), LIBXML_NOCDATA);
+        } finally {
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+        }
     }
 
     /**

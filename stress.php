@@ -2,22 +2,41 @@
 
 declare(strict_types=1);
 
+/**
+ * Feeds deliberately awkward input through every configuration this library has,
+ * and checks that every result is a valid `.docx`.
+ *
+ * ```sh
+ * php stress.php
+ * ```
+ *
+ * What it is for is the failure mode rather than the input: malformed nesting,
+ * unbalanced delimiters, control characters, very deep structures and enormous
+ * documents all have to come out as a document Word will open. It uses no test
+ * framework, so it runs on the oldest PHP the library claims to support.
+ *
+ * Everything it writes goes into `tmp/stress`, and it removes that directory on
+ * the way out: `tmp` is shared with the test suite and with the other checks at
+ * the root of this repository, and a check that leaves its output behind is a
+ * check whose evidence nobody knows what to do with.
+ */
+
 require __DIR__ . '/vendor/autoload.php';
 
-use MarkdownWord\Console\UpstreamDeprecations;
 use MarkdownWord\Configuration;
 use MarkdownWord\Configuration\Options;
+use MarkdownWord\Console\UpstreamDeprecations;
 use MarkdownWord\MarkdownToWord;
 use MarkdownWord\Parser\CommonMarkParser;
 use MarkdownWord\Template\MarkdownTemplate;
 use MarkdownWord\Text\TextExtractor;
+use PhpOffice\PhpWord\IOFactory;
 use PhpOffice\PhpWord\PhpWord;
 
 // One dependency emits a deprecation for every list item it writes; see the class
-// for why. Without this a run prints thousands of lines of somebody else's
+// for why. Without this the run prints thousands of lines of somebody else's
 // warning and buries anything real.
 UpstreamDeprecations::install();
-
 
 $work = __DIR__ . '/tmp/stress';
 @mkdir($work, 0o777, true);
@@ -37,8 +56,9 @@ $cases = [
         static fn (int $i): string => str_repeat(' ', $i * 2) . '- item ' . $i,
         range(0, 12),
     )),
-    // Marks that introduce no content: the result is legitimately empty.
-    'lone markers' => null,
+    // Marks that introduce no content: the result is legitimately empty, so the
+    // "nothing was lost" check has nothing to say about this one.
+    'lone marks' => "#\n\n[]()\n\n<!-- a comment -->\n\n***\n",
     'only entities' => '&amp;&lt;&gt;&#65;&#x42;',
     'null bytes' => "before\x00after",
     'control chars' => "bell\x07 and vertical\x0B tab",
@@ -56,6 +76,18 @@ $cases = [
     'link in code' => '`[not a link](x)`',
     'autolink email' => '<mailto:a@b.com>',
     'mixed everything' => self_mixed(),
+];
+
+/**
+ * The cases whose document is allowed to carry no text at all.
+ *
+ * Anything with content in it has to come out with that content still in it; these
+ * are the ones where there was never any to lose.
+ */
+$noTextExpected = [
+    'empty' => true,
+    'whitespace only' => true,
+    'lone marks' => true,
 ];
 
 function self_table(int $rows, int $cols): string
@@ -119,6 +151,40 @@ function self_mixed(): string
         MD;
 }
 
+/**
+ * The body of a document, checked on the way out.
+ *
+ * "Word will open it" means the archive is a zip and `word/document.xml` is XML,
+ * short of opening it. Read from the archive rather than from the file: the file
+ * is compressed, and looking for a placeholder in compressed bytes finds one by
+ * coincidence sooner or later.
+ *
+ * @throws RuntimeException when either of those is not so.
+ */
+function self_documentXmlOf(string $path): string
+{
+    $zip = new ZipArchive();
+
+    if ($zip->open($path, ZipArchive::RDONLY) !== true) {
+        throw new RuntimeException('the output is not a zip archive');
+    }
+
+    $document = (string) $zip->getFromName('word/document.xml');
+    $zip->close();
+
+    $dom = new DOMDocument();
+    $previous = libxml_use_internal_errors(true);
+    $valid = $dom->loadXML($document, LIBXML_NOCDATA);
+    libxml_clear_errors();
+    libxml_use_internal_errors($previous);
+
+    if (!$valid) {
+        throw new RuntimeException('word/document.xml is not valid XML');
+    }
+
+    return $document;
+}
+
 $configurations = [
     'default' => new Configuration(),
     'no decoration' => Configuration::create()->withoutDecoration(),
@@ -136,6 +202,17 @@ $parsers = [
     'every extension' => CommonMarkParser::withAllExtensions(),
 ];
 
+// The template renderer takes a configuration but no parser, so two of the nine
+// above are the default configuration again: what is left are the ones that change
+// how a document is written rather than how the Markdown is read. The template
+// path runs those, and says so, rather than reporting a configuration it was not
+// given.
+$templateConfigurations = array_filter(
+    $configurations,
+    static fn ($config, string $name): bool => !isset($parsers[$name]),
+    ARRAY_FILTER_USE_BOTH,
+);
+
 $failures = 0;
 $checks = 0;
 
@@ -143,10 +220,6 @@ foreach ($configurations as $configName => $config) {
     $parser = $parsers[$configName] ?? null;
 
     foreach ($cases as $caseName => $markdown) {
-        if ($markdown === null) {
-            continue;
-        }
-
         $checks++;
 
         try {
@@ -160,32 +233,19 @@ foreach ($configurations as $configName => $config) {
                 throw new RuntimeException('the document is empty');
             }
 
-            $zip = new ZipArchive();
-            if ($zip->open($path, ZipArchive::RDONLY) !== true) {
-                throw new RuntimeException('the output is not a zip archive');
-            }
-
-            $document = (string) $zip->getFromName('word/document.xml');
-            $zip->close();
-
-            $dom = new DOMDocument();
-            libxml_use_internal_errors(true);
-            $valid = $dom->loadXML($document, LIBXML_NOCDATA);
-            libxml_clear_errors();
-
-            if (!$valid) {
-                throw new RuntimeException('word/document.xml is not valid XML');
-            }
+            $document = self_documentXmlOf($path);
 
             if (str_contains($document, 'MDWL')) {
                 throw new RuntimeException('a hyperlink placeholder leaked into the document');
             }
 
-            // The text must be extractable; a null case is one that legitimately
-            // produces no content, such as a heading with no heading text.
+            // The text must be extractable, and there must be as much of it as
+            // there was. A case that legitimately produces no content is named in
+            // $noTextExpected rather than skipped: the document is still written
+            // and still has to be valid.
             $text = TextExtractor::fromPhpWord($phpWord, TextExtractor::LINE_BREAK, $converter->pendingHyperlinks());
 
-            if ($text === '' && $markdown !== null && trim($markdown) !== '') {
+            if ($text === '' && trim($markdown) !== '' && !isset($noTextExpected[$caseName])) {
                 throw new RuntimeException('text was lost');
             }
         } catch (\Throwable $e) {
@@ -195,53 +255,67 @@ foreach ($configurations as $configName => $config) {
     }
 }
 
-// The template path has to survive the same treatment.
-foreach ($cases as $caseName => $markdown) {
-    if ($markdown === null) {
-        continue;
-    }
+// The template path has to survive the same treatment, with the same
+// configurations: it renders the same Markdown into a document that was not built
+// for it, and a configuration that works only on the way into a new document is
+// not a configuration that works.
+$templatePath = $work . '/template.docx';
 
-    $checks++;
+$blank = new PhpWord();
+$section = $blank->addSection();
+$section->addText('${body}');
+$section->addText('${slot}');
+$section->addText('${/body}');
+IOFactory::createWriter($blank, 'Word2007')->save($templatePath);
 
-    try {
-        $template = new PhpWord();
-        $section = $template->addSection();
-        $section->addText('${body}');
-        $section->addText('${slot}');
-        $section->addText('${/body}');
-        \PhpOffice\PhpWord\IOFactory::createWriter($template, 'Word2007')->save($work . '/tpl.docx');
+foreach ($templateConfigurations as $configName => $config) {
+    foreach ($cases as $caseName => $markdown) {
+        $checks++;
 
-        $processor = new MarkdownTemplate($work . '/tpl.docx');
-        $processor->insert('body', $markdown);
-        $processor->save($work . '/tpl-out.docx');
+        try {
+            $processor = new MarkdownTemplate($templatePath, $config ?? new Configuration());
+            $processor->insert('body', $markdown);
+            $output = $work . '/template-out.docx';
+            $processor->save($output);
 
-        $zip = new ZipArchive();
-        $zip->open($work . '/tpl-out.docx');
-        $document = (string) $zip->getFromName('word/document.xml');
-        $zip->close();
+            $document = self_documentXmlOf($output);
 
-        $dom = new DOMDocument();
-        libxml_use_internal_errors(true);
-        $valid = $dom->loadXML($document, LIBXML_NOCDATA);
-        libxml_clear_errors();
+            if (str_contains($document, '${')) {
+                throw new RuntimeException('an unreplaced macro survived');
+            }
 
-        if (!$valid) {
-            throw new RuntimeException('the template output is not valid XML');
+            if (str_contains($document, 'MDWL')) {
+                throw new RuntimeException('a hyperlink placeholder leaked into the template');
+            }
+        } catch (\Throwable $e) {
+            $failures++;
+            echo "FAIL  [template: {$configName}] {$caseName}: {$e->getMessage()}\n";
         }
-
-        if (str_contains($document, '${')) {
-            throw new RuntimeException('an unreplaced macro survived');
-        }
-
-        if (str_contains($document, 'MDWL')) {
-            throw new RuntimeException('a hyperlink placeholder leaked into the template');
-        }
-    } catch (\Throwable $e) {
-        $failures++;
-        echo "FAIL  [template] {$caseName}: {$e->getMessage()}\n";
     }
 }
+
+UpstreamDeprecations::restore();
+
+self_removeTree($work);
 
 echo "\n{$checks} checks, {$failures} failure(s)\n";
 
 exit($failures === 0 ? 0 : 1);
+
+/**
+ * Remove a directory and everything in it, and only that.
+ */
+function self_removeTree(string $directory): void
+{
+    foreach (scandir($directory) ?: [] as $entry) {
+        if ($entry === '.' || $entry === '..') {
+            continue;
+        }
+
+        $path = $directory . '/' . $entry;
+
+        is_dir($path) ? self_removeTree($path) : @unlink($path);
+    }
+
+    @rmdir($directory);
+}

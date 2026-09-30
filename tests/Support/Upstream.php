@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace MarkdownWord\Tests\Support;
 
+use MarkdownWord\Console\UpstreamDeprecations;
+
 /**
- * Hides one known defect in a dependency.
+ * Hides one known defect in a dependency, from a test run.
  *
  * PHPWord 1.4 — the latest release — reads its style registry with a null array
  * offset while writing a paragraph that carries no numbering of its own, which
@@ -18,58 +20,28 @@ namespace MarkdownWord\Tests\Support;
  * Nothing reachable from this library's API can avoid it, and left reported it
  * marks every document-writing test as deprecated, which buries anything real.
  * Rather than switch deprecation reporting off wholesale, exactly that message
- * from exactly that file is swallowed. Everything else, from this library or from
- * anywhere else, still reaches the test runner.
+ * from exactly that file is swallowed.
  *
  * It is installed for the duration of a test rather than around a single call,
  * because filling in a template writes a document for every block it inserts.
+ *
+ * Which diagnostic is the known one is not decided here: it is
+ * {@see UpstreamDeprecations}, the same filter the command line installs, and
+ * this class is that one under the name the suite already calls. A second copy of
+ * the rule is a second thing to keep right, and the two had already drifted: the
+ * copy also swallowed everything the runner was not reporting — which, with the
+ * runner's own error_reporting in force, is nearly everything — so the two
+ * filters had quietly come to disagree about what "one known defect" meant.
  */
 final class Upstream
 {
-    private const NULL_OFFSET = 'Using null as an array offset';
-
-    private const PHPWORD_STYLE = '/phpoffice/phpword/src/PhpWord/Style.php';
-
-    private static bool $installed = false;
-
-    /** @var (callable(int, string, string, int): bool)|null The handler this one displaces. */
-    private static $previous = null;
-
     /**
      * Put the filter in place. Calling it twice is a no-op, so a test file can
      * install it and a helper can install it again without either noticing.
      */
     public static function install(): void
     {
-        if (self::$installed) {
-            return;
-        }
-
-        self::$installed = true;
-        self::$previous = set_error_handler(
-            static function (int $severity, string $message, string $file = '', int $line = 0): bool {
-                if ($severity === E_DEPRECATED && self::isKnown($message, $file)) {
-                    return true;
-                }
-
-                // A diagnostic the call site silenced with `@` stays silenced. The
-                // library does that on clean-up calls that are expected to have
-                // nothing to do, and the runner would otherwise report every one.
-                if ((error_reporting() & $severity) === 0) {
-                    return true;
-                }
-
-                // Hand everything else to the handler that was in place, which
-                // during a test run is the runner's own. Returning false would
-                // send it to PHP's default handler instead, and the runner would
-                // never hear about it.
-                $previous = self::$previous;
-
-                return $previous === null
-                    ? false
-                    : (bool) $previous($severity, $message, $file, $line);
-            }
-        );
+        UpstreamDeprecations::install();
     }
 
     /**
@@ -78,13 +50,7 @@ final class Upstream
      */
     public static function restore(): void
     {
-        if (!self::$installed) {
-            return;
-        }
-
-        self::$installed = false;
-        self::$previous = null;
-        restore_error_handler();
+        UpstreamDeprecations::restore();
     }
 
     /**
@@ -92,21 +58,6 @@ final class Upstream
      */
     public static function quietly(callable $work): mixed
     {
-        $installed = !self::$installed;
-        self::install();
-
-        try {
-            return $work();
-        } finally {
-            if ($installed) {
-                self::restore();
-            }
-        }
-    }
-
-    private static function isKnown(string $message, string $file): bool
-    {
-        return str_contains($message, self::NULL_OFFSET)
-            && str_ends_with(str_replace('\\', '/', $file), self::PHPWORD_STYLE);
+        return UpstreamDeprecations::quietly($work);
     }
 }

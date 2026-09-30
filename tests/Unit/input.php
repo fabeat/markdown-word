@@ -30,18 +30,6 @@ beforeEach(fn () => Upstream::install());
 afterEach(fn () => Upstream::restore());
 
 /**
- * A file with the given contents, in the scratch directory.
- */
-function inputFile(string $name, string $contents): string
-{
-    $path = Scratch::path($name);
-
-    file_put_contents($path, $contents);
-
-    return $path;
-}
-
-/**
  * A real `.docx`, as bytes.
  */
 function documentBytes(string $markdown = "# Real\n\nBody.\n"): string
@@ -99,12 +87,7 @@ it('treats a directory as content rather than trying to read it', function () {
 });
 
 it('reports a file it cannot read rather than pretending it is content', function () {
-    if (function_exists('posix_geteuid') && posix_geteuid() === 0) {
-        // Running as root, which can read anything; the check would be vacuous.
-        expect(true)->toBeTrue();
-
-        return;
-    }
+    skipWithoutPermissions('A file with no read bit is still readable as root');
 
     $path = inputFile('unreadable.md', "# Secret\n");
     chmod($path, 0o000);
