@@ -57,10 +57,10 @@ final class ToDocx extends BaseCommand
     /**
      * The conversion itself, exactly once whichever way the result is going.
      *
-     * The two are exclusive because a run's worth of work asked for twice is
-     * still twice the work: `-o -` would otherwise convert the whole document,
-     * throw the bytes away and build a second converter to do it all again, on
-     * the one path the usage text advertises for `| pbcopy`.
+     * The two are exclusive because a run's worth of work asked for twice is still
+     * twice the work: `-o -` would otherwise convert the whole document, throw the
+     * bytes away and build a second converter to do it all again, on the one path
+     * the usage text advertises for `| pbcopy`.
      */
     private function convert(Configuration $config, string $markdown, ?string $input, string $output): void
     {
@@ -88,8 +88,6 @@ final class ToDocx extends BaseCommand
     }
 
     /**
-     * The option values that override the configuration for this run.
-     *
      * @return array<string, mixed>
      */
     private function overrides(CommandLine $command, ?string $input): array
@@ -143,9 +141,6 @@ final class ToDocx extends BaseCommand
         return (int) $width;
     }
 
-    /**
-     * Refuse a template-only option on a run that is not using a template.
-     */
     private function rejectWithoutTemplate(CommandLine $command): void
     {
         $offenders = [];
@@ -168,9 +163,6 @@ final class ToDocx extends BaseCommand
         );
     }
 
-    /**
-     * Render into an existing document used as a template.
-     */
     private function intoTemplate(
         string $markdown,
         string $path,
@@ -188,15 +180,12 @@ final class ToDocx extends BaseCommand
 
         $region = (string) $command->value('region', self::DEFAULT_REGION);
 
-        // Before anything is written, so that a wrong name fails here rather
-        // than leaving a document full of unreplaced `${...}` markers.
         self::assertRegionExists($path, $region);
 
         $template = $this->application->template($path, $config, $values);
         $template->insert($region, $markdown);
 
-        // Filling the region is the slow part of a run, so the output is looked
-        // at again here rather than trusted from before it.
+        // The second guard: filling the region is the slow part of a run.
         $this->guardAgainstOverwrite($input, $output);
 
         if ($output === '-') {
@@ -209,12 +198,10 @@ final class ToDocx extends BaseCommand
     }
 
     /**
-     * Check the template actually has the region, before anything is written.
-     *
      * Filling a region that is not there leaves the `${name}` markers in the
-     * finished document, so a wrong name would otherwise produce a file that
-     * looks fine and is full of placeholders. Failing here says which regions
-     * the template does have.
+     * finished document, so a wrong name would otherwise produce a file that looks
+     * fine and is full of placeholders. Failing here says which regions the
+     * template does have.
      *
      * @throws ConsoleException when the region is not in the template.
      */
@@ -243,9 +230,9 @@ final class ToDocx extends BaseCommand
             throw new ConsoleException(sprintf('The template "%s" has no document body.', $path));
         }
 
-        // The markers are spread across runs by whoever built the template, so
-        // each half is looked for on its own: the closing one is what tells a
-        // region apart from a single-line `${name}` value.
+        // The markers are spread across runs by whoever built the template, so each
+        // half is looked for on its own: the closing one is what tells a region
+        // apart from a single-line `${name}` value.
         if (str_contains($document, '${' . $region . '}') && str_contains($document, '${/' . $region . '}')) {
             return;
         }

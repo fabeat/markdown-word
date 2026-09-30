@@ -7,7 +7,7 @@ namespace MarkdownWord\Reverse;
 /**
  * One block-level element read back out of a Word document.
  *
- * A tagged union rather than a class per kind: the serialiser switches on
+ * A tagged union rather than a class per kind: {@see MarkdownWriter} switches on
  * `kind`, and one type lets the grouping passes rearrange the flat sequence of
  * units without a cast at every step.
  */

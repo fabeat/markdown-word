@@ -29,8 +29,6 @@ final class Escaping
     private const LINE_START = '#>+=~|-';
 
     /**
-     * Escape a run of literal text.
-     *
      * @param string $text     The characters as they appear in the document.
      * @param bool   $lineStart Whether the run begins a line, where a `#`, a `-`
      *        or a `1.` would otherwise become a heading, a rule or a list.
@@ -72,8 +70,7 @@ final class Escaping
      * The specification strips one space from each end of a code span when both
      * are present, so content that genuinely starts or ends with whitespace is
      * padded once more to keep it. Content that begins or ends with a backtick
-     * needs the same padding, or the fence would not be the longest run and the
-     * span would end at the wrong place.
+     * needs the same padding, or the span would end at the wrong place.
      *
      * Returns null when the content cannot be written as a code span at all: a
      * span may not contain a blank line, and there is then nothing to fall back
@@ -138,15 +135,12 @@ final class Escaping
     }
 
     /**
-     * Escape the underscores that could delimit emphasis.
-     *
      * The decision follows the specification's own flanking rules rather than a
      * guess, and that is what keeps ordinary text clean. `snake_case` needs
      * nothing, because an underscore between two word characters cannot delimit
      * anything. `__ foo bar__` needs nothing either: the opening run is followed
      * by a space so it cannot open, and the closing run has nothing to close.
-     * When no run can open, none of them can pair up, so the text is left as it
-     * stands.
+     * When no run can open, none of them can pair up.
      */
     private static function escapeUnderscores(string $text): string
     {
@@ -194,11 +188,8 @@ final class Escaping
     }
 
     /**
-     * Whether a delimiter run could open emphasis, by the specification's rules.
-     *
-     * A run opens when it is left-flanking and, unless preceded by punctuation,
-     * is not also right-flanking. That last clause is what makes `snake_case`
-     * inert.
+     * A run opens when it is left-flanking and, unless preceded by punctuation, is
+     * not also right-flanking. That last clause is what makes `snake_case` inert.
      */
     private static function canOpen(string $before, string $after): bool
     {
@@ -251,16 +242,13 @@ final class Escaping
     /**
      * The length of the longest run of a character in the text.
      *
-     * Markdown delimits a code span or fences a code block with a run of
-     * backticks, and the fence has to be one longer than any the content holds or
-     * the span or block would end at the wrong place. One pass finds that run:
-     * searching the text again for each candidate is a search per character and
-     * time quadratic in the size of the text.
+     * The fence has to be one longer than any run the content holds or the span
+     * or block would end at the wrong place. One pass finds that run: searching
+     * the text again for each candidate is a search per character, and time
+     * quadratic in the size of the text.
      *
-     * @param string $text      The text to look through.
-     * @param string $character The character to count. It has to be a single
-     *        character, since the count is in characters and the text is walked a
-     *        byte at a time.
+     * @param string $character It has to be a single character, since the count
+     *        is in characters and the text is walked a byte at a time.
      */
     public static function longestRun(string $text, string $character): int
     {

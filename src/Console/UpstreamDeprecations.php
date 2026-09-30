@@ -21,13 +21,13 @@ use function str_replace;
  *
  * PHP reports each occurrence itself, so a document with a dozen list items
  * prints a dozen paragraphs of someone else's warning before the tool says
- * anything at all. On a command line that is unusable output.
+ * anything at all.
  *
- * The library itself does not do this: a caller embedding it in an application
- * is better served by seeing everything, and by this being a property of the
- * program they chose to run rather than of a converter they did not. Only the
- * one message from the one file is swallowed; a deprecation from anywhere else,
- * including from this library, is passed straight through.
+ * The library itself does not do this: a caller embedding it in an application is
+ * better served by seeing everything, and by this being a property of the program
+ * they chose to run rather than of a converter they did not. Only the one message
+ * from the one file is swallowed; a deprecation from anywhere else, including from
+ * this library, is passed straight through.
  */
 final class UpstreamDeprecations
 {
@@ -60,8 +60,7 @@ final class UpstreamDeprecations
     }
 
     /**
-     * Take the filter off again, leaving the previous handler at the stack depth
-     * it had before.
+     * Take the filter off again, leaving the previous handler where it was.
      */
     public static function restore(): void
     {
@@ -74,7 +73,8 @@ final class UpstreamDeprecations
     }
 
     /**
-     * Run a closure with the filter in place.
+     * Run a closure with the filter in place, and only take it off again if this
+     * call was what put it there.
      */
     public static function quietly(callable $work): mixed
     {

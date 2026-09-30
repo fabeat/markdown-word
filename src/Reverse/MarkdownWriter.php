@@ -7,11 +7,6 @@ namespace MarkdownWord\Reverse;
 /**
  * Turns the block tree back into Markdown.
  *
- * The two places the writer does real work are the escaping of literal text —
- * delegated to {@see Escaping} — and the marker of a list item, which has to
- * reproduce the numbering definition the document carried, including a start
- * value other than one.
- *
  * Nothing here throws: every construct the writer can be handed has a string it
  * can be written as. The exceptions a conversion raises come from the package
  * around it — {@see \MarkdownWord\Exception\UnreadableDocument} for bytes that
@@ -41,14 +36,14 @@ final class MarkdownWriter
      * The blocks, one after another, separated by the blank line that makes a
      * list loose again after it has been interrupted.
      *
-     * The blocks are kept apart until here rather than joined and tidied
-     * afterwards: a blank line inside a verbatim block is content, while a run of
-     * them between two blocks is only ever a way of writing a blank line, and
-     * tidying the finished document cannot tell the two apart.
+     * They are kept apart until here rather than joined and tidied afterwards: a
+     * blank line inside a verbatim block is content, while a run of them between
+     * two blocks is only ever a way of writing a blank line, and tidying the
+     * finished document cannot tell the two apart.
      *
      * @param list<Block> $blocks
-     * @param string       $separator What goes between the blocks, which is a
-     *        single newline in a tight list and a blank line in a loose one.
+     * @param string       $separator A single newline in a tight list, a blank
+     *        line in a loose one.
      */
     private function blocks(array $blocks, string $separator = "\n\n"): string
     {
@@ -157,7 +152,7 @@ final class MarkdownWriter
         $this->counters[] = $start;
 
         // A tight list runs its items together; a loose one puts a blank line
-        // between them, which is what makes the list loose again.
+        // between them.
         $separator = $block->attr('tight', false) === true ? "\n" : "\n\n";
         $lines = [];
 
@@ -176,8 +171,8 @@ final class MarkdownWriter
     }
 
     /**
-     * One list item, whose body may be loose — several blocks separated by blank
-     * lines — or contain a nested list.
+     * One list item, whose body is either several blocks separated by blank lines
+     * or a nested list.
      */
     private function item(Block $item, string $marker, string $separator): string
     {
@@ -212,8 +207,7 @@ final class MarkdownWriter
      * The `[ ] ` or `[x] ` that opens a task list item, if there is one.
      *
      * Word has no checkbox, so a task list item is drawn with the character GFM
-     * uses. Putting it back is what keeps such an item a task list item rather
-     * than an item that happens to begin with a box.
+     * uses. Putting it back is what keeps such an item a task list item.
      *
      * @param list<Block> $blocks
      */
@@ -252,9 +246,8 @@ final class MarkdownWriter
      * The numbering a `w:numFmt` value stands for.
      *
      * Markdown spells these as marker text, so a Word list numbered `a, b, c`
-     * comes back as `a. b. c.` rather than as a paragraph per item. A format the
-     * table does not know is written as the number itself, which is at least
-     * something a reader can still make sense of.
+     * comes back as `a. b. c.`. A format the table does not know is written as
+     * the number itself, which a reader can still make sense of.
      */
     private function marker(string $format, int $number): string
     {
@@ -272,9 +265,8 @@ final class MarkdownWriter
      * The letters of a spreadsheet column, which is how Word goes on numbering a
      * list past the twenty-sixth item: `a` to `z`, then `aa`, `ab` and so on.
      *
-     * The count carries no zero in it, which is what makes the run continue
-     * rather than start again; what is left of the count goes in front of the
-     * letter, so the twenty-seventh item is `aa` rather than `a` a second time.
+     * The count carries no zero in it, so the run continues rather than starting
+     * again, and what is left of the count goes in front of the letter.
      */
     private function alphabet(int $number, bool $upper): string
     {
@@ -294,8 +286,7 @@ final class MarkdownWriter
 
     /**
      * A number padded to two digits, which is the whole of what `decimalZero`
-     * means. Past ninety-nine there is nothing left to pad to, and Word writes
-     * the number out as it stands.
+     * means; past ninety-nine there is nothing left to pad to.
      */
     private function decimalZero(int $number): string
     {
@@ -303,9 +294,8 @@ final class MarkdownWriter
     }
 
     /**
-     * A Roman numeral, which carries on past fifty as readily as `LI` and `LII`.
-     * There is no numeral for a number above three thousand nine hundred and
-     * ninety-nine, so past that the number itself is written.
+     * A Roman numeral. There is none for a number above three thousand nine
+     * hundred and ninety-nine, so past that the number itself is written.
      */
     private function roman(int $number): string
     {
@@ -347,12 +337,12 @@ final class MarkdownWriter
 
         $width = max(array_map('count', $cells));
 
-        // GFM tables always have a header row and a delimiter row, and a Word
-        // table records neither: the delimiter row is a row of dashes Markdown
-        // invents and there is nothing to derive it from, and a header is marked
-        // with `w:trPr/w:tblHeader`, which both Word and PHPWord write and this
-        // reader does not look for. So the first row becomes the header on the
-        // assumption that is usually right. See {@see Options::$tableHeader}.
+        // GFM tables always have a header row and a delimiter row, and a Word table
+        // records neither: the delimiter row is a row of dashes Markdown invents
+        // and there is nothing to derive it from, and a header is marked with
+        // `w:trPr/w:tblHeader`, which this reader does not look for. So the first
+        // row becomes the header on the assumption that is usually right. See
+        // {@see Options::$tableHeader}.
         [$header, $body] = $this->options->tableHeader
             ? [array_shift($cells), $cells]
             : [[], $cells];
@@ -425,14 +415,12 @@ final class MarkdownWriter
      *
      * The emphasis delimiters are held open across runs rather than opened and
      * closed one run at a time. A bold run followed by a bold italic one then
-     * comes out as `**a*b***`, because the `**` the first run opened is still
-     * open when the second adds its `*`, so the two spans meet. Closing each run
-     * on its own would give `**a*****b***`, whose run of five asterisks in the
-     * middle is ambiguous and a parser may not agree on where the spans stop.
+     * comes out as `**a*b***`, because the `**` the first run opened is still open
+     * when the second adds its `*`, so the two spans meet. Closing each run on its
+     * own would give `**a*****b***`, whose run of five asterisks in the middle is
+     * ambiguous and a parser may not agree on where the spans stop.
      *
      * @param list<Inline> $inlines
-     * @param bool         $inTable  Whether the runs sit inside a table cell,
-     *        where a pipe would end the cell.
      */
     private function inlines(array $inlines, bool $inTable = false): string
     {
@@ -487,14 +475,10 @@ final class MarkdownWriter
     /**
      * Write one text run, keeping open any emphasis the neighbouring runs share.
      *
-     * @param string         $out       Everything written before this run.
-     * @param list<string>   $open      The delimiters still open around it,
-     *        outermost first, which this run may close, add to or leave alone.
-     * @param Inline         $inline    The run to write.
-     * @param bool           $lineStart Whether the run begins a line, where a
-     *        `#`, a `-` or a `1.` would otherwise start a block.
-     * @param bool           $inTable  Whether the run sits inside a table cell,
-     *        where a pipe would end the cell.
+     * @param string       $out    Everything written before this run.
+     * @param list<string> $open   The delimiters still open around it, outermost
+     *        first, which this run may close, add to or leave alone.
+     * @param Inline       $inline The run to write.
      */
     private function emphasis(string $out, array &$open, Inline $inline, bool $lineStart, bool $inTable): string
     {
@@ -569,7 +553,8 @@ final class MarkdownWriter
      *
      * @return list<string>
      */
-    private function markers(Inline $inline): array    {
+    private function markers(Inline $inline): array
+    {
         $markers = [];
 
         if ($inline->strike) {
@@ -590,8 +575,6 @@ final class MarkdownWriter
     /**
      * Close an open delimiter, stepping over any whitespace that would stop it
      * from closing.
-     *
-     * @return string
      */
     private function close(string $out, string $marker)
     {
@@ -647,8 +630,7 @@ final class MarkdownWriter
 
     /**
      * Join neighbouring runs that are formatted identically, as
-     * {@see DocumentReader::merge()} does: a paragraph Word split into fifty
-     * runs then comes out as a handful of spans.
+     * {@see DocumentReader::merge()} does.
      *
      * @param list<Inline> $inlines
      * @return list<Inline>

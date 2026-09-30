@@ -23,9 +23,10 @@ use ZipArchive;
  * The archive is not this library's, and a zip says how its contents are laid out
  * and nothing about how much room they will take up: forty kilobytes of a
  * document part is forty megabytes of paragraph, and the entry count is whatever
- * the writer felt like. So what is read is bounded by {@see Options} before it is
- * inflated, and the archive is opened consistently rather than as far as the
- * bytes happen to stretch.
+ * the writer felt like. So {@see Options::$maxPartBytes} and
+ * {@see Options::$maxEntries} bound what is read before it is inflated, and the
+ * archive is opened consistently rather than as far as the bytes happen to
+ * stretch.
  */
 final class Package
 {
@@ -111,8 +112,7 @@ final class Package
     }
 
     /**
-     * The relationship targets of the document part, keyed by relationship id: a
-     * hyperlink's destination, an image's file.
+     * The relationship targets of the document part, keyed by relationship id.
      *
      * @return array<string, string>
      */
@@ -178,11 +178,11 @@ final class Package
     /**
      * The bytes of a part, once it is known to be small enough to hold.
      *
-     * The size is the one the archive's own central directory declares, which
-     * costs one lookup and no decompression. A part that lies about it downward
-     * does not get past the check the archive was opened with: `CHECKCONS` reads
-     * the central directory against the entries and refuses the archive before a
-     * part of it is read, so what is measured here is what comes back.
+     * The size is the one the central directory declares, which costs one lookup
+     * and no decompression. A part that lies about it downward does not get past
+     * the check the archive was opened with: `CHECKCONS` reads the directory
+     * against the entries and refuses the archive before a part of it is read, so
+     * what is measured here is what comes back.
      *
      * @throws UnreadableDocument When the part declares more than `maxPartBytes`.
      */
