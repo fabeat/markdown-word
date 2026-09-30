@@ -16,7 +16,7 @@ use PhpOffice\PhpWord\PhpWord;
  * Writes a `PhpWord` document to `.docx`.
  *
  * On top of PHPWord's own writer this makes two extra passes over the archive,
- * each of them reopening it:
+ * each reopening it:
  *
  *  - {@see HyperlinkPass} replaces the hyperlink placeholders left behind by
  *    {@see \MarkdownWord\Render\LinkPayloadCollector} in `word/document.xml`
@@ -24,11 +24,11 @@ use PhpOffice\PhpWord\PhpWord;
  *    Without it, a link whose label contains emphasis would lose either the link
  *    or the formatting.
  *  - {@see ImageDescriptionPass} fills in the alternative text of the images,
- *    which the writer emits as an empty string.
+ *    which PHPWord writes as an empty string.
  *
  * Both entry points stage the archive in the system temp directory first, so
- * neither a document being written to disk nor one being handed back as a string
- * is ever half-finished.
+ * neither a document written to disk nor one handed back as a string is ever
+ * half-finished.
  */
 final class DocxWriter
 {
@@ -42,8 +42,7 @@ final class DocxWriter
      * Write the document to a file, and hand back what was written.
      *
      * The bytes are read from the staged copy before it is moved into place, so
-     * a caller that wants both the file and the content gets them from one pass
-     * rather than by reading the file it has just written.
+     * a caller wanting both the file and the content gets them from one pass.
      *
      * @return string The `.docx` as written.
      *
@@ -69,10 +68,10 @@ final class DocxWriter
 
             return $contents;
         } finally {
-            // On the happy path `move()` has already renamed the archive away,
-            // so there is nothing here to remove and this branch only runs when
-            // something went wrong. What it removes is a whole document, sitting
-            // in a directory every other account on the machine can read.
+            // `move()` has already renamed the archive away on the happy path, so
+            // this only runs when something went wrong. What it removes is a
+            // whole document, sitting where every other account on the machine
+            // can read it.
             if (is_file($temp)) {
                 @unlink($temp);
             }
@@ -138,13 +137,13 @@ final class DocxWriter
             throw new FileNotWritable('Unable to create a temporary file.');
         }
 
-        OutputEscaping::enabled(static function () use ($phpWord, $path): void {            IOFactory::createWriter($phpWord, 'Word2007')->save($path);
+        OutputEscaping::enabled(static function () use ($phpWord, $path): void {
+            IOFactory::createWriter($phpWord, 'Word2007')->save($path);
         });
 
-        // `save()` leaves the file at the process umask, which is 0644 for
-        // almost everyone: a document in flight through a shared temporary
-        // directory is as readable as the one that lands, and this is the only
-        // moment its permissions can be narrowed.
+        // `save()` leaves the file at the process umask, usually 0644: a document
+        // in flight through a shared temporary directory is as readable as the one
+        // that lands, and this is the only moment its permissions can be narrowed.
         @chmod($path, 0o600);
 
         self::patch($path, $links, $images);
@@ -226,7 +225,7 @@ final class DocxWriter
         // A copy that fails part way through leaves the destination half a
         // document, which is the one thing staging it was there to prevent. Only
         // a file that was not there before is removed: one the caller had cannot
-        // be taken away again, and `copy()` has truncated it either way.
+        // be taken back, and `copy()` has truncated it either way.
         if (!$existed) {
             @unlink($to);
         }
@@ -235,11 +234,9 @@ final class DocxWriter
     }
 
     /**
-     * The file a path really names, following a symlink to the end of it.
-     *
      * A link is followed even when what it points at is not there yet, since
-     * that is how a deployment says where a document goes. A chain of links is
-     * followed to its end, and a cycle gives up rather than going round for ever.
+     * that is how a deployment says where a document goes. A chain is followed
+     * to its end; a cycle gives up rather than going round for ever.
      */
     private static function followLink(string $path): string
     {

@@ -8,11 +8,9 @@ use MarkdownWord\Configuration;
 use MarkdownWord\Configuration\Styles;
 
 /**
- * Translates renderer concerns into concrete Word styles.
- *
- * Keeping this in one place means the rest of the renderer never has to think
- * about style names, defaults or the "does the template already define this?"
- * question.
+ * Translates renderer concerns into concrete Word styles, so the rest of the
+ * renderer never has to think about style names, defaults, or the "does the
+ * template already define this?" question.
  */
 final class StyleResolver
 {
@@ -26,8 +24,8 @@ final class StyleResolver
     }
 
     /**
-     * The raw value configured for a slot, whether it is a Word style name, an
-     * inline style array, or nothing at all.
+     * The raw value configured for a slot: a Word style name, an inline style
+     * array, or nothing at all.
      */
     public function slot(string $name): mixed
     {
@@ -35,8 +33,8 @@ final class StyleResolver
     }
 
     /**
-     * The font style (an inline array, or the name of a registered style) for a
-     * run with the given inline formatting.
+     * The font style — an inline array, or the name of a registered style — for
+     * a run with the given inline formatting.
      *
      * @return array<string, mixed>|string|null
      */
@@ -131,11 +129,9 @@ final class StyleResolver
      * Font style understands.
      *
      * Only `shading` needs translating: it is spelled `bgColor` there, and a key
-     * Font has no setter for is silently dropped by `setStyleByArray()`. `color`
-     * is already a Font key and passes through untouched, and no shipped default
-     * carries a `shading` key — this is here for a style definition of the
-     * caller's own. Paragraph shading is a different thing entirely and never
-     * reaches this: it is a paragraph property, added by the renderer.
+     * Font has no setter for is silently dropped by `setStyleByArray()`. Paragraph
+     * shading is a different thing entirely and never reaches this — it is a
+     * paragraph property, added by the renderer.
      *
      * @param  array<string, mixed>  $font
      * @return array<string, mixed>

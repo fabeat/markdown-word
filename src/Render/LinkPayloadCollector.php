@@ -43,11 +43,10 @@ final class LinkPayloadCollector
      */
     public function render(Link $node, AbstractContainer $target, InlineStyle $style): AbstractContainer
     {
-        // The incoming style is the caller's, and carries the link's url, its
-        // title and the font forced onto every run of the surrounding block, so
-        // the walk starts from it rather than from a blank one. `InlineStyle` is
-        // immutable, so the siblings after this one are unaffected by what the
-        // emphasis inside the label derives.
+        // The walk starts from the caller's style, which already carries the
+        // link's url, its title and the font forced onto the surrounding block.
+        // `InlineStyle` is immutable, so the siblings after this one are
+        // unaffected by what the emphasis inside the label derives.
         $runs = $this->collectRuns($node->children(), $style);
 
         $placeholder = LinkPlaceholder::forIndex($this->counter++);
@@ -64,8 +63,8 @@ final class LinkPayloadCollector
     }
 
     /**
-     * The visible text of a collected link, i.e. its placeholder replaced by the
-     * label it stands for.
+     * The visible text of a collected link: its placeholder replaced by the label
+     * it stands for.
      *
      * @param list<array{placeholder: string, url: string, title: ?string, runs: list<array{text: string, style: array<string, mixed>}>}> $payloads
      */

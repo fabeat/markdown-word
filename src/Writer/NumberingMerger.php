@@ -38,13 +38,11 @@ final class NumberingMerger
     /**
      * The lowest `w:numId` this merger writes into a document.
      *
-     * The references in the document have to be there before the template's
-     * numbering part has been read — {@see self::renderElement()} runs while the
-     * Markdown is being inserted, long before {@see self::applyTo()} — so they
-     * start out provisional, in a range no template uses, and are pointed at
-     * their real identifiers once the high-water marks are known. Nothing is
-     * written under this value: the identifiers that end up in the document are
-     * the ones the template had not taken.
+     * The document's references have to exist long before the template's
+     * numbering part is read — {@see self::renderElement()} runs during the
+     * insert, {@see self::applyTo()} afterwards — so they start out provisional,
+     * in a range no template uses, and are pointed at real identifiers once the
+     * high-water marks are known.
      */
     private const PROVISIONAL_BASE = 1000000;
 
@@ -95,10 +93,9 @@ final class NumberingMerger
     /**
      * Read the numbering definitions the scratch document currently holds.
      *
-     * Safe to call after every render: definitions already taken are skipped, so
-     * only the ones added since the last call are mapped. The identifiers they
-     * are written as are not decided here, because a template's own numbering
-     * part is not read until {@see self::applyTo()}.
+     * Safe to call after every render: definitions already taken are skipped.
+     * The identifiers they are written as are not settled here, because a
+     * template's own numbering part is not read until {@see self::applyTo()}.
      */
     public function collect(): void
     {
@@ -137,8 +134,8 @@ final class NumberingMerger
     }
 
     /**
-     * Render one element to the XML the template should contain, with its
-     * numbering references already pointing at this merger.
+     * The XML the template should contain for one element, with its numbering
+     * references already pointing at this merger.
      */
     public function renderElement(AbstractElement $element): string
     {
@@ -153,8 +150,7 @@ final class NumberingMerger
 
         $xmlWriter = new XMLWriter();
 
-        // An element written outside that window would put raw markup in the
-        // document; see {@see OutputEscaping} for what it is about.
+        // See {@see OutputEscaping} for what this window is for.
         OutputEscaping::enabled(function () use ($writerClass, $xmlWriter, $element): void {
             $elementWriter = new $writerClass($xmlWriter, $element, false);
             $elementWriter->write();
@@ -166,8 +162,8 @@ final class NumberingMerger
     /**
      * Rewrite the numbering references in a fragment of `word/document.xml`.
      *
-     * The identifiers written here are the provisional ones; {@see self::applyTo()}
-     * puts the real ones in once the template's own are known.
+     * The identifiers written here are provisional; {@see self::applyTo()} puts
+     * the real ones in once the template's own are known.
      */
     public function remap(string $xml): string
     {
@@ -295,10 +291,10 @@ final class NumberingMerger
     /**
      * Give the collected definitions identifiers the template has not taken.
      *
-     * This can only run once the template's own numbering part has been read,
-     * which is why {@see self::collect()} settles for provisional identifiers:
-     * the template may already be using 1, and a second definition carrying 1 is
-     * one Word resolves to whichever of the two it finds first.
+     * Only possible once the template's numbering part has been read, which is
+     * why {@see self::collect()} settles for provisional identifiers: the
+     * template may already be using 1, and Word resolves a duplicated 1 to
+     * whichever of the two it finds first.
      */
     private function assignTemplateIds(): void
     {
@@ -317,9 +313,9 @@ final class NumberingMerger
     /**
      * Point the document at the identifiers the definitions were given.
      *
-     * Only the references this merger wrote are touched: the ones holding a
-     * provisional value that is not one the template's own lists use, so a
-     * template's numbering is left exactly as it was.
+     * Only this merger's own references are touched — the ones holding a
+     * provisional value the template's lists do not use — so a template's
+     * numbering is left as it was.
      */
     private function retargetDocument(ZipArchive $zip): void
     {
@@ -339,10 +335,10 @@ final class NumberingMerger
             foreach ($xpath->query('//w:numId') ?: [] as $node) {
                 $value = $node->getAttribute('w:val');
 
-                // A template that numbered a list this high would hold a value
-                // the provisional range covers; its own references are left
-                // alone, and the ones added here stay provisional rather than
-                // being pointed at each other's definitions.
+                // A template numbering a list this high would hold a value the
+                // provisional range covers; its own references are left alone,
+                // and the ones added here stay provisional rather than being
+                // pointed at each other's definitions.
                 if (isset($this->templateNumIds[$value])) {
                     continue;
                 }
@@ -358,8 +354,6 @@ final class NumberingMerger
             }
         }
 
-        // Nothing to put right means nothing to write, which is the case where
-        // the document holds no list this merger added anything to.
         if ($rewritten === 0) {
             return;
         }
@@ -443,9 +437,8 @@ final class NumberingMerger
         $dom = new DOMDocument();
         $this->load($dom, $xml);
 
-        // A set rather than a list: whether an identifier is taken is a
-        // question about one value, and asking a list of forty thousand of them
-        // for each of forty thousand candidates is how a hostile template turns
+        // A set rather than a list: asking a list of forty thousand identifiers
+        // about each of forty thousand candidates is how a hostile template turns
         // a few milliseconds of work into half a minute.
         $used = [];
 
@@ -463,8 +456,8 @@ final class NumberingMerger
 
         // Counting from one would ask about every identifier below the answer,
         // which is the whole list when they are numbered from one; counting from
-        // the number there are lands on a free one immediately. The identifiers
-        // are not required to be numbers, so the walk is kept for the rest.
+        // the number there are lands on a free one. Identifiers need not be
+        // numbers, so the walk is kept for the rest.
         $id = count($used) + 1;
 
         while (isset($used['rId' . $id])) {
@@ -512,12 +505,11 @@ final class NumberingMerger
     }
 
     /**
-     * A file in the system temp directory for the scratch document to be read
-     * back out of.
+     * A temporary file for the scratch document to be read back out of.
      *
-     * It is a whole `.docx` for as long as it takes to read one part out of it,
-     * in a directory every local user can list, and PHPWord's `save()` would
-     * leave it readable to all of them.
+     * A whole `.docx` for as long as it takes to read one part out of it, in a
+     * directory every local user can list, and `save()` would leave it readable
+     * to all of them.
      *
      * @throws FileNotWritable When no temporary file can be made.
      */

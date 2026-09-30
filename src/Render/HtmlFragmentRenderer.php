@@ -11,13 +11,10 @@ use PhpOffice\PhpWord\Element\AbstractContainer;
  * Renders raw HTML found in the Markdown.
  *
  * The default mode is `strip`, which removes the tags but keeps the text they
- * wrap. That is what makes a document containing embedded HTML compare equal to
- * the same document rendered as HTML, which the specification examples rely on:
- * `<div>foo</div>` contributes the word *foo*, not the markup.
- *
- * `preserve` keeps the markup as literal monospaced text, and `drop` discards
- * the fragment entirely. Emitting the tags as real OOXML is deliberately not an
- * option: it would mean injecting unvalidated XML into the document.
+ * wrap: `<div>foo</div>` contributes the word *foo*, not the markup. `preserve`
+ * keeps the markup as literal monospaced text and `drop` discards the fragment.
+ * Emitting the tags as real OOXML is deliberately not an option — it would mean
+ * injecting unvalidated XML into the document.
  */
 final class HtmlFragmentRenderer
 {
@@ -102,8 +99,8 @@ final class HtmlFragmentRenderer
         $dom = new \DOMDocument();
         $previous = libxml_use_internal_errors(true);
 
-        // Wrapping in a body makes a fragment parseable regardless of where it
-        // sat in the original document.
+        // Wrapping in a body makes a fragment parseable wherever it sat in the
+        // original document.
         $loaded = $dom->loadHTML(
             '<?xml encoding="utf-8" ?><body>' . $html . '</body>',
             LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD | LIBXML_NONET,
