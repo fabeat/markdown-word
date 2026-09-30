@@ -72,6 +72,55 @@ final class TemplateFactory
         return self::write($phpWord, 'styled');
     }
 
+    /**
+     * A template that brings a list of its own, so the numbering part it carries
+     * has to be continued rather than filled in from scratch.
+     */
+    public static function withList(string $name = 'body'): string
+    {
+        $phpWord = new PhpWord();
+        $section = $phpWord->addSection();
+
+        $section->addText('${' . $name . '}');
+        $section->addText('${slot}');
+        $section->addText('${/' . $name . '}');
+
+        // An ordered list, so the Markdown inserted into the same document is
+        // the thing that changes format: numbered where the Markdown said
+        // bullets is visible in a way two bullet lists are not.
+        $phpWord->addNumberingStyle('CorpOrdered', [
+            'type' => 'multilevel',
+            'levels' => self::levels('decimal', '%1.'),
+        ]);
+
+        $section->addListItemRun(0, 'CorpOrdered')->addText('template one');
+        $section->addListItemRun(0, 'CorpOrdered')->addText('template two');
+
+        return self::write($phpWord, 'with-list');
+    }
+
+    /**
+     * The nine levels a Word list definition has to carry.
+     *
+     * @return list<array<string, int|string>>
+     */
+    private static function levels(string $format, string $text): array
+    {
+        $levels = [];
+
+        for ($level = 1; $level <= 9; $level++) {
+            $levels[] = [
+                'format' => $format,
+                'text' => str_replace('%1', '%' . $level, $text),
+                'left' => 720 * $level,
+                'hanging' => 360,
+                'start' => 1,
+            ];
+        }
+
+        return $levels;
+    }
+
     private static function write(PhpWord $phpWord, string $name): string
     {
         $path = Scratch::path($name);

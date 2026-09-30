@@ -15,10 +15,13 @@ use ZipArchive;
 /**
  * Fills in the alternative text of the images in an already written `.docx`.
  *
- * PHPWord has no API for it: the writer emits `o:title` as a literal empty string
- * on every `v:imagedata`, and the `descr` of a DrawingML picture is likewise left
- * blank. An image without alternative text is in the document and its meaning is
- * not, so the text the Markdown supplied is put back here.
+ * PHPWord has no API for it: a document this library writes carries its pictures
+ * as VML — `w:pict/v:shape/v:imagedata` — and the writer emits the description
+ * of each one as a literal `o:title=""`. A DrawingML picture, which is what a
+ * template authored in Word already contains, keeps its description on the
+ * non-visual properties of `wp:docPr` and is handled here for the same reason.
+ * An image without alternative text is in the document and its meaning is not,
+ * so the text the Markdown supplied is put back.
  *
  * The images are matched in document order against the order they were added in,
  * which is the same order the renderer walks the syntax tree. Doing it with the
@@ -42,6 +45,11 @@ final class ImageDescriptionPass
     {
     }
 
+    /**
+     * @throws UnreadableDocument When the archive cannot be opened, or has no
+     *         document part to rewrite.
+     * @throws MalformedDocument When `word/document.xml` is not XML.
+     */
     public function applyTo(string $docxPath): void
     {
         $zip = new ZipArchive();
@@ -67,9 +75,11 @@ final class ImageDescriptionPass
     }
 
     /**
-     * Exposed for testing: transforms the document part without touching a zip.
+     * The document part with the descriptions put in, without touching a zip.
+     *
+     * @throws MalformedDocument When the document part is not XML.
      */
-    public function transform(string $documentXml): string
+    private function transform(string $documentXml): string
     {
         if ($this->descriptions === []) {
             return $documentXml;
@@ -104,8 +114,8 @@ final class ImageDescriptionPass
      *
      * A DrawingML picture keeps the description on its non-visual properties and
      * a VML one on the image data. A document uses one shape or the other, and
-     * the VML one is preferred when both are present because that is what
-     * PHPWord writes for an inline picture.
+     * the VML one is preferred when both are present because that is what this
+     * library writes for an inline picture.
      *
      * @return list<array{0: DOMElement, 1: string, 2: string}>
      */

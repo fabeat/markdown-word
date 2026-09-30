@@ -4,18 +4,15 @@ declare(strict_types=1);
 
 namespace MarkdownWord\Writer;
 
-use PhpOffice\PhpWord\Settings;
-
 /**
- * Runs a callback with PHPWord's output escaping enabled.
+ * The former name of {@see OutputEscaping}, which reads as the Markdown text
+ * escaping of {@see \MarkdownWord\Reverse\Escaping} and is nothing to do with
+ * it.
  *
- * Escaping is off by default in PHPWord, which is correct for content that has
- * already been escaped and wrong for everything else: a document containing a
- * lone `<` or `&` — `a < b`, `AT&T`, `&amp;` — then writes raw markup into
- * `w:t` and produces XML that Word refuses to open.
+ * Kept only so that `MarkdownWord\Template\MarkdownTemplate` keeps working
+ * while it is updated to the new name. Delete this file with that change.
  *
- * The previous value is restored afterwards so the host application's own
- * settings are left as they were found.
+ * @deprecated Use {@see OutputEscaping} instead.
  */
 final class Escaping
 {
@@ -25,16 +22,11 @@ final class Escaping
      * @param callable(): T $write
      *
      * @return T
+     *
+     * @see OutputEscaping::enabled()
      */
     public static function enabled(callable $write): mixed
     {
-        $previous = Settings::isOutputEscapingEnabled();
-        Settings::setOutputEscapingEnabled(true);
-
-        try {
-            return $write();
-        } finally {
-            Settings::setOutputEscapingEnabled($previous);
-        }
+        return OutputEscaping::enabled($write);
     }
 }

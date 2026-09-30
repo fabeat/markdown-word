@@ -33,27 +33,56 @@ final class NumberingMerger
     private const REL_NS = 'http://schemas.openxmlformats.org/package/2006/relationships';
     private const NUMBERING_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering';
     private const NUMBERING_CT = 'application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml';
+    private const DOCUMENT_PATH = 'word/document.xml';
 
     /**
-     * Scratch `w:numId` => template `w:numId`.
+     * The lowest `w:numId` this merger writes into a document.
+     *
+     * The references in the document have to be there before the template's
+     * numbering part has been read — {@see self::renderElement()} runs while the
+     * Markdown is being inserted, long before {@see self::applyTo()} — so they
+     * start out provisional, in a range no template uses, and are pointed at
+     * their real identifiers once the high-water marks are known. Nothing is
+     * written under this value: the identifiers that end up in the document are
+     * the ones the template had not taken.
+     */
+    private const PROVISIONAL_BASE = 1000000;
+
+    /**
+     * Scratch `w:numId` => the `w:numId` the document currently points at,
+     * provisional until {@see self::applyTo()} gives it a real one.
      *
      * @var array<int, int>
      */
     private array $numIdMap = [];
 
     /**
-     * Scratch `w:abstractNumId` => the definition to append to the template.
+     * Scratch `w:abstractNumId` => the definition to add to the template.
      *
      * @var array<int, DOMElement>
      */
     private array $definitions = [];
 
     /**
-     * Scratch `w:numId` => the `w:abstractNumId` it now points at.
+     * Scratch `w:numId` => the scratch `w:abstractNumId` it points at.
      *
      * @var array<int, int>
      */
     private array $abstractForNum = [];
+
+    /**
+     * Scratch `w:abstractNumId` => the `w:abstractNumId` it is written as.
+     *
+     * @var array<int, int>
+     */
+    private array $abstractIdMap = [];
+
+    /**
+     * The `w:numId` values the template's own numbering part already uses.
+     *
+     * @var array<string, true>
+     */
+    private array $templateNumIds = [];
 
     private int $nextNumId = 1;
 
@@ -67,7 +96,9 @@ final class NumberingMerger
      * Read the numbering definitions the scratch document currently holds.
      *
      * Safe to call after every render: definitions already taken are skipped, so
-     * only the ones added since the last call are mapped.
+     * only the ones added since the last call are mapped. The identifiers they
+     * are written as are not decided here, because a template's own numbering
+     * part is not read until {@see self::applyTo()}.
      */
     public function collect(): void
     {
@@ -97,12 +128,11 @@ final class NumberingMerger
             // The definition travels with the reference; without it the new
             // numId would point at nothing.
             if ($abstractId !== null && isset($abstracts[$abstractId])) {
-                $newId = $this->nextAbstractId++;
-                $this->definitions[$abstractId] = $this->withAbstractId($abstracts[$abstractId], $newId);
-                $this->abstractForNum[$scratchId] = $newId;
+                $this->definitions[$abstractId] = $abstracts[$abstractId];
+                $this->abstractForNum[$scratchId] = (int) $abstractId;
             }
 
-            $this->numIdMap[$scratchId] = $this->nextNumId++;
+            $this->numIdMap[$scratchId] = self::PROVISIONAL_BASE + $scratchId;
         }
     }
 
@@ -123,10 +153,9 @@ final class NumberingMerger
 
         $xmlWriter = new XMLWriter();
 
-        // The element writers consult PHPWord's global escaping setting, which is
-        // off by default; without this a run containing `<` or `&` would be
-        // written as raw markup.
-        Escaping::enabled(function () use ($writerClass, $xmlWriter, $element): void {
+        // An element written outside that window would put raw markup in the
+        // document; see {@see OutputEscaping} for what it is about.
+        OutputEscaping::enabled(function () use ($writerClass, $xmlWriter, $element): void {
             $elementWriter = new $writerClass($xmlWriter, $element, false);
             $elementWriter->write();
         });
@@ -136,6 +165,9 @@ final class NumberingMerger
 
     /**
      * Rewrite the numbering references in a fragment of `word/document.xml`.
+     *
+     * The identifiers written here are the provisional ones; {@see self::applyTo()}
+     * puts the real ones in once the template's own are known.
      */
     public function remap(string $xml): string
     {
@@ -178,6 +210,10 @@ final class NumberingMerger
     /**
      * Write the collected definitions into a finished `.docx`, creating the
      * numbering part when the template did not have one.
+     *
+     * @throws FileNotWritable When the archive cannot be opened for writing, or
+     *         no temporary file can be made to read the scratch document.
+     * @throws MalformedDocument When a part of either document is not XML.
      */
     public function applyTo(string $docxPath): void
     {
@@ -193,7 +229,9 @@ final class NumberingMerger
 
         try {
             $numbering = $this->numberingPart($zip);
+            $this->assignTemplateIds();
             $this->appendDefinitions($numbering);
+            $this->retargetDocument($zip);
 
             $zip->deleteName('word/numbering.xml');
             $zip->addFromString('word/numbering.xml', (string) $numbering->saveXML());
@@ -224,8 +262,15 @@ final class NumberingMerger
             $node->parentNode?->removeChild($node);
         }
 
-        foreach ($this->definitions as $definition) {
-            $root->appendChild($numbering->importNode($definition, true));
+        foreach ($this->definitions as $scratchAbstractId => $definition) {
+            $copy = $numbering->importNode($definition, true);
+
+            if (!$copy instanceof DOMElement) {
+                continue;
+            }
+
+            $copy->setAttribute('w:abstractNumId', (string) ($this->abstractIdMap[$scratchAbstractId] ?? 0));
+            $root->appendChild($copy);
         }
 
         foreach ($this->numIdMap as $scratchId => $templateId) {
@@ -233,7 +278,10 @@ final class NumberingMerger
             $num->setAttribute('w:numId', (string) $templateId);
 
             $abstract = $numbering->createElementNS(self::W_NS, 'w:abstractNumId');
-            $abstract->setAttribute('w:val', (string) ($this->abstractForNum[$scratchId] ?? 0));
+            $abstract->setAttribute(
+                'w:val',
+                (string) ($this->abstractIdMap[$this->abstractForNum[$scratchId] ?? 0] ?? 0),
+            );
             $num->appendChild($abstract);
 
             $root->appendChild($num);
@@ -242,6 +290,82 @@ final class NumberingMerger
         foreach ($existingNums as $node) {
             $root->appendChild($node);
         }
+    }
+
+    /**
+     * Give the collected definitions identifiers the template has not taken.
+     *
+     * This can only run once the template's own numbering part has been read,
+     * which is why {@see self::collect()} settles for provisional identifiers:
+     * the template may already be using 1, and a second definition carrying 1 is
+     * one Word resolves to whichever of the two it finds first.
+     */
+    private function assignTemplateIds(): void
+    {
+        foreach (array_keys($this->numIdMap) as $scratchId) {
+            $this->numIdMap[$scratchId] = $this->nextNumId++;
+        }
+
+        // One identifier per definition rather than per reference: two identical
+        // lists are one definition, and a numbered list that starts over for each
+        // is not what the Markdown said.
+        foreach (array_unique(array_values($this->abstractForNum)) as $scratchAbstractId) {
+            $this->abstractIdMap[$scratchAbstractId] = $this->nextAbstractId++;
+        }
+    }
+
+    /**
+     * Point the document at the identifiers the definitions were given.
+     *
+     * Only the references this merger wrote are touched: the ones holding a
+     * provisional value that is not one the template's own lists use, so a
+     * template's numbering is left exactly as it was.
+     */
+    private function retargetDocument(ZipArchive $zip): void
+    {
+        $document = $zip->getFromName(self::DOCUMENT_PATH);
+
+        if ($document === false || !str_contains($document, 'w:numId')) {
+            return;
+        }
+
+        $dom = Xml::parse($document);
+        $rewritten = 0;
+
+        if ($dom !== null) {
+            $xpath = new \DOMXPath($dom);
+            $xpath->registerNamespace('w', self::W_NS);
+
+            foreach ($xpath->query('//w:numId') ?: [] as $node) {
+                $value = $node->getAttribute('w:val');
+
+                // A template that numbered a list this high would hold a value
+                // the provisional range covers; its own references are left
+                // alone, and the ones added here stay provisional rather than
+                // being pointed at each other's definitions.
+                if (isset($this->templateNumIds[$value])) {
+                    continue;
+                }
+
+                $scratchId = (int) $value - self::PROVISIONAL_BASE;
+
+                if (!isset($this->numIdMap[$scratchId])) {
+                    continue;
+                }
+
+                $node->setAttribute('w:val', (string) $this->numIdMap[$scratchId]);
+                $rewritten++;
+            }
+        }
+
+        // Nothing to put right means nothing to write, which is the case where
+        // the document holds no list this merger added anything to.
+        if ($rewritten === 0) {
+            return;
+        }
+
+        $zip->deleteName(self::DOCUMENT_PATH);
+        $zip->addFromString(self::DOCUMENT_PATH, (string) $dom?->saveXML());
     }
 
     private function numberingPart(ZipArchive $zip): DOMDocument
@@ -264,6 +388,7 @@ final class NumberingMerger
         $xpath->registerNamespace('w', self::W_NS);
 
         foreach ($xpath->query('//w:num') ?: [] as $node) {
+            $this->templateNumIds[$node->getAttribute('w:numId')] = true;
             $this->nextNumId = max($this->nextNumId, (int) $node->getAttribute('w:numId') + 1);
         }
 
@@ -318,6 +443,10 @@ final class NumberingMerger
         $dom = new DOMDocument();
         $this->load($dom, $xml);
 
+        // A set rather than a list: whether an identifier is taken is a
+        // question about one value, and asking a list of forty thousand of them
+        // for each of forty thousand candidates is how a hostile template turns
+        // a few milliseconds of work into half a minute.
         $used = [];
 
         foreach ($dom->getElementsByTagName('Relationship') as $relationship) {
@@ -325,15 +454,20 @@ final class NumberingMerger
                 continue;
             }
 
-            $used[] = $relationship->getAttribute('Id');
+            $used[$relationship->getAttribute('Id')] = true;
 
             if ($relationship->getAttribute('Target') === 'numbering.xml') {
                 return;
             }
         }
 
-        $id = 1;
-        while (in_array('rId' . $id, $used, true)) {
+        // Counting from one would ask about every identifier below the answer,
+        // which is the whole list when they are numbered from one; counting from
+        // the number there are lands on a free one immediately. The identifiers
+        // are not required to be numbers, so the walk is kept for the rest.
+        $id = count($used) + 1;
+
+        while (isset($used['rId' . $id])) {
             $id++;
         }
 
@@ -347,24 +481,12 @@ final class NumberingMerger
         $zip->addFromString('word/_rels/document.xml.rels', (string) $dom->saveXML());
     }
 
-    private function withAbstractId(DOMElement $abstract, int $id): DOMElement
-    {
-        $clone = $abstract->cloneNode(true);
-        $clone->setAttribute('w:abstractNumId', (string) $id);
-
-        return $clone;
-    }
-
     private function readScratchNumbering(): ?DOMDocument
     {
-        $path = tempnam(sys_get_temp_dir(), 'mdword_num_');
-
-        if ($path === false) {
-            throw new FileNotWritable('Unable to create a temporary file for the numbering part.');
-        }
+        $path = self::scratchFile();
 
         try {
-            Escaping::enabled(function () use ($path): void {
+            OutputEscaping::enabled(function () use ($path): void {
                 IOFactory::createWriter($this->scratch, 'Word2007')->save($path);
             });
 
@@ -387,6 +509,29 @@ final class NumberingMerger
         $this->load($dom, $xml);
 
         return $dom;
+    }
+
+    /**
+     * A file in the system temp directory for the scratch document to be read
+     * back out of.
+     *
+     * It is a whole `.docx` for as long as it takes to read one part out of it,
+     * in a directory every local user can list, and PHPWord's `save()` would
+     * leave it readable to all of them.
+     *
+     * @throws FileNotWritable When no temporary file can be made.
+     */
+    private static function scratchFile(): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'mdword_num_');
+
+        if ($path === false) {
+            throw new FileNotWritable('Unable to create a temporary file for the numbering part.');
+        }
+
+        @chmod($path, 0o600);
+
+        return $path;
     }
 
     private function childValue(DOMElement $parent, string $localName): ?string
