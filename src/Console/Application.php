@@ -18,15 +18,8 @@ use MarkdownWord\WordToMarkdown;
 use Throwable;
 
 /**
- * The `mdword` command.
- *
- * Two commands, one per direction, so that the name of the command says what the
- * run does:
- *
- * ```text
- * mdword to-docx     README.md  -o README.docx
- * mdword to-markdown README.docx -o README.md
- * ```
+ * The `mdword` command: two commands, one per direction, so that the name of the
+ * command says what the run does.
  *
  * The whole interface lives here rather than in a script so it can be tested like
  * the rest of the library, and so the same code serves both the phar and a plain
@@ -34,7 +27,7 @@ use Throwable;
  *
  * The result goes to standard output and everything else — progress, warnings,
  * errors — goes to standard error, so `mdword to-docx in.md -o - | pbcopy`
- * does what it looks like it does.
+ * does what it looks like it does. See {@see self::usage()} for the text itself.
  */
 final class Application
 {
@@ -52,8 +45,8 @@ final class Application
      * Exit code for a run that did not finish.
      *
      * One code for a mistake the caller can put right and for a defect they
-     * cannot, because a program with only these two cannot report the difference
-     * any other way. What it printed says which it was.
+     * cannot: a program with only these two cannot report the difference any
+     * other way. What it printed says which it was.
      */
     public const FAILURE = 1;
 
@@ -80,8 +73,8 @@ final class Application
     private $in;
 
     /**
-     * Bytes taken from the input while working out its direction, which the
-     * command that reads it will not have seen.
+     * Bytes read from the input to work out its direction, held back and handed
+     * on again by {@see self::readInput()}.
      */
     private string $peeked = '';
 
@@ -104,12 +97,11 @@ final class Application
      */
     public function run(array $argv): int
     {
-        // Installed for the whole run rather than around each write: a document
-        // is written in several places, and the filter has to span all of them.
-        // Wrapped rather than installed and taken off again, because a host that
-        // installed the filter itself before embedding this keeps it: taking it
-        // off would leave the rest of that process with nothing between it and
-        // PHPWord's warnings.
+        // One filter for the whole run, because a document is written in several
+        // places and it has to span all of them. Wrapped rather than installed
+        // and taken off again, so a host that installed the filter itself before
+        // embedding this keeps it: taking it off would leave the rest of that
+        // process with nothing between it and PHPWord's warnings.
         return UpstreamDeprecations::quietly(fn (): int => $this->runQuietly($argv));
     }
 
@@ -131,13 +123,10 @@ final class Application
 
             return self::FAILURE;
         } catch (Throwable $e) {
-            // Anything arriving here is a defect rather than a mistake, so it is
-            // reported in full: the message, the type, and where it happened.
-            // A stack trace would be noise, since the phar has no source paths
-            // that mean anything to the person reading it. The exit code is
-            // {@see self::FAILURE} as it is for a mistake, so the two cannot be
-            // told apart by the code alone; the type named above is what tells
-            // them.
+            // A defect rather than a mistake, so it is reported in full: the type,
+            // the message and where it happened. No stack trace — the phar has no
+            // source paths that mean anything to the person reading it — and the
+            // type named is what tells a defect from a mistake.
             $this->error(sprintf('%s: %s', $e::class, $e->getMessage()));
             $this->error(sprintf('  at %s:%d', $e->getFile(), $e->getLine()));
 
@@ -173,21 +162,18 @@ final class Application
             return (new $class($this))->execute(array_slice($argv, 1));
         }
 
-        // Nothing to strip: whatever is in front is either the file to read or an
-        // option, and the whole line goes to the command that gets chosen. A bare
-        // word that is not a file is reported as a missing file rather than as an
-        // unknown command, because a file may be called anything at all.
+        // Nothing is stripped: whatever is in front is either the file to read or
+        // an option, and the whole line goes to the command that gets chosen. A
+        // bare word that is not a file is reported as a missing file rather than
+        // as an unknown command, because a file may be called anything at all.
         return $this->runInDirection($argv);
     }
 
     /**
      * Work out which way the data should go and run that command.
      *
-     * The input is the one thing both directions have in common, and a Word
-     * document is a zip archive while Markdown is text, so the file itself is
-     * enough to tell them apart — no extension, and no naming convention to
-     * remember. `--to` overrides it, which is what makes reading from standard
-     * input work at all, since a pipe has no name to go on.
+     * `--to` overrides what the file says, which is what makes reading from
+     * standard input work at all: a pipe has no name to go on.
      *
      * @param list<string> $argv The whole command line, with no command name in it.
      */
@@ -239,16 +225,15 @@ final class Application
      * Which way a file has to go, from what it contains.
      *
      * A `.docx` is a zip archive and begins `PK\x03\x04`; Markdown is text and
-     * begins with readable characters. The four bytes that decide it are part of
-     * the format rather than a convention, so this holds for a file with any
-     * name at all.
+     * begins with readable characters. Those bytes are part of the format rather
+     * than a convention, so this holds for a file with any name at all.
      */
     private function detectDirection(?string $input): string
     {
         $fromStream = $input === null || $input === '-';
 
-        // Suppressed so that a missing file produces the sentence below rather
-        // than PHP's own warning followed by it.
+        // Suppressed so a missing file gives the sentence below rather than PHP's
+        // own warning followed by it.
         $handle = $fromStream ? $this->in : @fopen($input, 'rb');
 
         if ($handle === false) {
@@ -258,10 +243,10 @@ final class Application
             );
         }
 
-        // A file is opened separately and thrown away, so nothing is consumed
-        // from the input. A stream cannot be rewound, so the bytes read are kept
-        // and handed back to whoever reads the input next — otherwise the
-        // document would arrive four bytes short and no longer be an archive.
+        // A file is opened separately and thrown away, so nothing is consumed from
+        // the input. A stream cannot be rewound, so the bytes read are kept and
+        // given back to whoever reads the input next — otherwise the document
+        // would arrive four bytes short and no longer be an archive.
         $magic = (string) fread($handle, 4);
 
         if ($fromStream) {
@@ -337,15 +322,12 @@ final class Application
         )));
     }
 
-
     /**
      * The text `mdword help` prints.
      *
-     * One section per command, taken from {@see self::COMMANDS}, and the option
-     * table in it is the one each command publishes for readers. The parser is
-     * given a different list, the specification; a test diffs the two in both
-     * directions, so the help cannot offer an option the parser rejects without
-     * the suite noticing.
+     * One section per command, from {@see self::COMMANDS}, over the option
+     * table each command publishes for readers; {@see Command::options()} says
+     * why that is a second list.
      */
     public function usage(): string
     {
@@ -392,9 +374,6 @@ final class Application
     /**
      * The heading and option table for one command.
      *
-     * The option list is the command's own, published for readers, and the
-     * parser is built from its other list; a test holds the two in step.
-     *
      * @param class-string<Command> $command
      * @return list<string>
      */
@@ -420,8 +399,7 @@ final class Application
     public static function commandHelp(string $command, string $summary): string
     {
         // The name as it is typed, not as the heading spells it out: the heading
-        // reads "TO DOCX" and the usage line has to read `to-docx`, because that
-        // is what someone would type.
+        // reads "TO DOCX" and the usage line has to read `to-docx`.
         $name = self::commandName($command);
 
         return implode(PHP_EOL, [
@@ -436,10 +414,8 @@ final class Application
         ]) . PHP_EOL;
     }
 
-    // ------------------------------------------------------------- services
-    // Used by the commands, and public so that a caller embedding this in a
-    // command line of their own can use the same implementations rather than
-    // write their own.
+    // Public so a caller embedding this in a command line of their own uses the
+    // same implementations rather than writing their own.
 
     /**
      * The configuration for a run: the one a `--config` file names, with
@@ -462,6 +438,8 @@ final class Application
      * Read a configuration file: a PHP file returning either a
      * {@see Configuration} or the array form {@see Configuration::fromArray()}
      * understands.
+     *
+     * @throws ConsoleException
      */
     private function loadConfiguration(string $path): Configuration
     {
@@ -487,6 +465,8 @@ final class Application
 
     /**
      * The input, from a file or from standard input.
+     *
+     * @throws ConsoleException
      */
     public function readInput(?string $path): string
     {
@@ -514,6 +494,8 @@ final class Application
 
     /**
      * Write the result: to a file, or to standard output when the path is `-`.
+     *
+     * @throws ConsoleException
      */
     public function writeResult(string $path, string $contents): void
     {
@@ -570,9 +552,8 @@ final class Application
             return '-';
         }
 
-        // The stem is the name without its extension, in the directory it was
-        // read from, so `docs/notes.md` becomes `docs/notes.docx` rather than
-        // something that merely looks like it.
+        // In the directory it was read from, so `docs/notes.md` becomes
+        // `docs/notes.docx` rather than something that merely looks like it.
         $directory = pathinfo($input, PATHINFO_DIRNAME);
         $stem = pathinfo($input, PATHINFO_FILENAME);
 
@@ -601,6 +582,8 @@ final class Application
 
     /**
      * The other direction, the same contract.
+     *
+     * @see self::converter()
      */
     public function reader(ReverseOptions $options, ?string $source = null): Converter
     {
@@ -643,11 +626,12 @@ final class Application
     /**
      * Write to standard output.
      *
-     * For the help, which is the only thing that goes out this way: a converted
-     * document leaves through {@see self::writeResult()}, which writes to the
-     * result path or hands the bytes straight to the stream. Either way it goes
-     * through `write()` rather than reaching for `STDOUT`, which is what makes a
-     * run drivable from a test.
+     * For the help, which is the only thing that goes out this way; a converted
+     * document leaves through {@see self::writeResult()}. Both go through
+     * `write()` rather than reaching for `STDOUT`, which is what makes a run
+     * drivable from a test.
+     *
+     * @see self::error()
      */
     public function print(string $text): void
     {

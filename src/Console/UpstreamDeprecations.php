@@ -21,8 +21,7 @@ use function str_replace;
  *
  * PHP reports each occurrence itself, so a document with a dozen list items
  * prints a dozen paragraphs of someone else's warning before the tool says
- * anything at all. On a command line that is not a warning, it is unusable
- * output, so it is filtered here.
+ * anything at all. On a command line that is unusable output.
  *
  * The library itself does not do this: a caller embedding it in an application
  * is better served by seeing everything, and by this being a property of the
@@ -54,8 +53,8 @@ final class UpstreamDeprecations
                 return true;
             }
 
-            // Returning false hands the diagnostic to PHP, which prints it and
-            // carries on — exactly what would have happened without this filter.
+            // False hands the diagnostic to PHP, which prints it and carries on —
+            // exactly what would have happened without this filter.
             return false;
         });
     }

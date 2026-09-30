@@ -15,9 +15,8 @@ use function substr;
 /**
  * The command line as the user typed it, split into options and operands.
  *
- * Parsed against a declared set of options rather than left to the application
- * to interpret raw strings, so an unknown or malformed option is reported in one
- * place, in a message that names the option.
+ * Parsed against a declared set of options, so an unknown or malformed one is
+ * reported in a single place, in a message that names it.
  *
  * A value may be written three ways, which is what a person at a terminal
  * expects, while a flag takes two of them — it is on or off, so there is
@@ -52,14 +51,9 @@ final class CommandLine
      * Split raw arguments against a specification of what is allowed.
      *
      * @param list<string> $argv The arguments, without the program name.
-     * @param list<string> $values    Long names of the options that take a value.
-     * @param list<string> $flags     Long names of the options that are on or off.
-     * @param list<string> $repeated  Long names of the options that may repeat.
-     * @param array<string, string> $aliases Short spellings mapped to long names.
-     * @param array<string, string> $foreign Long names that belong to a *different*
-     *        command, mapped to the name that command is called by. Naming one of
-     *        these is nearly always a slip rather than a typo, so it is worth
-     *        saying which command it does belong to.
+     * @param array<string, string> $foreign Long names belonging to a *different*
+     *        command, mapped to that command's name, so a slip can be reported as
+     *        one.
      *
      * @throws ConsoleException on an unknown option, a missing value, or a value
      *         given to an option that takes none.
@@ -72,8 +66,8 @@ final class CommandLine
         array $aliases = [],
         array $foreign = [],
     ): self {
-        // The dashes come off first, so that the alias table is keyed on the bare
-        // name and `-o`, `--o` and `-o=x` all mean the same thing.
+        // Dashes come off first, so the alias table is keyed on the bare name and
+        // `-o`, `--o` and `-o=x` all mean the same thing.
         $canonical = static function (string $name) use ($aliases): string {
             $bare = ltrim($name, '-');
 
@@ -83,8 +77,6 @@ final class CommandLine
         $taken = ['values' => [], 'flags' => [], 'repeated' => []];
         $operands = [];
 
-        // Everything after a bare `--` is an operand, which is the conventional
-        // escape hatch for a file whose name starts with a dash.
         $literal = false;
 
         while ($argv !== []) {
@@ -111,8 +103,6 @@ final class CommandLine
             $inline = null;
             $name = $argument;
 
-            // `--output=report.docx` carries the value on the same token, so the
-            // split happens once, here, rather than at every use.
             if (($equals = strpos($argument, '=')) !== false) {
                 $name = substr($argument, 0, $equals);
                 $inline = substr($argument, $equals + 1);

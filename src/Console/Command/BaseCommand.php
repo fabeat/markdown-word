@@ -11,17 +11,11 @@ use MarkdownWord\Console\ConsoleException;
 /**
  * What the two directions have in common.
  *
- * Both are the same command with the ends swapped, and most of a run is the same
+ * Both are the same command with the ends swapped, so most of a run is the same
  * either way: take the options, deal with `--help`, check the argument says
  * nothing contradictory, work out where the result is going, and refuse to write
- * it over the file it came from.
- *
- * What a subclass adds is its own end of the conversion and the options that
- * configure it. `ToDocx` lays the style, image and table-width options over the
- * configuration, and reads `--template`, `--region` and `--define`. `ToMarkdown`
- * reads `--media`, `--line-ending` and the heading, fence and table-header
- * switches, and has to take the images out beside the Markdown rather than beside
- * the document it came from.
+ * it over the file it came from. A subclass adds its own end of the conversion
+ * and the options that configure it.
  */
 abstract class BaseCommand implements Command
 {
@@ -31,9 +25,6 @@ abstract class BaseCommand implements Command
 
     /**
      * Parse the options, answer `--help`, and check nothing contradicts.
-     *
-     * Named for what it does rather than for the noun, because `options()` is
-     * already the help table the interface asks for.
      *
      * @param list<string> $argv
      * @return CommandLine|null Null when the run was already answered, which is
@@ -48,8 +39,8 @@ abstract class BaseCommand implements Command
             flags: static::spec()['flags'],
             repeated: static::spec()['repeated'],
             aliases: static::spec()['aliases'],
-            // The options belonging to the other direction, so that reaching for
-            // one by mistake names the command it does belong to.
+            // So that reaching for an option of the other direction by mistake
+            // names the command it does belong to.
             foreign: Application::specFor(static::other()),
         );
 
@@ -68,8 +59,7 @@ abstract class BaseCommand implements Command
      * Where the result should go, refusing to put it on top of its own input.
      *
      * Without the second half a run with no `-o` on a file whose extension is
-     * already the one being written to would destroy that file, which is a
-     * spectacular way to lose work.
+     * already the one being written to would destroy that file.
      */
     final protected function outputPath(CommandLine $command, string $extension): string
     {
@@ -84,23 +74,21 @@ abstract class BaseCommand implements Command
     /**
      * Refuse a result that would land on the file it was made from.
      *
-     * Called twice, and the second call is the point of it. The first happens
-     * here, before the conversion, so that a run which is going to be refused
-     * stops before spending the work. But a conversion is not instant, and
-     * anything with write access to the output directory can put the input's own
-     * inode at the output path in between — so each command looks again at the
-     * last moment, immediately before the write.
+     * Called twice, and the second call is the point. The first happens here,
+     * before the conversion, so that a run which is going to be refused stops
+     * before spending the work. But a conversion is not instant, and anything
+     * with write access to the output directory can put the input's own inode at
+     * the output path in between — so each command looks again at the last
+     * moment, immediately before the write.
      *
      * That narrows the window rather than closing it: what is left is the space
      * between the check and the write itself. Closing it needs the write to be
      * conditional on what it is about to replace, which `rename()` cannot
-     * promise and `file_put_contents()` certainly does not, so a command line
-     * tool on its own has nothing better to offer than a last look.
+     * promise and `file_put_contents()` certainly does not.
      */
     final protected function guardAgainstOverwrite(?string $input, string $output): void
     {
-        // Nothing to protect: the input is a stream, or the result is one, and
-        // a stream is not a file the run can land on.
+        // Nothing to protect: a stream is not a file the run can land on.
         if ($input === null || $input === '-' || $output === '-') {
             return;
         }
@@ -122,16 +110,15 @@ abstract class BaseCommand implements Command
      * case-insensitive filesystem — APFS and NTFS, which is what most macOS and
      * Windows machines have — `Notes.md` and `notes.md` are two spellings of one
      * inode, and `realpath()` hands each back in the case it was written in, so
-     * the two strings never match. A hard link is two paths to one inode for
-     * the same reason, and a symlink to the input is a third.
+     * the two strings never match. A hard link is two paths to one inode for the
+     * same reason, and a symlink to the input is a third.
      *
-     * A path that is not there cannot be the input, however it is spelled:
-     * there is nothing at it to lose. The one shape still worth catching is
-     * `sub/../notes.md`, which names the input with a detour in front of it —
-     * and the detour is exactly why the comparison cannot be left to
-     * `realpath()`, which returns nothing at all for a path whose directory is
-     * missing. So the two are compared as text, with the `.` and `..` segments
-     * taken out by hand.
+     * A path that is not there cannot be the input, however it is spelled: there
+     * is nothing at it to lose. The one shape still worth catching is
+     * `sub/../notes.md`, and the detour in front of it is exactly why the
+     * comparison cannot be left to `realpath()`, which returns nothing at all
+     * for a path whose directory is missing. So the two are compared as text,
+     * with the `.` and `..` segments taken out by hand.
      */
     private static function namesTheInput(string $input, string $output): bool
     {
@@ -147,9 +134,6 @@ abstract class BaseCommand implements Command
         return $from !== false && self::withoutDetours($output) === self::withoutDetours($from);
     }
 
-    /**
-     * Whether two paths that both exist are one file.
-     */
     private static function isTheSameFile(string $left, string $right): bool
     {
         // Silenced because the path can be replaced by a directory between the
@@ -170,8 +154,8 @@ abstract class BaseCommand implements Command
      *
      * Textual, and so blind to one shape: where a `..` follows a symbolic link
      * the filesystem keeps the link's own directory and this throws the name
-     * away. The cost of getting that wrong is a refusal that was not necessary,
-     * which is the cheaper of the two mistakes to make in a guard.
+     * away. A refusal that was not necessary is the cheaper mistake to make in
+     * a guard.
      */
     private static function withoutDetours(string $path): string
     {
@@ -218,7 +202,7 @@ abstract class BaseCommand implements Command
 
     /**
      * A `--to` naming this direction is redundant; one naming the other is a
-     * contradiction worth saying so about rather than ignoring.
+     * contradiction worth reporting.
      */
     final protected static function assertDirection(CommandLine $command): void
     {

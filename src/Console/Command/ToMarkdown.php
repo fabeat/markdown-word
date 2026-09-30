@@ -56,15 +56,12 @@ final class ToMarkdown extends BaseCommand
      *
      * A `.docx` is a `zip` archive, and reading one from memory means writing it
      * to a scratch file first. The document is read as a string whichever way it
-     * arrived — a file on disk is read into memory rather than opened where it
-     * lies, because `readInput()` hands back the contents either way — so both
-     * branches pay for that round trip, and the only thing the file's own path
-     * is good for is the direction check the application has already made.
+     * arrived — `readInput()` hands back contents either way — so both branches
+     * pay for that round trip, and the only thing the file's own path is good
+     * for is the direction check the application has already made.
      */
     private function convert(CommandLine $command, ?string $input, string $output): string
     {
-        // The document is read once, here, and converting it is then the one verb
-        // both directions share.
         $reader = $this->application->reader($this->readingOptions($command), $this->readDocument($input));
 
         return $this->withMedia($command, $output, static fn (): string => $reader->convert());
@@ -104,8 +101,8 @@ final class ToMarkdown extends BaseCommand
         if ($previous === false || !@chdir($directory)) {
             // The Markdown still has to be written, so the images are left where
             // the reader puts them and the reference it writes is used as it
-            // comes out — relative to the working directory it ran in, which is
-            // where the image was found.
+            // comes out — relative to the directory it ran in, which is where
+            // the image was found.
             return $read();
         }
 
@@ -116,9 +113,6 @@ final class ToMarkdown extends BaseCommand
         }
     }
 
-    /**
-     * The reading options this run asks for.
-     */
     private function readingOptions(CommandLine $command): Options
     {
         $overrides = ['headingSetext' => $command->flag('setext')];
@@ -134,10 +128,9 @@ final class ToMarkdown extends BaseCommand
         $media = $command->value('media');
 
         if ($media !== null) {
-            // The images are taken out beside the Markdown rather than beside
-            // the document, so that the reference and the file agree. The
-            // directory is made relative to the output and the reader is run
-            // from there, so the two are the same path written twice.
+            // The images are taken out beside the Markdown rather than beside the
+            // document, so the reference and the file agree; {@see self::withMedia()}
+            // runs the reader from that directory to keep the two the same path.
             $overrides['mediaDirectory'] = rtrim($media, '/');
         }
 
