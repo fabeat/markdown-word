@@ -2,6 +2,8 @@
 
 [![tests](https://github.com/fabeat/markdown-word/actions/workflows/tests.yml/badge.svg)](https://github.com/fabeat/markdown-word/actions/workflows/tests.yml)
 [![phar](https://github.com/fabeat/markdown-word/actions/workflows/phar.yml/badge.svg)](https://github.com/fabeat/markdown-word/actions/workflows/phar.yml)
+[![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=fabeat_markdown-word&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=fabeat_markdown-word)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=fabeat_markdown-word&metric=coverage)](https://sonarcloud.io/summary/new_code?id=fabeat_markdown-word)
 
 Convert Markdown to Word documents in pure PHP — and back again.
 
