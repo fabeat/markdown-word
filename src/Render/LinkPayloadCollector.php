@@ -8,7 +8,7 @@ use League\CommonMark\Extension\CommonMark\Node\Inline\Code;
 use League\CommonMark\Extension\CommonMark\Node\Inline\Emphasis;
 use League\CommonMark\Extension\CommonMark\Node\Inline\Link;
 use League\CommonMark\Extension\CommonMark\Node\Inline\Strong;
-use League\CommonMark\Extension\Strikethrough\Node\Strikethrough;
+use League\CommonMark\Extension\Strikethrough\Strikethrough;
 use League\CommonMark\Node\Inline\Newline;
 use League\CommonMark\Node\Inline\Text;
 use League\CommonMark\Node\Node;
@@ -43,7 +43,12 @@ final class LinkPayloadCollector
      */
     public function render(Link $node, AbstractContainer $target, InlineStyle $style): AbstractContainer
     {
-        $runs = $this->collectRuns($node->children(), new InlineStyle());
+        // The incoming style is the caller's, and carries the link's url, its
+        // title and the font forced onto every run of the surrounding block, so
+        // the walk starts from it rather than from a blank one. `InlineStyle` is
+        // immutable, so the siblings after this one are unaffected by what the
+        // emphasis inside the label derives.
+        $runs = $this->collectRuns($node->children(), $style);
 
         $placeholder = LinkPlaceholder::forIndex($this->counter++);
         $this->payloads[] = [

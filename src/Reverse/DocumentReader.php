@@ -24,6 +24,12 @@ use DOMXPath;
  * that then lands inside the quote, rather than a quote interrupted by stray
  * paragraphs. A unit without a quote style never opens a quote, which is what
  * stops an indented list from being mistaken for one.
+ *
+ * A *unit* is one entry of the flat sequence the grouping passes rearrange. The
+ * type is `Block` throughout, because a unit is a block: a paragraph, a table,
+ * or a list once the lists have been grouped. "Unit" is used for the sequence
+ * and its entries because it says what the passes do to them, which "block" does
+ * not.
  */
 final class DocumentReader
 {
@@ -127,11 +133,15 @@ final class DocumentReader
     }
 
     /**
-     * The block properties the grouping passes need: the style, the effective
-     * indentation, and any numbering reference.
+     * The block properties the grouping passes need.
+     *
+     * The style and the effective indentation decide what a unit is and how
+     * deeply a quote around it nests; the alignment, the numbering reference and
+     * the list level decide how the serialiser writes it; `tight` says whether
+     * the spacing between list items was suppressed.
      *
      * @return array{style: string, indent: int, alignment: string, level: ?int,
-     *               numId: ?int, listLevel: int}
+     *               numId: ?int, listLevel: int, tight: bool}
      */
     private function paragraphProperties(DOMXPath $xpath, DOMElement $paragraph): array
     {
@@ -901,15 +911,16 @@ final class DocumentReader
     /**
      * Nest the units that are drawn with a quote style.
      *
-     * Depth comes from the effective indentation, so a quote inside a quote
-     * steps in and stays there. Only the style opens a quote: an indented
-     * paragraph is an indented paragraph, and a list inside a quote carries the
-     * quote's indentation without itself being quoted.
+     * The rules are the class-level ones applied to one unit at a time; see the
+     * class docblock for why depth comes from the indentation and why only a
+     * quote style opens a quote.
      *
-     * A quote ends when a paragraph follows that is not indented far enough to be
-     * inside it. Indentation rather than adjacency, because Word has no way to
-     * say "this paragraph is outside the quote" — a list inside a quote is only
-     * ever recorded as an indented numbered paragraph.
+     * A quote ends only when the unit that follows is *deeper* than it, and a
+     * unit at a depth that is already open lands in the quote that is already
+     * there. Both halves matter: closing a quote at the depth that has just been
+     * entered would turn the second paragraph of a two-paragraph quote into a
+     * quote of its own, and a block quote spanning two paragraphs is about the
+     * most ordinary one there is.
      *
      * @param list<Block> $units
      * @return list<Block>
@@ -924,15 +935,18 @@ final class DocumentReader
         foreach ($units as $unit) {
             $depth = $this->quoteDepth($unit);
 
-            if ($depth !== null) {
-                // Everything this unit is not inside of closes first.
-                while ($frames !== [] && $frames[count($frames) - 1]['depth'] >= $depth) {
+            if ($depth === null) {
+                $result = $this->closeDeeperQuotes($frames, $result, $unit);
+            } else {
+                // Only the quotes this unit is not inside of close, and then only
+                // if this depth has nothing open at it yet.
+                while ($frames !== [] && $frames[count($frames) - 1]['depth'] > $depth) {
                     $result = $this->closeQuote($frames, $result);
                 }
 
-                $frames[] = ['depth' => $depth, 'blocks' => []];
-            } else {
-                $result = $this->closeDeeperQuotes($frames, $result, $unit);
+                if ($this->openQuoteDepth($frames) !== $depth) {
+                    $frames[] = ['depth' => $depth, 'blocks' => []];
+                }
             }
 
             $result = $this->add($frames, $result, $unit);
@@ -943,6 +957,16 @@ final class DocumentReader
         }
 
         return $result;
+    }
+
+    /**
+     * The depth of the innermost open quote, or null when none is open.
+     *
+     * @param list<array{depth: int, blocks: list<Block>}> $frames
+     */
+    private function openQuoteDepth(array $frames): ?int
+    {
+        return $frames === [] ? null : $frames[count($frames) - 1]['depth'];
     }
 
     /**

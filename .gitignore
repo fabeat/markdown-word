@@ -36,3 +36,6 @@
 .vscode/
 *.swp
 *~
+
+# Parallel agent worktrees
+.worktrees/

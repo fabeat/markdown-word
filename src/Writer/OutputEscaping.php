@@ -16,8 +16,12 @@ use PhpOffice\PhpWord\Settings;
  *
  * The previous value is restored afterwards so the host application's own
  * settings are left as they were found.
+ *
+ * The name says which side of the library this belongs to, since
+ * {@see \MarkdownWord\Reverse\Escaping} is about escaping Markdown text and
+ * nothing to do with it.
  */
-final class Escaping
+final class OutputEscaping
 {
     /**
      * @template T

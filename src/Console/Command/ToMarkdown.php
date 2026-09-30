@@ -28,7 +28,13 @@ final class ToMarkdown extends BaseCommand
         $input = $command->input();
         $output = $this->outputPath($command, '.md');
 
-        $this->application->writeResult($output, $this->convert($command, $input, $output));
+        $markdown = $this->convert($command, $input, $output);
+
+        // Reading and converting the document is the slow part of a run, so the
+        // output is looked at again here rather than trusted from before it.
+        $this->guardAgainstOverwrite($input, $output);
+
+        $this->application->writeResult($output, $markdown);
 
         $this->report($input, $output);
 
@@ -49,14 +55,16 @@ final class ToMarkdown extends BaseCommand
      * Read the document and return its Markdown.
      *
      * A `.docx` is a `zip` archive, and reading one from memory means writing it
-     * to a scratch file first, so a document that is already on disk is read
-     * where it lies. Only standard input — which has no path to read — pays for
-     * the round trip.
+     * to a scratch file first. The document is read as a string whichever way it
+     * arrived — a file on disk is read into memory rather than opened where it
+     * lies, because `readInput()` hands back the contents either way — so both
+     * branches pay for that round trip, and the only thing the file's own path
+     * is good for is the direction check the application has already made.
      */
     private function convert(CommandLine $command, ?string $input, string $output): string
     {
-        // The document is named once, in the constructor, and converting it is
-        // then the one verb both directions share.
+        // The document is read once, here, and converting it is then the one verb
+        // both directions share.
         $reader = $this->application->reader($this->readingOptions($command), $this->readDocument($input));
 
         return $this->withMedia($command, $output, static fn (): string => $reader->convert());
@@ -95,7 +103,9 @@ final class ToMarkdown extends BaseCommand
 
         if ($previous === false || !@chdir($directory)) {
             // The Markdown still has to be written, so the images are left where
-            // the reader puts them and the reference is made absolute instead.
+            // the reader puts them and the reference it writes is used as it
+            // comes out — relative to the working directory it ran in, which is
+            // where the image was found.
             return $read();
         }
 

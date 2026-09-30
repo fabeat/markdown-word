@@ -19,6 +19,13 @@ use ZipArchive;
  * numbering definitions that say what a `w:numId` means — and this class
  * hands them over as parsed documents without leaking the archive into the
  * rest of the code.
+ *
+ * The archive is not this library's, and a zip is a container format that says
+ * how its contents are laid out and nothing about how much room they will take
+ * up: forty kilobytes of a document part is forty megabytes of paragraph, and
+ * the entry count is whatever the writer felt like. So what is read is bounded
+ * by {@see Options} before it is inflated, and the archive is opened
+ * consistently rather than as far as the bytes happen to stretch.
  */
 final class Package
 {
@@ -34,37 +41,34 @@ final class Package
 
     private bool $closed = false;
 
-    private function __construct(private readonly \ZipArchive $zip)
-    {
+    private function __construct(
+        private readonly \ZipArchive $zip,
+        private readonly Options $options = new Options(),
+    ) {
     }
 
-    public static function open(string $path): self
+    public static function open(string $path, Options $options = new Options()): self
     {
-        $zip = new ZipArchive();
-
-        if ($zip->open($path) !== true) {
-            throw new UnreadableDocument(sprintf('Unable to open "%s" as a zip archive.', $path));
-        }
-
-        return new self($zip);
+        return self::openArchive(new ZipArchive(), $path, $options);
     }
 
     /**
      * Open a document held in memory rather than in a file.
      */
-    public static function fromString(string $bytes): self
+    public static function fromString(string $bytes, Options $options = new Options()): self
     {
         $path = self::writeScratchFile($bytes);
 
-        $zip = new ZipArchive();
-
-        if ($zip->open($path) !== true) {
+        try {
+            $package = self::openArchive(new ZipArchive(), $path, $options);
+        } catch (\Throwable $failure) {
+            // Nothing took ownership of the scratch file, so it is removed here
+            // rather than being left for a clean-up that is never registered.
             @unlink($path);
 
-            throw new UnreadableDocument('The given bytes are not a zip archive.');
+            throw $failure;
         }
 
-        $package = new self($zip);
         $package->scratchPath = $path;
 
         return $package;
@@ -113,7 +117,7 @@ final class Package
      * The relationship targets of the document part, keyed by relationship id.
      *
      * A relationship is how Word refers to something that is not inline text: a
-     * hyperlink's destination, an image's file, a footnote.
+     * hyperlink's destination, an image's file.
      *
      * @return array<string, string>
      */
@@ -147,9 +151,59 @@ final class Package
      */
     public function contentsOf(string $part): ?string
     {
-        $contents = $this->zip->getFromName($part);
+        $contents = $this->read($part);
 
         return $contents === false ? null : $contents;
+    }
+
+    private static function openArchive(ZipArchive $zip, string $path, Options $options): self
+    {
+        // `CHECKCONS` refuses an archive whose central directory disagrees with
+        // its own contents, which is a document assembled to be read as something
+        // it is not.
+        if ($zip->open($path, ZipArchive::CHECKCONS) !== true) {
+            throw new UnreadableDocument(sprintf('Unable to open "%s" as a zip archive.', $path));
+        }
+
+        $package = new self($zip, $options);
+
+        if ($zip->numFiles > $options->maxEntries) {
+            $package->close();
+
+            throw new UnreadableDocument(sprintf(
+                'The document has %d parts in it, which is more entries than the %d allowed.',
+                $zip->numFiles,
+                $options->maxEntries,
+            ));
+        }
+
+        return $package;
+    }
+
+    /**
+     * The bytes of a part, once it is known to be small enough to hold.
+     *
+     * The size is the one the archive's own central directory declares, which
+     * costs one lookup and no decompression. A part that lies about it downward
+     * does not get past the check the archive was opened with: `CHECKCONS` reads
+     * the central directory against the entries and refuses the archive before
+     * a part of it is read, so what is measured here is what comes back.
+     */
+    private function read(string $name): string|false
+    {
+        $stat = $this->zip->statName($name);
+        $size = is_array($stat) ? (int) ($stat['size'] ?? 0) : 0;
+
+        if ($size > $this->options->maxPartBytes) {
+            throw new UnreadableDocument(sprintf(
+                'The part "%s" claims to be %d bytes uncompressed, which is larger than the %d allowed.',
+                $name,
+                $size,
+                $this->options->maxPartBytes,
+            ));
+        }
+
+        return $this->zip->getFromName($name);
     }
 
     private function part(string $name, bool $required = false): ?\DOMDocument
@@ -158,7 +212,7 @@ final class Package
             return $this->parts[$name];
         }
 
-        $xml = $this->zip->getFromName($name);
+        $xml = $this->read($name);
 
         if ($xml === false) {
             if ($required) {
@@ -184,14 +238,10 @@ final class Package
     /**
      * Write the bytes to a scratch file so the archive can be opened.
      *
-     * `ext-zip` only opens files, so a document in memory has to land on disk
-     * for a moment. The file goes to the system temp directory and is removed
-     * when the package is closed, so nothing is left behind.
-     *
-     * The system temp directory and not a directory beside this file, because a
-     * library has no business writing into the tree it was installed in: that
-     * would drop a `tmp` directory into somebody's `vendor/`, and inside a phar
-     * the install directory is a read-only archive, so it would not work at all.
+     * `ext-zip` only opens files, and a library has no business writing into the
+     * tree it was installed in, so a document in memory goes to the system temp
+     * directory — which is also the only place that is writable when the
+     * install is a read-only phar.
      */
     private static function writeScratchFile(string $bytes): string
     {

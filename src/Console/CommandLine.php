@@ -19,8 +19,9 @@ use function substr;
  * to interpret raw strings, so an unknown or malformed option is reported in one
  * place, in a message that names the option.
  *
- * Three spellings are accepted for every option, which is what a person at a
- * terminal expects:
+ * A value may be written three ways, which is what a person at a terminal
+ * expects, while a flag takes two of them — it is on or off, so there is
+ * nothing for a third spelling to carry:
  *
  * ```text
  * --output report.docx
@@ -35,7 +36,7 @@ final class CommandLine
 {
     /**
      * @param array<string, string>        $values   Options that take a value.
-     * @param array<string, string>        $flags    Options that are simply on or off.
+     * @param array<string, true>          $flags    Options that are simply on or off.
      * @param list<string>                 $repeated Options that may be given more than once.
      * @param list<string>                 $operands Everything that was not an option.
      */
@@ -60,7 +61,8 @@ final class CommandLine
      *        these is nearly always a slip rather than a typo, so it is worth
      *        saying which command it does belong to.
      *
-     * @throws ConsoleException on an unknown option or a missing value.
+     * @throws ConsoleException on an unknown option, a missing value, or a value
+     *         given to an option that takes none.
      */
     public static function parse(
         array $argv,

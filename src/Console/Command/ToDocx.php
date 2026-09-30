@@ -12,7 +12,7 @@ use MarkdownWord\Console\ConsoleException;
 use ZipArchive;
 
 /**
- * `md2word to-docx` — Markdown in, a Word document out.
+ * `mdword to-docx` — Markdown in, a Word document out.
  */
 final class ToDocx extends BaseCommand
 {
@@ -44,18 +44,37 @@ final class ToDocx extends BaseCommand
 
         if ($template === null) {
             $this->rejectWithoutTemplate($command);
-            $this->application->converter($config, $markdown)->convert($output === '-' ? null : $output);
-
-            if ($output === '-') {
-                $this->application->writeResult($output, $this->application->converter($config, $markdown)->convert());
-            }
+            $this->convert($config, $markdown, $input, $output);
         } else {
-            $this->intoTemplate($markdown, $template, $command, $config, $output);
+            $this->intoTemplate($markdown, $template, $command, $config, $input, $output);
         }
 
         $this->report($input, $output);
 
         return Application::SUCCESS;
+    }
+
+    /**
+     * The conversion itself, exactly once whichever way the result is going.
+     *
+     * The two are exclusive because a run's worth of work asked for twice is
+     * still twice the work: `-o -` used to convert the whole document, throw
+     * the bytes away and build a second converter to do it all again, on the one
+     * path the usage text advertises for `| pbcopy`.
+     */
+    private function convert(Configuration $config, string $markdown, ?string $input, string $output): void
+    {
+        $this->guardAgainstOverwrite($input, $output);
+
+        $converter = $this->application->converter($config, $markdown);
+
+        if ($output === '-') {
+            $this->application->writeResult($output, $converter->convert());
+
+            return;
+        }
+
+        $converter->convert($output);
     }
 
     protected static function other(): string
@@ -158,6 +177,7 @@ final class ToDocx extends BaseCommand
         string $path,
         CommandLine $command,
         Configuration $config,
+        ?string $input,
         string $output,
     ): void {
         $values = [];
@@ -175,6 +195,10 @@ final class ToDocx extends BaseCommand
 
         $template = $this->application->template($path, $config, $values);
         $template->insert($region, $markdown);
+
+        // Filling the region is the slow part of a run, so the output is looked
+        // at again here rather than trusted from before it.
+        $this->guardAgainstOverwrite($input, $output);
 
         if ($output === '-') {
             $this->application->writeResult($output, $template->toString());

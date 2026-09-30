@@ -14,8 +14,14 @@ use MarkdownWord\Console\ConsoleException;
  * Both are the same command with the ends swapped, and most of a run is the same
  * either way: take the options, deal with `--help`, check the argument says
  * nothing contradictory, work out where the result is going, and refuse to write
- * it over the file it came from. Only the conversion in the middle differs, so
- * that is all a subclass writes.
+ * it over the file it came from.
+ *
+ * What a subclass adds is its own end of the conversion and the options that
+ * configure it. `ToDocx` lays the style, image and table-width options over the
+ * configuration, and reads `--template`, `--region` and `--define`. `ToMarkdown`
+ * reads `--media`, `--line-ending` and the heading, fence and table-header
+ * switches, and has to take the images out beside the Markdown rather than beside
+ * the document it came from.
  */
 abstract class BaseCommand implements Command
 {
@@ -70,25 +76,140 @@ abstract class BaseCommand implements Command
         $input = $command->input();
         $output = $this->application->outputPath($input, $extension, $command->value('output'));
 
-        if ($input === null || $input === '-' || $output === '-') {
-            return $output;
-        }
-
-        $from = realpath($input);
-        $to = realpath(dirname($output) . '/' . basename($output));
-
-        if ($from !== false && $to !== false && $from === $to) {
-            throw new ConsoleException(
-                sprintf('The result would overwrite the input file "%s".', $input),
-                ['Pass --output to write it somewhere else.'],
-            );
-        }
+        $this->guardAgainstOverwrite($input, $output);
 
         return $output;
     }
 
     /**
-     * Say on standard error what a run converted and where it put it.
+     * Refuse a result that would land on the file it was made from.
+     *
+     * Called twice, and the second call is the point of it. The first happens
+     * here, before the conversion, so that a run which is going to be refused
+     * stops before spending the work. But a conversion is not instant, and
+     * anything with write access to the output directory can put the input's own
+     * inode at the output path in between — so each command looks again at the
+     * last moment, immediately before the write.
+     *
+     * That narrows the window rather than closing it: what is left is the space
+     * between the check and the write itself. Closing it needs the write to be
+     * conditional on what it is about to replace, which `rename()` cannot
+     * promise and `file_put_contents()` certainly does not, so a command line
+     * tool on its own has nothing better to offer than a last look.
+     */
+    final protected function guardAgainstOverwrite(?string $input, string $output): void
+    {
+        // Nothing to protect: the input is a stream, or the result is one, and
+        // a stream is not a file the run can land on.
+        if ($input === null || $input === '-' || $output === '-') {
+            return;
+        }
+
+        if (!self::namesTheInput($input, $output)) {
+            return;
+        }
+
+        throw new ConsoleException(
+            sprintf('The result would overwrite the input file "%s".', $input),
+            ['Pass --output to write it somewhere else.'],
+        );
+    }
+
+    /**
+     * Whether the two paths are one file, whatever they happen to be called.
+     *
+     * By inode rather than by name, because a name is not the file: on a
+     * case-insensitive filesystem — APFS and NTFS, which is what most macOS and
+     * Windows machines have — `Notes.md` and `notes.md` are two spellings of one
+     * inode, and `realpath()` hands each back in the case it was written in, so
+     * the two strings never match. A hard link is two paths to one inode for
+     * the same reason, and a symlink to the input is a third.
+     *
+     * A path that is not there cannot be the input, however it is spelled:
+     * there is nothing at it to lose. The one shape still worth catching is
+     * `sub/../notes.md`, which names the input with a detour in front of it —
+     * and the detour is exactly why the comparison cannot be left to
+     * `realpath()`, which returns nothing at all for a path whose directory is
+     * missing. So the two are compared as text, with the `.` and `..` segments
+     * taken out by hand.
+     */
+    private static function namesTheInput(string $input, string $output): bool
+    {
+        $from = realpath($input);
+        $to = realpath($output);
+
+        if ($from !== false && $to !== false) {
+            return self::isTheSameFile($from, $to);
+        }
+
+        // The resolved path goes through the same normaliser too, which changes
+        // nothing about it except the separators on Windows.
+        return $from !== false && self::withoutDetours($output) === self::withoutDetours($from);
+    }
+
+    /**
+     * Whether two paths that both exist are one file.
+     */
+    private static function isTheSameFile(string $left, string $right): bool
+    {
+        // Silenced because the path can be replaced by a directory between the
+        // two `realpath()` calls above and this one, and refusing is still the
+        // right answer when it has.
+        $one = @stat($left);
+        $other = @stat($right);
+
+        return $one !== false
+            && $other !== false
+            && $one['dev'] === $other['dev']
+            && $one['ino'] === $other['ino'];
+    }
+
+    /**
+     * A path as it would be written out, with the `.` and `..` segments taken
+     * out and a relative one anchored where it was written from.
+     *
+     * Textual, and so blind to one shape: where a `..` follows a symbolic link
+     * the filesystem keeps the link's own directory and this throws the name
+     * away. The cost of getting that wrong is a refusal that was not necessary,
+     * which is the cheaper of the two mistakes to make in a guard.
+     */
+    private static function withoutDetours(string $path): string
+    {
+        if (DIRECTORY_SEPARATOR === '\\') {
+            $path = str_replace('\\', '/', $path);
+        }
+
+        $prefix = preg_match('#^(?:[A-Za-z]:)?/#', $path, $matches) === 1 ? $matches[0] : '';
+        $parts = [];
+
+        foreach (explode('/', $path) as $part) {
+            if ($part === '' || $part === '.') {
+                continue;
+            }
+
+            if ($part === '..') {
+                array_pop($parts);
+
+                continue;
+            }
+
+            $parts[] = $part;
+        }
+
+        $joined = implode('/', $parts);
+
+        if ($prefix !== '') {
+            return $prefix . $joined;
+        }
+
+        $working = getcwd();
+
+        return $working === false ? $joined : $working . '/' . $joined;
+    }
+
+    /**
+     * {@see Application::report()}, forwarded: the same sentence on the same
+     * stream, so a command does not have to know how the application says it.
      */
     final protected function report(?string $input, string $output): void
     {

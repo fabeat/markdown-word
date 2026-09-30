@@ -42,11 +42,24 @@ final class Application
 
     public const VERSION = '1.0.0';
 
-    /** Exit code for a run that converted something. */
+    /** Exit code for a run that converted something, and for a run that only answered a question. */
     public const SUCCESS = 0;
 
-    /** Exit code for a run stopped by something the user can put right. */
+    /** Exit code for a run that did not finish, whether the user can put it right or it is a defect. */
     public const FAILURE = 1;
+
+    /**
+     * The commands, by the name they are typed under.
+     *
+     * The one list the dispatcher, the usage text and the alias table all read,
+     * so a new direction is added in one place rather than in three.
+     *
+     * @var array<string, class-string<Command>>
+     */
+    private const COMMANDS = [
+        'to-docx' => ToDocx::class,
+        'to-markdown' => ToMarkdown::class,
+    ];
 
     /** @var resource */
     private $out;
@@ -84,8 +97,20 @@ final class Application
     {
         // Installed for the whole run rather than around each write: a document
         // is written in several places, and the filter has to span all of them.
-        UpstreamDeprecations::install();
+        // Wrapped rather than installed and taken off again, because a host that
+        // installed the filter itself before embedding this keeps it: taking it
+        // off would leave the rest of that process with nothing between it and
+        // PHPWord's warnings.
+        return UpstreamDeprecations::quietly(fn (): int => $this->runQuietly($argv));
+    }
 
+    /**
+     * The run itself, with the filter already in place.
+     *
+     * @param list<string> $argv
+     */
+    private function runQuietly(array $argv): int
+    {
         try {
             return $this->dispatch($argv);
         } catch (ConsoleException $e) {
@@ -100,13 +125,13 @@ final class Application
             // Anything arriving here is a defect rather than a mistake, so it is
             // reported in full: the message, the type, and where it happened.
             // A stack trace would be noise, since the phar has no source paths
-            // that mean anything to the person reading it.
+            // that mean anything to the person reading it. The exit code is the
+            // same as for a mistake, since a program that cannot report the
+            // difference has no better one to offer.
             $this->error(sprintf('%s: %s', $e::class, $e->getMessage()));
             $this->error(sprintf('  at %s:%d', $e->getFile(), $e->getLine()));
 
             return self::FAILURE;
-        } finally {
-            UpstreamDeprecations::restore();
         }
     }
 
@@ -132,12 +157,10 @@ final class Application
         // The direction is a command when it is asked for and worked out from the
         // file when it is not, so `mdword notes.md` does the obvious thing and a
         // script can still be explicit.
-        if ($command === 'to-docx') {
-            return (new ToDocx($this))->execute(array_slice($argv, 1));
-        }
+        if (isset(self::COMMANDS[$command])) {
+            $class = self::COMMANDS[$command];
 
-        if ($command === 'to-markdown') {
-            return (new ToMarkdown($this))->execute(array_slice($argv, 1));
+            return (new $class($this))->execute(array_slice($argv, 1));
         }
 
         // Nothing to strip: whatever is in front is either the file to read or an
@@ -145,16 +168,6 @@ final class Application
         // word that is not a file is reported as a missing file rather than as an
         // unknown command, because a file may be called anything at all.
         return $this->runInDirection($argv);
-    }
-
-    /**
-     * The names the tool reserves for itself, so they are not mistaken for files.
-     *
-     * @return list<string>
-     */
-    private static function isKnownCommand(string $name): bool
-    {
-        return in_array($name, ['to-docx', 'to-markdown', 'help', 'version'], true);
     }
 
     /**
@@ -195,9 +208,9 @@ final class Application
             }
         }
 
-        return $direction === 'to-docx'
-            ? (new ToDocx($this))->execute($argv)
-            : (new ToMarkdown($this))->execute($argv);
+        $class = self::COMMANDS[$direction];
+
+        return (new $class($this))->execute($argv);
     }
 
     private static function directionFor(string $asked): string
@@ -257,10 +270,13 @@ final class Application
      */
     public static function aliasMap(): array
     {
-        return array_merge(
-            ToDocx::spec()['aliases'],
-            ToMarkdown::spec()['aliases'],
-        );
+        $aliases = [];
+
+        foreach (self::COMMANDS as $class) {
+            $aliases = array_merge($aliases, $class::spec()['aliases']);
+        }
+
+        return $aliases;
     }
 
     /**
@@ -315,8 +331,11 @@ final class Application
     /**
      * The text `mdword help` prints.
      *
-     * Built from the same option lists the parser is given, so the help and the
-     * accepted syntax cannot drift apart.
+     * One section per command, taken from {@see self::COMMANDS}, and the option
+     * table in it is the one each command publishes for readers. The parser is
+     * given a different list, the specification; a test diffs the two in both
+     * directions, so the help cannot offer an option the parser rejects without
+     * the suite noticing.
      */
     public function usage(): string
     {
@@ -341,7 +360,7 @@ final class Application
             '',
         ];
 
-        foreach ([ToDocx::class, ToMarkdown::class] as $class) {
+        foreach (self::COMMANDS as $class) {
             foreach (self::describeCommand($class) as $line) {
                 $lines[] = $line;
             }
@@ -363,8 +382,8 @@ final class Application
     /**
      * The heading and option table for one command.
      *
-     * The option list is the command's own, the same one its parser is built
-     * from, so the help cannot describe something the command will not accept.
+     * The option list is the command's own, published for readers, and the
+     * parser is built from its other list; a test holds the two in step.
      *
      * @param class-string<Command> $command
      * @return list<string>
@@ -408,8 +427,9 @@ final class Application
     }
 
     // ------------------------------------------------------------- services
-    // Used by the commands. They live here so both the commands and any caller
-    // embedding this in their own command line share one implementation.
+    // Used by the commands, and public so that a caller embedding this in a
+    // command line of their own can use the same implementations rather than
+    // write their own.
 
     /**
      * The configuration for a run: the one a `--config` file names, with
@@ -499,8 +519,28 @@ final class Application
             throw new ConsoleException(sprintf('Unable to create the directory "%s".', $directory));
         }
 
-        if (file_put_contents($path, $contents) === false) {
+        // Staged beside the target and renamed, because `file_put_contents()`
+        // opens an existing file with O_TRUNC: writing to a name that is a hard
+        // link to the input would truncate the input itself, which the guard in
+        // `BaseCommand` cannot see through.
+        $temp = tempnam($directory, '.mdword_');
+
+        if ($temp === false) {
             throw new ConsoleException(sprintf('Unable to write "%s".', $path));
+        }
+
+        try {
+            if (@file_put_contents($temp, $contents) === false) {
+                throw new ConsoleException(sprintf('Unable to write "%s".', $path));
+            }
+
+            if (!@rename($temp, $path)) {
+                throw new ConsoleException(sprintf('Unable to write "%s".', $path));
+            }
+        } finally {
+            if (is_file($temp)) {
+                @unlink($temp);
+            }
         }
     }
 
@@ -593,9 +633,11 @@ final class Application
     /**
      * Write to standard output.
      *
-     * Used for anything that is part of the result — the help text and the
-     * converted document alike — rather than reaching for `STDOUT` directly,
-     * which is what makes a run drivable from a test.
+     * For the help, which is the only thing that goes out this way: a converted
+     * document leaves through {@see self::writeResult()}, which writes to the
+     * result path or hands the bytes straight to the stream. Either way it goes
+     * through `write()` rather than reaching for `STDOUT`, which is what makes a
+     * run drivable from a test.
      */
     public function print(string $text): void
     {

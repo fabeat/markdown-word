@@ -14,6 +14,13 @@ namespace MarkdownWord\Reverse;
  *
  * Properties are inherited through `w:basedOn`, and a paragraph's own direct
  * formatting wins over both, which is the same precedence Word applies.
+ *
+ * A `basedOn` chain is bounded by {@see self::__construct()}'s `$maxStyleDepth`.
+ * The default is the cap `Options` is expected to expose as `maxStyleDepth`, and
+ * the caller in `WordToMarkdown::reader()` is expected to pass it through; until
+ * it does, the default stands and the bound still holds. Nothing here throws when
+ * the cap is reached: a chain deeper than anything Word writes is legal, so the
+ * answer is the neutral one rather than a refusal to convert.
  */
 final class StyleTable
 {
@@ -29,7 +36,27 @@ final class StyleTable
     /** @var array<string, array{indent: int, alignment: string}> */
     private array $resolved = [];
 
-    public function __construct(?\DOMDocument $styles)
+    /**
+     * The styles whose resolution is in progress, as a set.
+     *
+     * A property rather than an argument, because an argument is copied into
+     * every frame: the copy is what made a deep `basedOn` chain cost memory
+     * quadratic in its own depth. Shared, it is a plain cycle guard.
+     *
+     * @var array<string, true>
+     */
+    private array $resolving = [];
+
+    /**
+     * @param \DOMDocument|null $styles        `word/styles.xml`.
+     * @param int               $maxStyleDepth How many styles in a `basedOn`
+     *        chain contribute their own properties. Past the cap a chain
+     *        resolves to the safe default rather than being followed, so a
+     *        document that nests styles absurdly deeply still converts instead
+     *        of exhausting memory. Word itself nests a handful deep, so the
+     *        default leaves a very wide margin.
+     */
+    public function __construct(?\DOMDocument $styles, private readonly int $maxStyleDepth = 32)
     {
         if ($styles === null) {
             return;
@@ -70,36 +97,61 @@ final class StyleTable
     }
 
     /**
+     * The properties a style contributes, its own taking precedence over the ones
+     * it inherits.
+     *
+     * @param int $depth How many styles of the chain have already contributed.
      * @return array{indent: int, alignment: string}
      */
-    private function resolve(string $id, array $seen = []): array
+    private function resolve(string $id, int $depth = 0): array
     {
         if (isset($this->resolved[$id])) {
             return $this->resolved[$id];
         }
 
-        // A style that refers to itself, directly or through a chain, would
-        // otherwise recurse forever.
-        if (isset($seen[$id]) || !isset($this->styles[$id])) {
+        // Three ways of stopping. A style that refers to itself, directly or
+        // through a chain, would otherwise recurse forever. A chain longer than
+        // the cap is legal but is not something Word writes, and following it
+        // all the way is what turns a small styles part into an unbounded amount
+        // of work. A style id that is not in the part at all is a dangling
+        // reference, which is what a document edited by hand or by a tool that
+        // only wrote half of what it changed contains.
+        //
+        // All three answer the same way: no indentation and no alignment, which
+        // is what a style that says neither of those things contributes.
+        if (
+            isset($this->resolving[$id])
+            || $depth >= $this->maxStyleDepth
+            || !isset($this->styles[$id])
+        ) {
             return ['indent' => 0, 'alignment' => ''];
         }
 
-        $seen[$id] = true;
-        $style = $this->styles[$id];
-        $xpath = new \DOMXPath($style->ownerDocument ?? new \DOMDocument());
-        $xpath->registerNamespace('w', self::W_NS);
+        $this->resolving[$id] = true;
 
-        $parent = $style->getElementsByTagNameNS(self::W_NS, 'basedOn')->item(0);
-        $inherited = $parent instanceof \DOMElement
-            ? $this->resolve($parent->getAttributeNS(self::W_NS, 'val'), $seen)
-            : ['indent' => 0, 'alignment' => ''];
+        try {
+            $style = $this->styles[$id];
+            $xpath = new \DOMXPath($style->ownerDocument ?? new \DOMDocument());
+            $xpath->registerNamespace('w', self::W_NS);
 
-        $own = $this->ownProperties($xpath, $style);
+            $parent = $style->getElementsByTagNameNS(self::W_NS, 'basedOn')->item(0);
+            $inherited = $parent instanceof \DOMElement
+                ? $this->resolve($parent->getAttributeNS(self::W_NS, 'val'), $depth + 1)
+                : ['indent' => 0, 'alignment' => ''];
 
-        return $this->resolved[$id] = [
-            'indent' => $own['indent'] ?? $inherited['indent'],
-            'alignment' => $own['alignment'] ?? $inherited['alignment'],
-        ];
+            $own = $this->ownProperties($xpath, $style);
+
+            return $this->resolved[$id] = [
+                'indent' => $own['indent'] ?? $inherited['indent'],
+                'alignment' => $own['alignment'] ?? $inherited['alignment'],
+            ];
+        } finally {
+            // The guard is about the path being walked, not about the style, so a
+            // style is released once its own resolution is done. Leaving it
+            // marked would make every later style that inherits from it look like
+            // a cycle.
+            unset($this->resolving[$id]);
+        }
     }
 
     /**
