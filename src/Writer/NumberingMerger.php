@@ -6,11 +6,13 @@ namespace MarkdownWord\Writer;
 
 use DOMDocument;
 use DOMElement;
+use MarkdownWord\Exception\FileNotWritable;
+use MarkdownWord\Exception\MalformedDocument;
+use MarkdownWord\Exception\UnsupportedElement;
 use PhpOffice\PhpWord\Element\AbstractElement;
 use PhpOffice\PhpWord\IOFactory;
 use PhpOffice\PhpWord\PhpWord;
 use PhpOffice\PhpWord\Shared\XMLWriter;
-use RuntimeException;
 use ZipArchive;
 
 /**
@@ -112,7 +114,7 @@ final class NumberingMerger
         $writerClass = 'PhpOffice\\PhpWord\\Writer\\Word2007\\Element\\' . $this->shortName($element);
 
         if (!class_exists($writerClass)) {
-            throw new RuntimeException(sprintf(
+            throw new UnsupportedElement(sprintf(
                 'PHPWord has no Word 2007 writer for the element "%s".',
                 $element::class,
             ));
@@ -187,7 +189,7 @@ final class NumberingMerger
         $zip = new ZipArchive();
 
         if ($zip->open($docxPath) !== true) {
-            throw new RuntimeException(sprintf('Unable to open "%s".', $docxPath));
+            throw new FileNotWritable(sprintf('Unable to open "%s" for writing.', $docxPath));
         }
 
         try {
@@ -359,7 +361,7 @@ final class NumberingMerger
         $path = tempnam(sys_get_temp_dir(), 'mdword_num_');
 
         if ($path === false) {
-            throw new RuntimeException('Unable to create a temporary file for the numbering part.');
+            throw new FileNotWritable('Unable to create a temporary file for the numbering part.');
         }
 
         try {
@@ -407,7 +409,7 @@ final class NumberingMerger
         libxml_use_internal_errors($previous);
 
         if (!$loaded) {
-            throw new RuntimeException('The document contains invalid XML.');
+            throw new MalformedDocument('The document contains invalid XML.');
         }
     }
 

@@ -1,18 +1,23 @@
 name: phar
 
 on:
+  # On every push to the default branch as well as on a tag, so that the badge
+  # has something to report — a workflow that only runs on a tag leaves its badge
+  # grey until somebody cuts a release, which is a badge nobody can read. It also
+  # means a broken archive build is found long before a release needs one.
   push:
+    branches: [main]
     tags: ['v*']
   workflow_dispatch:
-  # Building on a pull request catches a broken build before it reaches a tag,
-  # without spending a release on it.
+  # Building on a pull request catches a broken build before it reaches the
+  # default branch, without spending a run on every push.
   pull_request:
     paths:
       - 'src/**'
       - 'bin/**'
       - 'composer.json'
       - 'composer.lock'
-      - 'tools/build-phar.php'
+      - 'tools/**'
       - '.github/workflows/phar.yml'
 
 concurrency:
@@ -27,9 +32,9 @@ jobs:
     name: build mdword.phar
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
           # One version, so the artifact is the same file however many times it is
           # built. The phar carries no dev dependencies, so the test framework's
@@ -37,6 +42,14 @@ jobs:
           php-version: '8.3'
           coverage: none
           tools: composer:v2
+
+      # The build script drives the tool's own class to read its name and version,
+      # so it needs the autoloader even though the archive's dependencies are
+      # resolved separately below. Runtime only: the test framework needs PHP 8.4
+      # and this job deliberately runs on 8.3, which is the oldest version that can
+      # build the archive.
+      - name: Install the autoloader
+        run: composer install --no-dev --prefer-dist --no-interaction --no-progress
 
       - name: Build
         # The script re-runs itself with phar.readonly off, so the flag in
@@ -54,7 +67,7 @@ jobs:
       # One file, and nothing else beside it. A `build/` full of staging
       # directories would turn the download into a tarball and defeat the point.
       - name: Upload the phar
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: mdword-phar
           path: build/mdword.phar
@@ -63,7 +76,7 @@ jobs:
 
       - name: Attach the phar to the release
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: build/mdword.phar
           # The phar's own version is the single source of truth for what this

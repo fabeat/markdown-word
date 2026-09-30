@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace MarkdownWord\Reverse;
 
-use RuntimeException;
+use MarkdownWord\Exception\FileNotWritable;
+use MarkdownWord\Exception\MalformedDocument;
+use MarkdownWord\Exception\UnreadableDocument;
 use ZipArchive;
 
 /**
@@ -40,7 +42,7 @@ final class Package
         $zip = new ZipArchive();
 
         if ($zip->open($path) !== true) {
-            throw new RuntimeException(sprintf('Unable to open "%s" as a zip archive.', $path));
+            throw new UnreadableDocument(sprintf('Unable to open "%s" as a zip archive.', $path));
         }
 
         return new self($zip);
@@ -58,7 +60,7 @@ final class Package
         if ($zip->open($path) !== true) {
             @unlink($path);
 
-            throw new RuntimeException('The given bytes are not a zip archive.');
+            throw new UnreadableDocument('The given bytes are not a zip archive.');
         }
 
         $package = new self($zip);
@@ -149,11 +151,6 @@ final class Package
         return $contents === false ? null : $contents;
     }
 
-    public function has(string $part): bool
-    {
-        return $this->zip->locateName($part) !== false;
-    }
-
     private function part(string $name, bool $required = false): ?\DOMDocument
     {
         if (array_key_exists($name, $this->parts)) {
@@ -164,7 +161,7 @@ final class Package
 
         if ($xml === false) {
             if ($required) {
-                throw new RuntimeException(sprintf('The document is missing "%s".', $name));
+                throw new MalformedDocument(sprintf('The document is missing "%s".', $name));
             }
 
             return $this->parts[$name] = null;
@@ -179,7 +176,7 @@ final class Package
 
         if (!$loaded) {
             if ($required) {
-                throw new RuntimeException(sprintf('"%s" is not valid XML.', $name));
+                throw new MalformedDocument(sprintf('"%s" is not valid XML.', $name));
             }
 
             return $this->parts[$name] = null;
@@ -205,13 +202,13 @@ final class Package
         $directory = rtrim(sys_get_temp_dir(), '/') . '/mdword';
 
         if (!is_dir($directory) && !@mkdir($directory, 0o777, true) && !is_dir($directory)) {
-            throw new RuntimeException(sprintf('Unable to create the scratch directory "%s".', $directory));
+            throw new FileNotWritable(sprintf('Unable to create the scratch directory "%s".', $directory));
         }
 
         $path = $directory . '/mdword-' . bin2hex(random_bytes(8)) . '.docx';
 
         if (@file_put_contents($path, $bytes) === false) {
-            throw new RuntimeException(sprintf('Unable to write the document to "%s".', $directory));
+            throw new FileNotWritable(sprintf('Unable to write the document to "%s".', $directory));
         }
 
         return $path;

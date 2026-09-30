@@ -27,7 +27,7 @@ use MarkdownWord\Tests\Support\Scratch;
 function roundTrip(string $markdown, ?Configuration $config = null, ?ReverseOptions $options = null): string
 {
     $file = Scratch::path('reverse');
-    saveMarkdown($markdown, $file, $config);
+    saveDocument($markdown, $file, $config);
 
     return (new WordToMarkdown($file, $options ?? new ReverseOptions()))->convert();
 }

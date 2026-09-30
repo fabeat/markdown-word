@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace MarkdownWord;
 
+use MarkdownWord\Exception\FileNotWritable;
+use MarkdownWord\Exception\NothingToConvert;
 use MarkdownWord\Reverse\Block;
 use MarkdownWord\Reverse\DocumentReader;
 use MarkdownWord\Reverse\Inline;
@@ -12,7 +14,6 @@ use MarkdownWord\Reverse\NumberingTable;
 use MarkdownWord\Reverse\Options;
 use MarkdownWord\Reverse\Package;
 use MarkdownWord\Reverse\StyleTable;
-use RuntimeException;
 
 /**
  * Converts a Word document back into Markdown.
@@ -70,7 +71,7 @@ final class WordToMarkdown implements Converter
     public function convert(?string $target = null): string
     {
         if ($this->source === null) {
-            throw new RuntimeException(
+            throw new NothingToConvert(
                 'There is no document to convert. Give one to the constructor, '
                 . 'or the bytes to ' . self::class . '::toMarkdown().',
             );
@@ -159,7 +160,7 @@ final class WordToMarkdown implements Converter
         $directory = $this->options->mediaDirectory ?? '';
 
         if ($directory !== '' && !is_dir($directory) && !@mkdir($directory, 0o777, true) && !is_dir($directory)) {
-            throw new RuntimeException(sprintf('Unable to create the media directory "%s".', $directory));
+            throw new FileNotWritable(sprintf('Unable to create the media directory "%s".', $directory));
         }
 
         foreach ($this->mediaTargets($blocks) as $reference) {

@@ -43,7 +43,20 @@ if (ini_get('phar.readonly')) {
     exit($status);
 }
 
-require __DIR__ . '/../vendor/autoload.php';
+// The name and the version of the tool come from the class it drives, so the
+// project's own autoloader has to be loadable. Saying so plainly beats a fatal
+// error about a missing file, which is what this used to produce on a machine
+// with no `vendor/` — such as a fresh continuous integration runner.
+if (!is_file($autoloader = __DIR__ . '/../vendor/autoload.php')) {
+    fwrite(STDERR, "build:phar needs the project's dependencies for its autoloader.\n"
+        . "Run `composer install` first, or `composer install --no-dev` when you\n"
+        . "only want the runtime ones.\n\n"
+        . "Nothing has been written.\n");
+
+    exit(1);
+}
+
+require $autoloader;
 
 // ----------------------------------------------------------------- helpers
 
@@ -141,7 +154,13 @@ fwrite(STDOUT, "\n  Runtime dependencies\n");
 
 // The manifest and the lock file are copied verbatim, so the lock's content hash
 // still matches and the exact versions this project was tested against are what
-// go into the archive. Only the install is narrowed, to the runtime ones.
+// go into the archive.
+//
+// `--no-dev` then installs only the runtime ones *without re-resolving*, which
+// is also what lets this run on a PHP older than the test framework's floor: the
+// development requirements are read from the lock rather than resolved, and
+// skipped. `composer update --no-dev` would not do that — it still resolves them,
+// and fails outright on a version the framework does not support.
 copyInto($root . '/composer.json', $deps);
 copyInto($root . '/composer.lock', $deps);
 

@@ -1,10 +1,11 @@
 # Dependencies, installed by Composer.
 /vendor/
 
-# Not committed: this is a library, and a lock file would only pin the versions
-# for whoever happens to clone it. Continuous integration resolves them afresh, so
-# a new release of a dependency is tested the day it appears.
-/composer.lock
+# The lock file *is* committed, so a build is repeatable rather than resolving
+# whatever is newest that morning. The `dependencies` job in tests.yml resolves
+# afresh on a schedule, which is how a new release still gets tested.
+/composer.runtime.json
+/composer.runtime.lock
 
 # Everything the build produces.
 

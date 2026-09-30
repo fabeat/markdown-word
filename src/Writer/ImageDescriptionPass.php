@@ -7,7 +7,8 @@ namespace MarkdownWord\Writer;
 use DOMDocument;
 use DOMElement;
 use DOMXPath;
-use RuntimeException;
+use MarkdownWord\Exception\MalformedDocument;
+use MarkdownWord\Exception\UnreadableDocument;
 use ZipArchive;
 
 /**
@@ -45,7 +46,7 @@ final class ImageDescriptionPass
         $zip = new ZipArchive();
 
         if ($zip->open($docxPath) !== true) {
-            throw new RuntimeException(sprintf('Unable to open "%s" as a zip archive.', $docxPath));
+            throw new UnreadableDocument(sprintf('Unable to open "%s" as a zip archive.', $docxPath));
         }
 
         try {
@@ -81,7 +82,7 @@ final class ImageDescriptionPass
         libxml_use_internal_errors($previous);
 
         if (!$loaded) {
-            throw new RuntimeException('word/document.xml is not valid XML.');
+            throw new MalformedDocument('word/document.xml is not valid XML.');
         }
 
         $xpath = new DOMXPath($dom);
