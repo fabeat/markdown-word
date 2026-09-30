@@ -62,11 +62,11 @@ final class HyperlinkPass
     }
 
     /**
-     * Exposed for testing: transforms the two XML parts without touching a zip.
+     * Swap every placeholder run in the document part for a real hyperlink.
      *
      * @return array{document: string, rels: string}
      */
-    public function transform(string $documentXml, string $relsXml, int $nextId): array
+    private function transform(string $documentXml, string $relsXml, int $nextId): array
     {
         $index = [];
         foreach ($this->payloads as $payload) {
@@ -114,7 +114,7 @@ final class HyperlinkPass
 
     /**
      * @param  array<string, array{placeholder: string, url: string, title: ?string, runs: list<array{text: string, style: array<string, mixed>}>}>  $index
-     * @return array{url: string, title: ?string, runs: list<array{text: string, style: array<string, mixed>}>}|null
+     * @return array{placeholder: string, url: string, title: ?string, runs: list<array{text: string, style: array<string, mixed>}>}|null
      */
     private function match(string $value, array $index): ?array
     {
@@ -128,7 +128,7 @@ final class HyperlinkPass
     }
 
     /**
-     * @param  array{url: string, title: ?string, runs: list<array{text: string, style: array<string, mixed>}>}  $payload
+     * @param  array{placeholder: string, url: string, title: ?string, runs: list<array{text: string, style: array<string, mixed>}>}  $payload
      */
     private function buildHyperlink(\DOMDocument $dom, string $relId, array $payload): \DOMElement
     {
@@ -173,7 +173,7 @@ final class HyperlinkPass
     {
         $properties = $dom->createElementNS(self::W_NS, 'w:rPr');
 
-        foreach (['bold' => 'b', 'italics' => 'i', 'strikethrough' => 'strike'] as $key => $element) {
+        foreach (['bold' => 'b', 'italic' => 'i', 'strikethrough' => 'strike'] as $key => $element) {
             if (!empty($style[$key])) {
                 $properties->appendChild($dom->createElementNS(self::W_NS, 'w:' . $element));
             }
