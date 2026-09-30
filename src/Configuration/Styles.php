@@ -12,9 +12,9 @@ namespace MarkdownWord\Configuration;
  *
  * A styleId has no spaces even though the style's display name in the Word UI
  * does: the built-in heading styles are `Heading1`…`Heading6`, not
- * `Heading 1`. Because slots are plain names, you can point the renderer at the
- * styleIds of your own corporate template and get a pixel-perfect result without
- * touching a line of code.
+ * `Heading 1`. Because the slots are plain names, pointing the renderer at the
+ * styleIds of a template of your own is a configuration change rather than a
+ * change to the code.
  */
 final class Styles
 {
@@ -109,19 +109,19 @@ final class Styles
     /**
      * Resolve the style for a heading level.
      *
-     * This is the one place the level-to-slot-name mapping is written down. Three
-     * call sites compose it by hand instead, because each of them needs the name
-     * rather than a resolved style (`DocumentRenderer::renderHeading()`,
-     * `StyleRegistrar::register()` and `Configuration::withBuiltInHeadingStyles()`);
-     * `tests/Unit/styles-fixes.php` pins the constants to the composed names so
-     * the two sides cannot drift apart unnoticed in the meantime.
+     * This is the one place the level-to-slot-name mapping is written down. The name
+     * is composed by hand where it is needed rather than resolved —
+     * `DocumentRenderer::renderHeading()`, `StyleRegistrar::register()` and
+     * `Configuration::withBuiltInHeadingStyles()` — and
+     * `tests/Unit/styles-fixes.php` pins the constants to the composed names so the
+     * two sides cannot drift apart unnoticed in the meantime.
      *
      * A level explicitly set to `null` resolves to the paragraph style, so that a
-     * heading can be given up without the heading's own default spacing and size.
-     * Only an explicit `null`: the constructor merges the defaults in, so a level
-     * nobody mentioned always has a slot of its own, and treating "not
-     * configured" as "not mentioned" would resolve every heading to the paragraph
-     * style under the default configuration.
+     * heading can be given up without its own default spacing and size. Only an
+     * explicit `null`: the constructor merges the defaults in, so a level nobody
+     * mentioned always has a slot of its own, and treating "not configured" as
+     * "not mentioned" would resolve every heading to the paragraph style under the
+     * default configuration.
      *
      * @param int $level A heading level; anything outside 1-6 is clamped into it.
      */

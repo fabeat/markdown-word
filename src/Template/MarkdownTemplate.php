@@ -29,17 +29,14 @@ use PhpOffice\PhpWord\TemplateProcessor;
  * ${/body}
  * ```
  *
- * The region is cloned once per rendered block and the slot paragraph of each
- * clone is replaced. A plain `${name}` macro is for single-line values
- * ({@see self::set()}); a region whose slot is named differently repeats once per
- * row of data ({@see self::repeat()}).
+ * {@see self::insert()} clones the region once per rendered block and replaces the
+ * slot paragraph of each clone; {@see self::repeat()} clones it once per row and
+ * fills `${name#1}`…`${name#N}` instead. A plain `${name}` macro is for a single-line
+ * value ({@see self::set()}).
  *
- * Only a template that is not there is a {@see TemplateNotFound}. Every other way
- * this can fail is something to do with the disk — a staging file that cannot be
- * created, a directory that cannot be made, a document that cannot be written —
- * and those are a {@see FileNotWritable}, which is the difference between the
- * caller being told what is wrong with the template and being told what is wrong
- * with the machine.
+ * A template that is not there is a {@see TemplateNotFound}; every other way this
+ * can fail is a {@see FileNotWritable} — the template was fine and the machine was
+ * not.
  *
  * The staged document is moved into place rather than written there, so the
  * template on disk is never opened for writing: a path that is a hard link to it
@@ -277,6 +274,10 @@ final class MarkdownTemplate
      * `rename()` that fails because the two paths are on different filesystems
      * falls back to a copy, and a copy that fails part way does not leave a
      * half-written document behind.
+     *
+     * The link following is the part that is deliberately not the same:
+     * {@see self::followLink()} needs its target to exist, so a link to a document
+     * not written yet is replaced by a regular file rather than followed.
      */
     private static function move(string $from, string $to): void
     {
