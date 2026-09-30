@@ -319,7 +319,14 @@ dataset('gfmExamples', fn (): array => specExamples(__DIR__ . '/fixtures/spec/gf
 |
 */
 
-/** Word supports nine levels of list nesting; the registry names it. */
+/**
+ * How many levels of list nesting a numbering definition covers.
+ *
+ * `NumberingRegistry::LEVELS` says the same thing; this copy is here because the
+ * tests that assert on it must not depend on a class in `src/` to do so, and the
+ * two are checked against each other.
+ */
+const NUMBERING_LEVELS = 9;
 
 /**
  * Assert that both specification corpora are really there.
