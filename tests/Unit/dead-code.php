@@ -72,14 +72,14 @@ function sourcesWithClaim(string $claim): array
 }
 
 it('does not claim again what the code does not do', function (string $claim) {
-    // Each of these was a docblock explaining a method that had no caller, and
-    // both were wrong: a code block's shading is a paragraph property, and the
-    // round trip is lossy wherever Word did not record the distinction.
+    // Each of these was a comment asserting something the code does not do. Add
+    // the phrase here when you correct one, so it cannot come back.
     expect(sourcesWithClaim($claim))->toBe([]);
 })->with([
     'code block shading goes through a paragraph style, not a Font' => 'used for code block shading',
     'the round trip loses what Word does not record' => 'the round trip is exact',
     'a link wrapping a bare image is marked by a flag nothing read' => 'imageLabel',
+    'the version is written down in only one place' => 'The one place the version is written down',
 ]);
 
 it('has no decorative dividers in it', function () {
