@@ -7,10 +7,9 @@ namespace MarkdownWord\Reverse;
 /**
  * One block-level element read back out of a Word document.
  *
- * A tagged union rather than a class per kind: the reader fills it in and the
- * serialiser switches on `kind`, and keeping the tree in one type means the
- * grouping passes that follow (code blocks, then lists, then quotes) can
- * rearrange a flat sequence of units without a cast at every step.
+ * A tagged union rather than a class per kind: the serialiser switches on
+ * `kind`, and one type lets the grouping passes rearrange the flat sequence of
+ * units without a cast at every step.
  */
 final class Block
 {
@@ -25,9 +24,9 @@ final class Block
     public const QUOTE = 'quote';
 
     /**
-     * @param string               $kind     One of the `KIND` constants.
-     * @param list<Block>          $children Nested blocks: list items in a list,
-     *        the body of a quote, the rows of a table, and so on.
+     * @param string               $kind     One of the `KIND` constants above.
+     * @param list<Block>          $children List items, a quote's body, a table's
+     *        rows, and so on.
      * @param list<Inline>         $inlines  The inline content of a paragraph.
      * @param array<string, mixed> $attrs    Kind-specific detail; see the factories.
      */
@@ -55,7 +54,7 @@ final class Block
     }
 
     /**
-     * A verbatim block: a fenced code block, or an indented one.
+     * Verbatim text, to be written as a fenced block.
      *
      * @param string $info The language hint, when the document carried one.
      */
@@ -65,9 +64,10 @@ final class Block
     }
 
     /**
-     * @param list<Block> $items `ITEM` blocks.
-     * @param array<string, mixed> $attrs `numId`, `level`, `start`, `delimiter`
-     *        and `numberStyle`, all taken from the document's numbering part.
+     * @param list<Block>          $items `ITEM` blocks.
+     * @param array<string, mixed> $attrs `numId`, `level`, `ordered`, `format`,
+     *        `start` and `delimiter` come from the document's numbering part;
+     *        `indent` and `tight` come from the paragraphs themselves.
      */
     public static function list(array $items, array $attrs = []): self
     {
