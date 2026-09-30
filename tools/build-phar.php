@@ -43,7 +43,20 @@ if (ini_get('phar.readonly')) {
     exit($status);
 }
 
-require __DIR__ . '/../vendor/autoload.php';
+// The name and the version of the tool come from the class it drives, so the
+// project's own autoloader has to be loadable. Saying so plainly beats a fatal
+// error about a missing file, which is what this used to produce on a machine
+// with no `vendor/` — such as a fresh continuous integration runner.
+if (!is_file($autoloader = __DIR__ . '/../vendor/autoload.php')) {
+    fwrite(STDERR, "build:phar needs the project's dependencies for its autoloader.\n"
+        . "Run `composer install` first, or `composer install --no-dev` when you\n"
+        . "only want the runtime ones.\n\n"
+        . "Nothing has been written.\n");
+
+    exit(1);
+}
+
+require $autoloader;
 
 // ----------------------------------------------------------------- helpers
 

@@ -1,7 +1,7 @@
 # markdown-word
 
-[![tests](https://github.com/fabiangrassl/markdown-word/actions/workflows/tests.yml/badge.svg)](https://github.com/fabiangrassl/markdown-word/actions/workflows/tests.yml)
-[![phar](https://github.com/fabiangrassl/markdown-word/actions/workflows/phar.yml/badge.svg)](https://github.com/fabiangrassl/markdown-word/actions/workflows/phar.yml)
+[![tests](https://github.com/fabeat/markdown-word/actions/workflows/tests.yml/badge.svg)](https://github.com/fabeat/markdown-word/actions/workflows/tests.yml)
+[![phar](https://github.com/fabeat/markdown-word/actions/workflows/phar.yml/badge.svg)](https://github.com/fabeat/markdown-word/actions/workflows/phar.yml)
 
 Convert Markdown to Word documents in pure PHP — and back again.
 
