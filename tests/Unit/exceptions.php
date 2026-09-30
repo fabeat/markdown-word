@@ -28,16 +28,11 @@ use PhpOffice\PhpWord\PhpWord;
  * the types mean something. So they are checked twice over: that each path
  * throws the type it says it does, and that the hierarchy is the one a caller
  * would catch against.
- *
- * Written with no test framework in mind beyond Pest's — each case is a call that
- * has to fail in a particular way, which is the whole of what is being claimed.
  */
 beforeEach(fn () => Upstream::install());
 afterEach(fn () => Upstream::restore());
 
-/**
- * A file that is not a zip archive.
- */
+/** A file that is not a zip archive. */
 function notAnArchive(string $name = 'notes.md'): string
 {
     $path = Scratch::path($name);
@@ -46,10 +41,7 @@ function notAnArchive(string $name = 'notes.md'): string
     return $path;
 }
 
-/**
- * A zip archive that is not a Word document: it opens, and has nothing in it that
- * one must have.
- */
+/** A zip archive that is not a Word document: it opens, and has nothing in it that one must have. */
 function archiveWithoutADocument(string $name = 'empty.docx'): string
 {
     $path = Scratch::path($name);
@@ -61,9 +53,7 @@ function archiveWithoutADocument(string $name = 'empty.docx'): string
     return $path;
 }
 
-/**
- * A real document with one of its parts replaced by something that is not XML.
- */
+/** A real document with one of its parts replaced by something that is not XML. */
 function documentWithBrokenXml(string $name = 'broken.docx'): string
 {
     $path = Scratch::path($name);
@@ -149,7 +139,7 @@ it('reports a media directory it cannot create', function () {
 //
 // These run over the finished archive, so their failures cannot be reached
 // through a conversion that succeeded — the file they are handed is opened again
-// and can be anything at all. Driven directly, which is also how they are used.
+// and can be anything at all.
 
 it('reports an archive the image pass cannot open', function () {
     expect(fn () => (new ImageDescriptionPass(['A red square']))->applyTo(notAnArchive('not.zip')))

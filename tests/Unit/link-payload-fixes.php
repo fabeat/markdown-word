@@ -26,9 +26,6 @@ use MarkdownWord\Tests\Support\TemplateFactory;
  * throughout.
  */
 
-/**
- * The `word/document.xml` of a document written with the given configuration.
- */
 function linkFixesXml(string $markdown, ?Configuration $config = null): string
 {
     $path = Scratch::path('link-fixes');
@@ -38,10 +35,7 @@ function linkFixesXml(string $markdown, ?Configuration $config = null): string
     return TemplateFactory::xmlOf($path);
 }
 
-/**
- * A configuration that sends every link down the deferred path, whatever its
- * label looks like.
- */
+/** A configuration that sends every link down the deferred path, whatever its label looks like. */
 function linkFixesDeferred(?Configuration $config = null): Configuration
 {
     return ($config ?? new Configuration())->withOptions(['deferredHyperlinks' => true]);
@@ -59,13 +53,7 @@ function linkFixesHyperlink(string $xml, string $label): DOMElement
     return linkFixesHyperlinkIn(linkFixesXPath($xml), $label);
 }
 
-/**
- * The `w:hyperlink` element for a label, serialised on its own.
- *
- * Serialising the element rather than the document is what makes an assertion
- * about the label's own formatting mean something: a `w:i` elsewhere in the
- * document cannot satisfy a check on the label's `w:hyperlink`.
- */
+/** The `w:hyperlink` element for a label, serialised on its own. */
 function linkFixesElement(string $xml, string $label): string
 {
     $hyperlink = linkFixesHyperlink($xml, $label);
@@ -89,8 +77,6 @@ function linkFixesHyperlinkIn(DOMXPath $xpath, string $label): DOMElement
 }
 
 /**
- * The runs of the `w:hyperlink` whose text is exactly $label, in document order.
- *
  * @return list<array{text: string, properties: list<string>}>
  */
 function linkFixesRuns(string $xml, string $label): array
@@ -146,8 +132,6 @@ function linkFixesXPath(string $xml): DOMXPath
 }
 
 /**
- * The run properties of every run of one `w:hyperlink`, merged.
- *
  * @return list<string>
  */
 function linkFixesProperties(string $xml, string $label): array
@@ -209,11 +193,7 @@ function linkFixesNormalise(DOMXPath $xpath, DOMElement $run): array
     return $properties;
 }
 
-/*
-|--------------------------------------------------------------------------
-| Defect 1 — the emphasis in a label
-|--------------------------------------------------------------------------
-*/
+// Defect 1: the emphasis in a label
 
 it('keeps the italic of a link label', function () {
     $xml = linkFixesXml("[*italic*](https://example.com)\n");
@@ -246,11 +226,7 @@ it('keeps emphasis nested inside a link label', function () {
     expect(linkFixesProperties($xml, 'both'))->toEqual(['b', 'color=0563C1', 'i', 'u=single']);
 });
 
-/*
-|--------------------------------------------------------------------------
-| Defect 2 — the font the label is written in
-|--------------------------------------------------------------------------
-*/
+// Defect 2: the font the label is written in
 
 it('writes a deferred link label in the font the immediate path would use', function () {
     $markdown = "[plain](https://example.com)\n";
@@ -283,9 +259,8 @@ it('keeps the font forced by a table header on a deferred link label', function 
 
     expect(linkFixesProperties($deferred, 'plain'))->toBe($expected);
 
-    // Emphasis adds its own flag and takes nothing else away, which is the whole
-    // claim: the header's bold and the link's own colour and underline all
-    // survive an italic being layered on top of them.
+    // Emphasis adds its own flag and takes nothing else away: the header's bold
+    // and the link's own colour and underline survive an italic layered on top.
     $withEmphasis = linkFixesProperties(linkFixesXml($emphasised, linkFixesDeferred()), 'plain');
 
     expect($withEmphasis)->toContain(...$expected);
@@ -314,15 +289,12 @@ it('writes a deferred link label in a link font named by a style name', function
 });
 
 /*
-|--------------------------------------------------------------------------
-| The recorded payload
-|--------------------------------------------------------------------------
-|
-| The faults above are in the writing, but both start in what the collector
-| records, so the recording is pinned here too: it is the part of the round trip
-| a reader can inspect without unzipping anything.
-|
-*/
+ * The recorded payload.
+ *
+ * The faults above are in the writing, but both start in what the collector
+ * records, so the recording is pinned here too: it is the part of the round trip
+ * a reader can inspect without unzipping anything.
+ */
 
 it('records the emphasis of a link label', function () {
     $converter = new MarkdownToWord();

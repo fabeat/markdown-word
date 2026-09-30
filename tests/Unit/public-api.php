@@ -20,8 +20,13 @@ use MarkdownWord\Tests\Support\Upstream;
  *
  * These are all things a caller reaches for and none of them was covered, which
  * is how a method can sit in a released library having never once run. They are
- * thin, so the tests are thin too — what they are here for is to be executed at
+ * thin, so the tests are thin too: what they are here for is to be executed at
  * all, and to say what each one means.
+ *
+ * Note what these are not. A setter is exercised here on a default-constructed
+ * receiver, so it cannot fail if that setter quietly rebuilt the object from the
+ * defaults. That is the data-loss bug tests/Unit/options-fixes.php is built
+ * around, and the reason its setter tests start elsewhere.
  */
 beforeEach(fn () => Upstream::install());
 afterEach(fn () => Upstream::restore());
@@ -40,8 +45,8 @@ it('offers a setter for every option it takes', function () {
 });
 
 it('changes each behaviour through its own setter', function (string $method, mixed $argument, string $property) {
-    // The setters return a new instance; the value is read back off the readonly
-    // property rather than through a getter, because there is no getter.
+    // The value is read back off the readonly property rather than through a
+    // getter, because there is no getter.
     $changed = (new Options())->{$method}($argument);
 
     expect($changed->{$property})->toBe($argument)
@@ -58,8 +63,7 @@ it('changes each behaviour through its own setter', function (string $method, mi
 it('changes the image mode, and the two things that go with it, at once', function () {
     // A path inside the project rather than the system temp directory, which is
     // where this repository keeps everything a test writes. The directory is only
-    // stored, never touched, so what matters is that it is one this project would
-    // not be surprised by.
+    // stored, never touched.
     $options = (new Options())->withImages(Options::IMAGE_PLACEHOLDER, 'assets', 8.5);
 
     expect($options->images)->toBe(Options::IMAGE_PLACEHOLDER)
@@ -76,8 +80,8 @@ it('leaves the image settings alone when they are not given', function () {
 });
 
 it('clamps the values that have a range', function () {
-    // The constructor casts loosely typed values from a config file, so these
-    // arrive as strings there and have to come out as something usable.
+    // `fromArray()` casts loosely typed values from a config file, so these arrive
+    // as strings there and have to come out as something usable.
     expect(Options::fromArray(['tableWidth' => '99999'])->tableWidth)->toBe(5000)
         ->and(Options::fromArray(['tableWidth' => '-4'])->tableWidth)->toBe(0)
         ->and(Options::fromArray(['maxHeadingLevel' => '99'])->maxHeadingLevel)->toBe(6)
@@ -181,11 +185,11 @@ it('reports a version the release tag can be compared against', function () {
 });
 
 it('says the same version as the changelog does', function () {
-    // Two places now write the version down: the constant, and the heading of the
-    // newest entry in the changelog. They drifted once already — the constant
-    // read `1.0.0` through a period in which the library had never been
-    // released — and nothing in the test suite could see it, because the value
-    // was only ever compared with itself.
+    // Two places write the version down: the constant, and the heading of the
+    // newest entry in the changelog. They drifted once already — the constant read
+    // `1.0.0` through a period in which the library had never been released — and
+    // nothing in the suite could see it, because the value was only ever compared
+    // with itself.
     $changelog = (string) file_get_contents(dirname(__DIR__, 2) . '/CHANGELOG.md');
     $latest = [];
 

@@ -24,9 +24,6 @@ beforeEach(fn () => Upstream::install());
 afterEach(fn () => Upstream::restore());
 
 /**
- * Run a command, returning its exit code, what it wrote to standard output, and
- * what it said on standard error.
- *
  * @param list<string> $argv
  * @return array{code: int, out: string, err: string}
  */
@@ -77,7 +74,8 @@ it('prints help when given no command', function () {
 it('prints an options section for each direction', function () {
     // What this checks is that `--help` works at all for both commands and lists
     // the options they share. That the help and the parser agree about which
-    // options there are is a different question, asked below.
+    // options there are is a different question, asked by `keeps the help and the
+    // parser specification in step`.
     foreach (['to-docx', 'to-markdown'] as $command) {
         $run = runCli([$command, '--help']);
 

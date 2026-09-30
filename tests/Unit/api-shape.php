@@ -12,10 +12,10 @@ use MarkdownWord\Tests\Support\Scratch;
  * The shape of the public interface.
  *
  * The two directions are the same operation, so the classes that do them should
- * look alike, and both should be described by one {@see Converter}. They did
- * not at first: `save()` took `(content, path)` in one and `(path, path)` in the
- * other — the same name and the same arity, meaning opposite things, so a caller
- * who learned one got the other wrong silently.
+ * look alike, and both should be described by one `Converter`. They did not at
+ * first: `save()` took `(content, path)` in one and `(path, path)` in the other —
+ * the same name and the same arity, meaning opposite things, so a caller who
+ * learned one got the other wrong silently.
  *
  * These tests are what holds them together. Nothing else notices a method being
  * renamed on one side only, and an interface nothing is written against is
@@ -26,8 +26,6 @@ beforeEach(fn () => UpstreamDeprecations::install());
 afterEach(fn () => UpstreamDeprecations::restore());
 
 /**
- * Both directions, as the interface rather than as two classes.
- *
  * @return array<string, class-string<Converter>>
  */
 function bothDirections(): array
@@ -83,8 +81,6 @@ it('sends both directions to the same place through the interface', function () 
 });
 
 /**
- * The public methods a caller of either direction would reach for.
- *
  * @return list<string>
  */
 function publicMethods(string $class): array
