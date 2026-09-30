@@ -52,9 +52,8 @@ final class ParagraphStyle
         }
 
         // A named Word style is a black box: PHPWord resolves it to its own
-        // properties at write time, so an override cannot be layered on top of
-        // it. The named style wins and the caller falls back to an array when it
-        // needs the override to apply.
+        // properties at write time, so an override cannot be layered on it. The
+        // named style wins and the caller falls back to an array.
         if (is_string($style)) {
             return $style;
         }
@@ -132,8 +131,8 @@ final class ParagraphStyle
     }
 
     /**
-     * A style definition with the character half removed, so that only the
-     * paragraph properties reach PHPWord's paragraph style.
+     * A style definition with the character half removed, so only paragraph
+     * properties reach PHPWord's paragraph style.
      *
      * @param  array<string, mixed>|string|null  $style
      * @return array<string, mixed>|string|null

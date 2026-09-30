@@ -16,10 +16,8 @@ use PhpOffice\PhpWord\Element\TextRun;
 use PhpOffice\PhpWord\PhpWord;
 
 /**
- * Recovers the plain text of a rendered document.
- *
- * Useful for indexing, for accessibility fallbacks, and for asserting that a
- * conversion did not lose content.
+ * Recovers the plain text of a rendered document, for indexing, for
+ * accessibility fallbacks, and for asserting a conversion lost nothing.
  */
 final class TextExtractor
 {
@@ -28,9 +26,9 @@ final class TextExtractor
 
     /**
      * @param list<array{placeholder: string, url: string, title: ?string, runs: list<array{text: string, style: array<string, mixed>}>}> $hyperlinks
-     *        Payloads of links that are still represented by a placeholder in the
-     *        element tree; their labels are substituted so the text is complete
-     *        even before the document is written.
+     *        Payloads of links still represented by a placeholder in the element
+     *        tree; their labels are substituted so the text is complete before the
+     *        document is written.
      */
     public static function fromPhpWord(
         PhpWord $phpWord,
@@ -157,8 +155,8 @@ final class TextExtractor
     {
         $text = implode($separator, $parts);
 
-        // Only line breaks are stripped at the boundaries: leading spaces are
-        // content in a code block and must survive.
+        // Only line breaks are stripped: leading spaces are content in a code
+        // block and must survive.
         return trim($text, "\n\r");
     }
 }

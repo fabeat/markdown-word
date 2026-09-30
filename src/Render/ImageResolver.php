@@ -43,7 +43,7 @@ final class ImageResolver
         }
 
         // Placeholder mode, or an image that cannot be embedded: the alt text and
-        // the source are shown so the information is never silently dropped.
+        // the source are shown so nothing is silently dropped.
         if ($alt !== '') {
             $target->addText($alt, $style->withItalic());
         }
@@ -57,9 +57,9 @@ final class ImageResolver
      * Add the image, reporting whether it could be embedded.
      *
      * PHPWord validates the file in the element constructor and throws for
-     * anything it cannot handle, so the decision is delegated to it rather than
-     * guessed at here: an unreadable or unsupported file then falls back to the
-     * alt text instead of aborting the whole document.
+     * anything it cannot handle, so the decision is delegated to it: an
+     * unreadable or unsupported file then falls back to the alt text instead of
+     * aborting the whole document.
      */
     private function embed(string $path, AbstractContainer $target): bool
     {

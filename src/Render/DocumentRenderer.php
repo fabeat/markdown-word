@@ -33,16 +33,13 @@ use PhpOffice\PhpWord\Style\Paragraph as WordParagraph;
 /**
  * Walks the CommonMark document tree and emits the equivalent Word elements.
  *
- * The traversal is explicit rather than a visitor registry: the block structure
- * of a Word document is flat, and naming every node type that is handled makes
- * it obvious when something would be silently dropped.
+ * The traversal is an explicit chain of `instanceof` rather than a visitor
+ * registry: naming every node type that is handled makes it obvious when
+ * something would be silently dropped.
  */
 final class DocumentRenderer
 {
-    /**
-     * The indentation of one level of block quote, in twips (a twentieth of a
-     * point), which is half an inch.
-     */
+    /** One level of block quote, in twips (a twentieth of a point): half an inch. */
     private const QUOTE_INDENT = 720;
 
     public function __construct(
@@ -139,8 +136,6 @@ final class DocumentRenderer
         }
     }
 
-    // ------------------------------------------------------------------ blocks
-
     private function renderHeading(Heading $node, AbstractContainer $target, RenderContext $context): void
     {
         $maxLevel = $this->config->getOptions()->maxHeadingLevel;
@@ -163,10 +158,9 @@ final class DocumentRenderer
     /**
      * Render the inline children of a block as one or more paragraphs.
      *
-     * The style slot is resolved here so that its character half can be applied
-     * to the runs. A Word paragraph carries no character formatting of its own,
-     * so `heading.1 => ['size' => 20, 'bold' => true]` only works if the size and
-     * the weight reach the runs inside the paragraph.
+     * The style slot is resolved here so its character half can be applied to the
+     * runs: a Word paragraph carries no formatting of its own, so PHPWord would
+     * discard it there.
      *
      * @param iterable<Node> $inlines
      */
@@ -197,8 +191,8 @@ final class DocumentRenderer
     }
 
     /**
-     * The character formatting a style slot asks for, taking the surrounding
-     * block quote into account.
+     * The character formatting a style slot asks for. Inside a quote a plain
+     * paragraph or list item takes the quote's slot instead.
      *
      * @return array<string, mixed>
      */
@@ -278,9 +272,6 @@ final class DocumentRenderer
         $this->renderListChildren($node, $target, $context, $styleName, $node->isTight());
     }
 
-    /**
-     * @param ListBlock $list
-     */
     private function renderListChildren(
         ListBlock $list,
         AbstractContainer $target,
@@ -351,9 +342,9 @@ final class DocumentRenderer
      * The paragraph style for a list item.
      *
      * A list inside a block quote belongs to the quote, so it is indented by the
-     * quote's depth. The quote's own style cannot simply be reused: Word resolves
-     * a named style wholesale, while a list item needs an indentation of its own
-     * for the list level, so the offset is applied as an inline style instead.
+     * quote's depth. The quote's own named style cannot simply be reused: Word
+     * resolves a named style wholesale, while a list item needs an indentation of
+     * its own for the list level, so the offset goes on as an inline style.
      *
      * @return string|array|WordParagraph|null
      */
@@ -373,8 +364,6 @@ final class DocumentRenderer
 
         return is_string($style) ? $offset : ParagraphStyle::merge($style, $offset);
     }
-
-    // ------------------------------------------------------------------ tables
 
     private function renderTable(MarkdownTable $node, AbstractContainer $target, RenderContext $context): void
     {
@@ -606,12 +595,12 @@ final class DocumentRenderer
     }
 
     /**
-     * The table's width, expressed the way OOXML wants it.
+     * The table's width, the way OOXML wants it.
      *
      * PHPWord's default is `w:tblW w:w="0" w:type="auto"`, and a zero width makes
      * every viewer shrink the table to its shortest content rather than filling
      * the text column. A percentage of the column is the stable way to ask for
-     * full width, because it follows the page size and the margins.
+     * full width: it follows the page size and the margins.
      *
      * @return array<string, mixed>
      */
@@ -623,8 +612,6 @@ final class DocumentRenderer
 
         return ['width' => $options->tableWidth, 'unit' => 'pct'];
     }
-
-    // -------------------------------------------------------------------- html
 
     private function renderHtml(Node $node, AbstractContainer $target, RenderContext $context): void
     {
@@ -647,8 +634,6 @@ final class DocumentRenderer
         return $text;
     }
 
-    // ----------------------------------------------------------------- helpers
-
     /**
      * The style for a block, taking the surrounding context into account.
      *
@@ -666,8 +651,6 @@ final class DocumentRenderer
             ? $this->styles->paragraphStyleFor(Styles::BLOCK_QUOTE)
             : $this->styles->slot($slot);
 
-        // The character half is applied to the runs instead, because PHPWord
-        // would discard it here.
         $style = ParagraphStyle::paragraphPart($style);
 
         return $this->applyContext($style, $context);
