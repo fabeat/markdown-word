@@ -24,6 +24,14 @@
         <testsuite name="roundtrip">
             <directory suffix=".php">tests/RoundTrip</directory>
         </testsuite>
+        <!--
+            The README's examples, as tests. They used to be a script at the root
+            that nothing else ran, so they were outside both the suite and the
+            coverage gate; here they are inside both.
+        -->
+        <testsuite name="readme">
+            <directory suffix=".php">tests/Readme</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>

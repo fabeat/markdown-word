@@ -136,11 +136,11 @@ composer test              # the test suite
 composer test:unit         # the unit tests alone
 composer test:spec         # just the conformance suite
 composer test:roundtrip    # just the round-trip suite
+composer test:readme       # just the examples on this page
 composer test:coverage     # with a report in build/coverage
 composer build:phar        # writes build/mdword.phar
 php smoke.php              # does the library work on this version of PHP?
 php stress.php             # malformed input across every configuration
-php readme-check.php       # runs the examples on this page
 php examples/build.php     # a document for every example in examples/
 ```
 
@@ -150,9 +150,10 @@ and then through a template with the seven of those that are not merely a choice
 of parser. Every result has to be a valid `.docx`. It is what caught the escaping
 defect described below.
 
-`readme-check.php` runs every PHP example on this page, and drives the `mdword`
-one-liners through the application, so the documentation cannot quietly stop
-describing what the code does.
+The examples on this page are `tests/Readme/examples.php`, one test each, and
+they run with everything else. The `mdword` one-liners are driven through the
+application, so the documentation cannot quietly stop describing what the code
+does.
 
 Tests are written with [Pest][pest] 5, against PHPUnit 13.
 

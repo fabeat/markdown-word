@@ -48,9 +48,11 @@ jobs:
         run: composer audit --no-interaction
 
       # Every code block in the README is executed, so the documentation cannot
-      # quietly stop describing what the code does.
+      # quietly stop describing what the code does. Run on its own here as well as
+      # with the suite below, because it is the one thing that fails when the page
+      # and the library disagree, and it should say so before the whole suite runs.
       - name: The examples in the README work
-        run: php readme-check.php
+        run: vendor/bin/pest --testsuite=readme
 
       # Not `vendor/bin/mdword`: Composer symlinks a dependency's binaries, not
       # the root package's own, so from a checkout the script is run directly.

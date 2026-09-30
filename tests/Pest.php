@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use MarkdownWord\Configuration;
+use MarkdownWord\Console\Application;
 use MarkdownWord\MarkdownToWord;
 use MarkdownWord\Template\MarkdownTemplate;
 use MarkdownWord\Text\TextExtractor;
@@ -393,6 +394,104 @@ function saveTemplateDocument(MarkdownTemplate $template, string $path): void
     withoutUpstreamDeprecations(static function () use ($template, $path): void {
         $template->save($path);
     });
+}
+
+/**
+ * Run the command line in process, and hand back what it did.
+ *
+ * @param list<string> $argv
+ * @return array{code: int, out: string, err: string}
+ */
+function runCli(array $argv, string $stdin = ''): array
+{
+    $out = fopen('php://memory', 'r+b');
+    $err = fopen('php://memory', 'r+b');
+    $in = fopen('php://memory', 'r+b');
+
+    fwrite($in, $stdin);
+    rewind($in);
+
+    $code = (new Application($out, $err, $in))->run($argv);
+
+    rewind($out);
+    rewind($err);
+
+    $result = [
+        'code' => $code,
+        'out' => (string) stream_get_contents($out),
+        'err' => (string) stream_get_contents($err),
+    ];
+
+    fclose($out);
+    fclose($err);
+    fclose($in);
+
+    return $result;
+}
+
+/**
+ * Every part of a `.docx`, keyed by name, with what a clock changes taken out.
+ *
+ * Two things vary between two correct conversions of the same input, and neither
+ * is a difference in the document: the zip's per-entry timestamps — two seconds of
+ * resolution, no sub-second part, no time zone — which live in the container and
+ * not in the parts, and `docProps/core.xml`, which records when the document was
+ * created and last modified. So a check that compares two documents compares these,
+ * and a check that compares the archive's bytes fails about three times in four on
+ * any machine slow enough to cross a two-second boundary between the two writes.
+ *
+ * @return array<string, string>
+ */
+function documentParts(string $docx): array
+{
+    $path = Scratch::path('parts', '.docx');
+    file_put_contents($path, $docx);
+
+    $zip = new ZipArchive();
+
+    if ($zip->open($path) !== true) {
+        throw new RuntimeException('The document is not a readable archive.');
+    }
+
+    try {
+        $parts = [];
+
+        // Every entry is wanted, the empty directories and all, so that a
+        // difference in what is present is a difference here too.
+        for ($index = 0; $index < $zip->numFiles; $index++) {
+            $stat = $zip->statIndex($index);
+
+            if ($stat === false || !is_string($stat['name'] ?? null)) {
+                continue;
+            }
+
+            $content = (string) $zip->getFromIndex($index);
+
+            $parts[$stat['name']] = $stat['name'] === 'docProps/core.xml'
+                ? blankedCreationDates($content)
+                : $content;
+        }
+    } finally {
+        $zip->close();
+    }
+
+    ksort($parts);
+
+    return $parts;
+}
+
+/**
+ * A document's core properties with the two dates blanked: `dcterms:created` and
+ * `dcterms:modified` are the only parts of a `.docx` that say when it was made,
+ * and leaving them in makes the comparison a test of the clock.
+ */
+function blankedCreationDates(string $coreProperties): string
+{
+    return (string) preg_replace(
+        ['#<dcterms:(created|modified)[^>]*>.*?</dcterms:\1>#s', '#<dcterms:(created|modified)[^>]*/>#'],
+        '<dcterms:$1>whenever</dcterms:$1>',
+        $coreProperties,
+    );
 }
 
 

@@ -23,37 +23,6 @@ use MarkdownWord\Tests\Support\Upstream;
 beforeEach(fn () => Upstream::install());
 afterEach(fn () => Upstream::restore());
 
-/**
- * @param list<string> $argv
- * @return array{code: int, out: string, err: string}
- */
-function runCli(array $argv, string $stdin = ''): array
-{
-    $out = fopen('php://memory', 'r+b');
-    $err = fopen('php://memory', 'r+b');
-    $in = fopen('php://memory', 'r+b');
-
-    fwrite($in, $stdin);
-    rewind($in);
-
-    $code = (new Application($out, $err, $in))->run($argv);
-
-    rewind($out);
-    rewind($err);
-
-    $result = [
-        'code' => $code,
-        'out' => (string) stream_get_contents($out),
-        'err' => (string) stream_get_contents($err),
-    ];
-
-    fclose($out);
-    fclose($err);
-    fclose($in);
-
-    return $result;
-}
-
 // Basics
 
 it('prints its version', function () {

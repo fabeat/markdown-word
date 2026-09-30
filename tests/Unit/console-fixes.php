@@ -10,8 +10,8 @@ use MarkdownWord\Tests\Support\Upstream;
 /*
  * The overwrite guard and the error filter `run()` took away on its way out.
  *
- * `runCli()` comes from tests/Unit/console.php: one way of driving a run is
- * enough, and a second copy of it would be a second thing to keep right.
+ * `runCli()` comes from tests/Pest.php: one way of driving a run is enough, and a
+ * second copy of it would be a second thing to keep right.
  *
  * Writing a document reaches the one known upstream deprecation described in
  * tests/Support/Upstream, so the filter is installed for the duration of each

@@ -18,5 +18,4 @@
 /phpunit.xml.dist   export-ignore
 /smoke.php          export-ignore
 /stress.php         export-ignore
-/readme-check.php   export-ignore
 /sonar-project.properties export-ignore

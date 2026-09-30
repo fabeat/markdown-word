@@ -55,12 +55,12 @@
         "test:unit": "pest --testsuite=unit",
         "test:spec": "pest --testsuite=conformance",
         "test:roundtrip": "pest --testsuite=roundtrip",
+        "test:readme": "pest --testsuite=readme",
         "test:coverage": "pest --coverage --min=91 --coverage-clover=build/coverage/clover.xml --coverage-html=build/coverage/html",
         "cli": "@php bin/mdword --version",
         "check": [
             "@composer validate --strict",
             "@check:audit",
-            "@php readme-check.php",
             "@check:cli",
             "@php smoke.php",
             "@php stress.php",
