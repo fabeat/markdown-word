@@ -21,14 +21,14 @@ use PhpOffice\PhpWord\PhpWord;
  */
 final class TextExtractor
 {
-    /** Separator inserted where a Word line break or paragraph boundary occurs. */
+    /** Inserted where a Word line break or a paragraph boundary occurs. */
     public const LINE_BREAK = "\n";
 
     /**
      * @param list<array{placeholder: string, url: string, title: ?string, runs: list<array{text: string, style: array<string, mixed>}>}> $hyperlinks
      *        Payloads of links still represented by a placeholder in the element
-     *        tree; their labels are substituted so the text is complete before the
-     *        document is written.
+     *        tree; each one's label is substituted in, so what comes out is the
+     *        document's text and not the writer's intermediate form.
      */
     public static function fromPhpWord(
         PhpWord $phpWord,
@@ -125,8 +125,7 @@ final class TextExtractor
             }
         }
 
-        // Runs inside one paragraph are joined without a separator: a paragraph
-        // is a single line in Word, so its runs form one line of text.
+        // One paragraph is one line in Word, so its runs are joined with no separator.
         return implode('', $parts);
     }
 
@@ -148,15 +147,12 @@ final class TextExtractor
         return implode(self::LINE_BREAK, $rows);
     }
 
-    /**
-     * @param  list<string>  $parts
-     */
+    /** @param list<string> $parts */
     private static function join(array $parts, string $separator): string
     {
         $text = implode($separator, $parts);
 
-        // Only line breaks are stripped: leading spaces are content in a code
-        // block and must survive.
+        // Only line breaks are stripped; leading spaces are content in a code block.
         return trim($text, "\n\r");
     }
 }

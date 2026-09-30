@@ -18,39 +18,32 @@ use PhpOffice\PhpWord\PhpWord;
  * On top of PHPWord's own writer this makes two extra passes over the archive,
  * each reopening it:
  *
- *  - {@see HyperlinkPass} replaces the hyperlink placeholders left behind by
- *    {@see \MarkdownWord\Render\LinkPayloadCollector} in `word/document.xml`
- *    with real `w:hyperlink` elements, and registers their relationships.
- *    Without it, a link whose label contains emphasis would lose either the link
- *    or the formatting.
+ *  - {@see HyperlinkPass} replaces the placeholders left behind by
+ *    {@see \MarkdownWord\Render\LinkPayloadCollector} with real `w:hyperlink`
+ *    elements. Without it, a link whose label contains emphasis would lose
+ *    either the link or the formatting.
  *  - {@see ImageDescriptionPass} fills in the alternative text of the images,
  *    which PHPWord writes as an empty string.
  *
- * Both entry points stage the archive in the system temp directory first, so
- * neither a document written to disk nor one handed back as a string is ever
- * half-finished.
+ * {@see self::write()} and {@see self::toString()} both stage the archive in the
+ * system temp directory and patch it there, so neither a document written to
+ * disk nor one handed back as a string is ever half-finished.
  */
 final class DocxWriter
 {
-    /**
-     * How many links deep {@see self::followLink()} follows before it takes a
-     * cycle for a destination it cannot make sense of.
-     */
+    /** How many hops {@see self::followLink()} follows before it gives up on a cycle. */
     private const MAX_LINKS = 10;
 
     /**
      * Write the document to a file, and hand back what was written.
      *
-     * The bytes are read from the staged copy before it is moved into place, so
-     * a caller wanting both the file and the content gets them from one pass.
-     *
-     * @return string The `.docx` as written.
+     * The bytes are read before the move, so a caller wanting both the file and
+     * the content gets the content of the file that landed.
      *
      * @throws FileNotWritable When the archive cannot be staged, read, or put in
      *         place: no temporary file to be had, a directory that cannot be
-     *         created, or a destination the process cannot write to.
-     * @throws UnreadableDocument When the staged archive cannot be reopened for
-     *         one of the two passes.
+     *         made, or a destination the process cannot write to.
+     * @throws UnreadableDocument When a pass cannot reopen the staged archive.
      * @throws MalformedDocument When a part of the staged archive is not XML.
      */
     public static function write(
@@ -69,9 +62,8 @@ final class DocxWriter
             return $contents;
         } finally {
             // `move()` has already renamed the archive away on the happy path, so
-            // this only runs when something went wrong. What it removes is a
-            // whole document, sitting where every other account on the machine
-            // can read it.
+            // this only runs when something went wrong: a failed conversion should
+            // not leave a whole document behind in the temporary directory.
             if (is_file($temp)) {
                 @unlink($temp);
             }
@@ -83,8 +75,7 @@ final class DocxWriter
      * beyond the staging file.
      *
      * @throws FileNotWritable When the archive cannot be staged or read.
-     * @throws UnreadableDocument When the staged archive cannot be reopened for
-     *         one of the two passes.
+     * @throws UnreadableDocument When a pass cannot reopen the staged archive.
      * @throws MalformedDocument When a part of the staged archive is not XML.
      */
     public static function toString(
@@ -102,11 +93,9 @@ final class DocxWriter
     }
 
     /**
-     * Replace the hyperlink placeholders inside an already written `.docx`.
-     *
-     * The file is edited in place, so it is used both by the normal write path
-     * and by the template renderer, which produces its document with PHPWord's
-     * own template processor.
+     * The file is edited in place, so this is public: the template renderer
+     * builds its document with PHPWord's own template processor and patches it
+     * here afterwards.
      *
      * @param list<array{placeholder: string, url: string, title: ?string, runs: list<array{text: string, style: array<string, mixed>}>}> $payloads
      *
@@ -120,7 +109,7 @@ final class DocxWriter
     }
 
     /**
-     * Write the archive to a temporary file and put it in order.
+     * Write the archive to a temporary file and patch it.
      *
      * @return string The path of the finished archive. It belongs to the caller,
      *         which must unlink it unless it moves it into place.
@@ -141,9 +130,10 @@ final class DocxWriter
             IOFactory::createWriter($phpWord, 'Word2007')->save($path);
         });
 
-        // `save()` leaves the file at the process umask, usually 0644: a document
-        // in flight through a shared temporary directory is as readable as the one
-        // that lands, and this is the only moment its permissions can be narrowed.
+        // `save()` unlinks the 0600 file `tempnam()` made and writes its own at
+        // the process umask, usually 0644: a document in flight through a shared
+        // temporary directory is readable by every account on the machine, and
+        // this is the only moment its permissions can be narrowed.
         @chmod($path, 0o600);
 
         self::patch($path, $links, $images);
@@ -151,10 +141,6 @@ final class DocxWriter
         return $path;
     }
 
-    /**
-     * Replace the hyperlink placeholders and set the image descriptions inside an
-     * already written `.docx`.
-     */
     private static function patch(
         string $docxPath,
         ?LinkPayloadCollector $links,
@@ -183,19 +169,17 @@ final class DocxWriter
     }
 
     /**
-     * Put the staged archive where the caller asked for it.
+     * Two things about the destination are worth the trouble.
      *
-     * Two things about the destination are worth the trouble:
-     *
-     *  - It may be a symlink. `rename()` replaces a link with a regular file, so
-     *    writing through `report.docx -> published/report.docx` would leave the
-     *    link gone and the file it named holding its old contents: two paths,
-     *    one of them stale, and nothing said so. The link is followed instead.
-     *  - It may be on another filesystem. `rename()` cannot cross that boundary
-     *    and answers `EXDEV` however the permissions stand, which is what a
-     *    container with the output on a mounted volume gives — a destination
-     *    that is perfectly writable and refused all the same. Copying is the
-     *    fallback, and the staged copy is removed so the move is still a move.
+     *  - It may be a symlink, and `rename()` replaces a link with a regular file,
+     *    so writing through `report.docx -> published/report.docx` would leave
+     *    the link gone and the file it named holding its old contents. The link
+     *    is followed instead.
+     *  - It may be on another filesystem, which `rename()` cannot cross however
+     *    the permissions stand — what a container with the output on a mounted
+     *    volume gives, a destination that is perfectly writable and refused all
+     *    the same. Copying is the fallback, and it creates the destination at
+     *    the umask rather than carrying over the staged file's mode.
      *
      * @throws FileNotWritable When the destination cannot be made or written.
      */
@@ -223,9 +207,9 @@ final class DocxWriter
         }
 
         // A copy that fails part way through leaves the destination half a
-        // document, which is the one thing staging it was there to prevent. Only
-        // a file that was not there before is removed: one the caller had cannot
-        // be taken back, and `copy()` has truncated it either way.
+        // document, which is what staging it was there to prevent. Only a file
+        // that was not there before is removed: one the caller had has been
+        // truncated by `copy()` either way, so it cannot be taken back.
         if (!$existed) {
             @unlink($to);
         }
@@ -235,8 +219,8 @@ final class DocxWriter
 
     /**
      * A link is followed even when what it points at is not there yet, since
-     * that is how a deployment says where a document goes. A chain is followed
-     * to its end; a cycle gives up rather than going round for ever.
+     * that is how a deployment says where a document goes; a chain is followed
+     * to its end.
      */
     private static function followLink(string $path): string
     {

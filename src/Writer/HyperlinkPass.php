@@ -10,13 +10,12 @@ use MarkdownWord\Render\LinkPlaceholder;
 use ZipArchive;
 
 /**
- * Rewrites `word/document.xml` inside a `.docx` file, replacing the placeholder
- * runs emitted for links whose label contains emphasis with genuine
- * `w:hyperlink` elements, and adding the matching relationships.
+ * Rewrites `word/document.xml` inside a `.docx`, replacing the placeholder runs
+ * emitted for links whose label contains emphasis with genuine `w:hyperlink`
+ * elements, and adding the matching relationships.
  *
- * The transformation is done with `DOMDocument` rather than string replacement,
- * so it cannot be confused by document content that happens to look like the
- * placeholder.
+ * The rewrite goes through `DOMDocument` rather than string replacement, so
+ * document content that happens to look like a placeholder cannot confuse it.
  */
 final class HyperlinkPass
 {
@@ -62,8 +61,6 @@ final class HyperlinkPass
     }
 
     /**
-     * Swap every placeholder run in the document part for a real hyperlink.
-     *
      * @return array{document: string, rels: string}
      */
     private function transform(string $documentXml, string $relsXml, int $nextId): array

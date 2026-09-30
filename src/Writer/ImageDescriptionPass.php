@@ -19,11 +19,11 @@ use ZipArchive;
  * as VML — `w:pict/v:shape/v:imagedata` — and the writer emits the description
  * of each one as a literal `o:title=""`. A DrawingML picture, which is what a
  * template authored in Word already contains, keeps its description on
- * `wp:docPr` and is handled here for the same reason.
+ * `wp:docPr`.
  *
- * The images are matched in document order against the order they were added
- * in, and the DOM is used rather than string replacement so content that happens
- * to look like an image element cannot confuse it.
+ * Images are matched in document order against the order they were added in, and
+ * rewritten through the DOM so content that looks like an image element cannot
+ * confuse it.
  */
 final class ImageDescriptionPass
 {
@@ -36,15 +36,17 @@ final class ImageDescriptionPass
 
     /**
      * @param list<string> $descriptions The alt text of each image, in the order
-     *        the images were added to the document.
+     *        they were added.
      */
     public function __construct(private readonly array $descriptions)
     {
     }
 
     /**
-     * @throws UnreadableDocument When the archive cannot be opened, or has no
-     *         document part to rewrite.
+     * An archive with no `word/document.xml` is left as it is rather than
+     * reported, where {@see HyperlinkPass} treats the same absence as a failure.
+     *
+     * @throws UnreadableDocument When the archive cannot be opened.
      * @throws MalformedDocument When `word/document.xml` is not XML.
      */
     public function applyTo(string $docxPath): void
@@ -72,8 +74,6 @@ final class ImageDescriptionPass
     }
 
     /**
-     * The document part with the descriptions put in, without touching a zip.
-     *
      * @throws MalformedDocument When the document part is not XML.
      */
     private function transform(string $documentXml): string
@@ -107,11 +107,10 @@ final class ImageDescriptionPass
     }
 
     /**
-     * The elements that carry an image's description, in document order.
+     * The elements carrying a description, in document order.
      *
-     * A DrawingML picture keeps the description on its non-visual properties and
-     * a VML one on the image data. The VML one wins when both are present,
-     * because that is what this library writes for an inline picture.
+     * VML wins when a document has both kinds, because that is what this library
+     * writes for an inline picture.
      *
      * @return list<array{0: DOMElement, 1: string, 2: string}>
      */
