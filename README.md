@@ -22,11 +22,13 @@ use MarkdownWord\MarkdownToWord;
 ```php
 use MarkdownWord\WordToMarkdown;
 
-echo (new WordToMarkdown('README.docx'))->convert();
+(new WordToMarkdown('README.docx'))->save('README.md');
 ```
 
-The two classes have the same shape. The thing being converted goes in the
-constructor — a path, or the content itself — and `convert()` is the verb:
+The two are the same line with the ends swapped. The thing being converted goes
+in the constructor — a path, or the content itself — and `save()` writes the
+result to the file named after it; `convert()` returns the result as a string
+instead when that is what is wanted:
 
 ```php
 (new MarkdownToWord('notes.md'))->convert();          // → the document's bytes
