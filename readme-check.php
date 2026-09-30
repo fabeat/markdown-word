@@ -46,7 +46,7 @@ $check = static function (string $name, callable $body) use (&$failures): void {
 $check('quick start', function () use ($work): void {
     $md = __DIR__ . '/tmp/readme/README.md';
     file_put_contents($md, "# Title\n\nBody.\n");
-    (new MarkdownToWord(file_get_contents($md)))->save($work . '/quick.docx');
+    (new MarkdownToWord($md))->save($work . '/quick.docx');
     assertTrue(is_file($work . '/quick.docx'), 'no file written');
 });
 

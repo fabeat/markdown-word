@@ -14,7 +14,7 @@ syntax tree onto Word's document model — is this library.
 ```php
 use MarkdownWord\MarkdownToWord;
 
-(new MarkdownToWord(file_get_contents('README.md')))->save('README.docx');
+(new MarkdownToWord('README.md'))->save('README.docx');
 ```
 
 **Word to Markdown:**
@@ -26,15 +26,24 @@ use MarkdownWord\WordToMarkdown;
 ```
 
 The two are the same line with the ends swapped. The thing being converted goes
-in the constructor — a path, or the content itself — and `save()` writes the
-result to the file named after it; `convert()` returns the result as a string
-instead when that is what is wanted:
+in the constructor, named as a path or handed over as the content itself, and
+`save()` writes the result to the file named after it; `convert()` returns the
+result as a string instead when that is what is wanted:
 
 ```php
 (new MarkdownToWord('notes.md'))->convert();          // → the document's bytes
 (new MarkdownToWord('notes.md'))->save('notes.docx'); // → a file
 (new WordToMarkdown('notes.docx'))->convert();        // → the Markdown
 (new WordToMarkdown('notes.docx'))->save('notes.md'); // → a file
+```
+
+So there is no need to read a file first. A string that names a file that exists
+is read from it, and anything else is taken as the content — the same rule in
+both directions, and the one the command line works by:
+
+```php
+(new MarkdownToWord('notes.md'))->save('notes.docx');                  // a path
+(new MarkdownToWord(file_get_contents('notes.md')))->save('notes.docx'); // or the text
 ```
 
 Both implement one interface, so code that does not care which way the data goes
