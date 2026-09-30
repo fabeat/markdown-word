@@ -7,9 +7,9 @@ namespace MarkdownWord\Parser;
 use League\CommonMark\Node\Block\Document;
 
 /**
- * Turns Markdown source into a `league/commonmark` document tree. Implement this
+ * Turns Markdown source into a `league/commonmark` document tree. Implement it
  * to plug in a different Markdown dialect, or to pre-configure the CommonMark
- * environment (extensions, renderers, ...) in your own way.
+ * environment in your own way.
  */
 interface MarkdownParserInterface
 {

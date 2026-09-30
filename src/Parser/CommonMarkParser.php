@@ -24,18 +24,18 @@ use League\CommonMark\Parser\MarkdownParser;
 
 /**
  * The default parser: full CommonMark plus the GitHub-Flavored Markdown
- * extensions (tables, strikethrough, task lists, autolinks) and a few extras
- * that are common in READMEs.
+ * extensions, which bring tables, strikethrough, task lists and autolinks.
  *
- * The important part is what this returns: the *abstract syntax tree*. Nothing is
- * lost on the way through HTML, so the renderer sees exactly what the Markdown
- * author wrote — emphasis nesting, hard breaks, entity references and link
- * reference definitions included.
+ * What matters is what it returns — the *abstract syntax tree*. The renderer
+ * walks that rather than HTML, so emphasis nesting, hard breaks, entity
+ * references and link reference definitions arrive as the author wrote them
+ * instead of flattened into a string of tags.
  */
 final class CommonMarkParser implements MarkdownParserInterface
 {
     /**
-     * The extension sets, in terms of what is added *on top of* CommonMark.
+     * What each set adds *on top of* CommonMark, which {@see self::parse()} adds
+     * regardless.
      *
      * @var array<string, list<class-string>>
      */
@@ -55,28 +55,23 @@ final class CommonMarkParser implements MarkdownParserInterface
     private array $extensions;
 
     /**
-     * @param list<class-string>|null $extensions Extensions to add on top of CommonMark.
-     *        `null` selects the default, GFM. An empty list means CommonMark only,
-     *        which is why the two cannot be the same value.
-     * @param array<string, mixed> $config        CommonMark environment configuration.
+     * @param list<class-string>|null $extensions `null` selects the default, GFM;
+     *        an empty list means CommonMark only, which is why the two cannot be
+     *        the same value.
+     * @param array<string, mixed> $config        Passed to the CommonMark
+     *        {@see \League\CommonMark\Environment\Environment}.
      */
     public function __construct(?array $extensions = null, private readonly array $config = [])
     {
         $this->extensions = $extensions === null ? self::FLAVOURS['gfm'] : array_values($extensions);
     }
 
-    /**
-     * A parser restricted to the CommonMark specification, without any GFM extras.
-     */
     public static function commonMarkOnly(): self
     {
         return new self(self::FLAVOURS['commonmark']);
     }
 
-    /**
-     * A parser with the extras that turn up in READMEs on top of GFM: footnotes
-     * and description lists.
-     */
+    /** On top of GFM: footnotes and description lists. */
     public static function extended(): self
     {
         return new self(self::FLAVOURS['extended']);
@@ -86,11 +81,12 @@ final class CommonMarkParser implements MarkdownParserInterface
      * A parser with every extension the installed `league/commonmark` release
      * ships with that can be enabled without extra configuration.
      *
-     * Four are deliberately left out, each for a concrete reason:
+     * Deliberately left out, each for a concrete reason:
      *
-     *  - `SmartPunctExtension` and `InlinesOnlyExtension` register their own `*`
-     *    and `_` delimiter processors, which collide with CommonMark's emphasis
-     *    rules and make the environment refuse to build;
+     *  - `SmartPunctExtension` rewrites the author's characters: straight quotes
+     *    into curly ones, `--` into a dash, `...` into an ellipsis;
+     *  - `InlinesOnlyExtension` adds its own `*` and `_` emphasis delimiters,
+     *    and the environment refuses to build with two processors for one char;
      *  - `EmbedExtension` requires an `embed.adapter` object; and
      *  - `TableOfContentsExtension` requires its own configuration and yields a
      *    placeholder that means little in a Word document.

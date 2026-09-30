@@ -7,11 +7,6 @@ namespace MarkdownWord;
 use MarkdownWord\Configuration\Options;
 use MarkdownWord\Configuration\Styles;
 
-/**
- * Entry point for configuring the renderer, pairing a {@see Styles} with an
- * {@see Options}. Both can be built from a plain array, which makes it trivial to
- * keep the look of your documents in a `config.php` file.
- */
 final class Configuration
 {
     public function __construct(
@@ -77,9 +72,10 @@ final class Configuration
     }
 
     /**
-     * Without any of the aesthetic defaults. Everything still lands in the
-     * document, it just looks like plain text — which is the point when it is
-     * going into a heavily pre-styled template.
+     * Turns off what this library adds over Word's own styles: the code and link
+     * fonts, the quote style, table borders and code-block shading. Everything
+     * still lands in the document, which is the point when a template governs
+     * the look.
      */
     public function withoutDecoration(): self
     {
