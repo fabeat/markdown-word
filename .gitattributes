@@ -1,16 +1,13 @@
-# Keep the development-only half of the repository out of the dist archive that
-# Packagist serves. Without this a `composer require` downloads the test suite
-# (3,089 tests and the CommonMark and GFM spec fixtures, 741 KiB of the 1.4 MiB
-# tree) and this project's own CI, none of which the consumer can run: the only
-# dev dependency is the test framework, and it is not installed.
+# What `composer require` downloads. Packagist builds its zipball from the tag
+# with `git archive`, so this file is the dist.
 #
-# Measured with `git archive --format=zip`: 407,227 bytes down to 151,503, a 63%
-# reduction. The entries below are the whole difference.
+# A line here can be wrong without anything in the repository noticing: no test
+# fails, no build breaks, and the first person to find out is a consumer whose
+# `vendor/` is missing something. tests/Unit/dist-archive.php asserts what the
+# rules below produce, which makes this file the input and that test the check.
 #
-# What is *not* listed here ships, deliberately: `src/`, `bin/`, `composer.json`,
-# `composer.lock`, `README.md` and `LICENSE`. The lock file stays because a
-# reproducible install is worth 176 KiB, and `LICENSE` because the archive is
-# redistributed under its terms.
+# The development half, none of which a consumer can run: the only dev dependency
+# is the test framework, and it is not installed.
 /.github            export-ignore
 /tests              export-ignore
 /tools              export-ignore
@@ -19,3 +16,10 @@
 /smoke.php          export-ignore
 /stress.php         export-ignore
 /sonar-project.properties export-ignore
+
+# Tracked, but not shipped. tools/build-phar.php copies the lock beside the
+# manifest and installs with `--no-dev` there, which must resolve nothing, so the
+# repository needs it. A consumer's install never reads it: Composer does not
+# consult a dependency's lock, so it would arrive as a file of pins the install
+# ignored, disagreeing with the versions actually installed.
+/composer.lock      export-ignore
