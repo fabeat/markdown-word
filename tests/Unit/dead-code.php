@@ -28,8 +28,8 @@ use MarkdownWord\Exception\TemplateNotFound;
  */
 
 /**
- * The files in `src/` holding a phrase, so a claim that has been corrected
- * cannot come back unnoticed.
+ * The files holding a phrase, so a claim that has been corrected cannot come
+ * back unnoticed.
  *
  * @return list<string>
  */
@@ -66,6 +66,14 @@ function sourcesWithClaim(string $claim): array
         }
     }
 
+    // `.gitattributes` as well: it justified shipping the lock file with a claim
+    // about Composer that was false, and nothing else in the repository reads it.
+    $attributes = $root . '/.gitattributes';
+
+    if (str_contains((string) file_get_contents($attributes), $claim)) {
+        $found[] = basename($attributes);
+    }
+
     sort($found);
 
     return $found;
@@ -80,6 +88,7 @@ it('does not claim again what the code does not do', function (string $claim) {
     'the round trip loses what Word does not record' => 'the round trip is exact',
     'a link wrapping a bare image is marked by a flag nothing read' => 'imageLabel',
     'the version is written down in only one place' => 'The one place the version is written down',
+    'shipping the lock file makes an install reproducible' => 'a reproducible install is worth',
 ]);
 
 it('has no decorative dividers in it', function () {
@@ -109,6 +118,43 @@ it('has no decorative dividers in it', function () {
     }
 
     expect($dividers)->toBe([]);
+});
+
+it('imports nothing from the global namespace in a test file', function () {
+    // One such line costs the run its coverage report. PCOV discards everything it
+    // collected, and PHPUnit then prints no table and exits non-zero with every
+    // test passing — which is a red build in CI and nothing at all locally, unless
+    // the report is read rather than the exit code.
+    //
+    // Only the testsuite directories, and that is the whole of the exemption:
+    // `src/` and the namespaced files under `tests/Support` are unaffected, and
+    // need their imports. A test file has no namespace, so the import resolves to
+    // the class the unqualified name already meant.
+    $root = dirname(__DIR__, 2);
+    $suites = simplexml_load_file($root . '/phpunit.xml.dist');
+    $imports = [];
+
+    foreach ($suites->testsuites->testsuite as $suite) {
+        foreach ($suite->directory as $directory) {
+            $files = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($root . '/' . $directory, FilesystemIterator::SKIP_DOTS)
+            );
+
+            foreach ($files as $file) {
+                if (!$file->isFile()) {
+                    continue;
+                }
+
+                foreach (file($file->getPathname()) as $number => $line) {
+                    if (preg_match('#^use\s+[A-Za-z_][A-Za-z0-9_]*\s*;#', $line) === 1) {
+                        $imports[] = $file->getFilename() . ':' . ($number + 1) . ' ' . trim($line);
+                    }
+                }
+            }
+        }
+    }
+
+    expect($imports)->toBe([]);
 });
 
 it('gives a code block its shading as a paragraph property', function () {
