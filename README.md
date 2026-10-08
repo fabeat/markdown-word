@@ -702,12 +702,27 @@ php smoke.php build/mdword.phar
   content that is already escaped and wrong for everything else: a document
   containing a lone `<` or `&` — `a < b`, `AT&T` — otherwise gets raw markup in
   its XML and Word refuses to open it.
-- **Tables span the text column.** Given no width, PHPWord writes no `w:tblW` at
-  all — its writer emits the element only when a width has been set — and a table
-  with no width is one every viewer shrinks to its narrowest content. This
-  library writes `<w:tblW w:w="5000" w:type="pct"/>` instead, as a percentage of
-  the column, so it follows the page size and the margins. `tableWidth` changes
-  it, and `0` hands the sizing back to Word.
+- **Tables span the text column, and so do their columns.** Given no width, PHPWord
+  writes no `w:tblW` at all — its writer emits the element only when a width has
+  been set — and a table with no width is one every viewer shrinks to its
+  narrowest content. This library writes `<w:tblW w:w="5000" w:type="pct"/>` instead,
+  as a percentage of the column, so it follows the page size and the margins.
+  `tableWidth` changes it, and `0` hands the sizing back to Word.
+
+  The columns inside it are measured too, because a Markdown table has no widths
+  to carry and Word does not guess well without help: given an empty
+  `<w:gridCol/>` and cells with no `<w:tcW>` it narrows every column to one or
+  two characters. Each column is given a width in twips summing to exactly the
+  text column, measured from the page the table lands on — its size, orientation,
+  margins and column count. The width is shared out in proportion to the widest
+  cell in each column, with two limits that matter more than the proportion: a
+  column is never left below half an inch, and a column is widened no further
+  than about forty characters' worth, so one cell holding a paragraph cannot take
+  the table away from its neighbours.
+
+  A `tableCell` style naming its own `unit` keeps its own widths and gets none of
+  these — `w:tcW` in twips labelled as a percentage is not a narrower table but an
+  unreadable one, and a caller who has measured itself is not overridden.
 - **Cells let their text wrap.** PHPWord's cell style defaults `noWrap` to true, so
   a cell that says nothing about wrapping is written as `<w:noWrap/>` — Word's
   "Wrap text" option, with the box ticked off. Word honours it: the cell is laid
@@ -720,6 +735,10 @@ php smoke.php build/mdword.phar
   and not an `Options` entry because `noWrap` is a cell property, and the
   `tableCell` slot already takes a PHPWord cell style array — a new option would
   have been a second way to say one thing.
+
+  This was worth fixing on its own account, and it also exposed the missing
+  column widths above: `noWrap` had been making Word size columns to their
+  content, which papered over their being absent rather than filling them in.
 - **PHPWord 1.4 emits a deprecation on PHP 8.1+** (`Using null as an array
   offset`). It comes from `PhpWord\Style::getStyle()` being called with a null
   name while writing a paragraph that carries no numbering of its own, which

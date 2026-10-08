@@ -139,6 +139,43 @@ it('a cell style that asks for no wrapping still gets it', function () {
     expect($table->getRows()[1]->getCells()[0]->getStyle()->getNoWrap())->toBeTrue();
 });
 
+it('every cell is given a width', function () {
+    // An empty `w:gridCol` and a cell with no `w:tcW` is the whole of what a
+    // viewer has to work from, and Word's answer without them is a column one or
+    // two characters wide — every column, not the wide ones.
+    $table = renderElements(SIMPLE . "\n")[0];
+
+    foreach ($table->getRows() as $row) {
+        foreach ($row->getCells() as $cell) {
+            expect($cell->getWidth())->toBeInt()->toBeGreaterThan(0);
+        }
+    }
+});
+
+it('the column widths fill the text column', function () {
+    // A4 with an inch of margin, which is what a `PhpWord` document gets and so
+    // what a table with no page setup of its own is measured against.
+    expect(array_sum(headerCellWidths(SIMPLE)))->toBe(9026);
+});
+
+it('a wider column gets more of the width', function () {
+    $widths = headerCellWidths("| Id | Notes |\n| --- | --- |\n| a | A cell holding a whole sentence that has to wrap. |\n");
+
+    expect($widths[1])->toBeGreaterThan($widths[0]);
+});
+
+it('a cell style that names its own unit keeps its own widths', function () {
+    // `w:tcW` in twips labelled as a percentage is not a narrower table but an
+    // unreadable one, so nothing is imposed on a caller who has measured itself.
+    $config = Configuration::create()->withStyles([
+        Styles::TABLE_CELL => ['unit' => 'pct'],
+    ]);
+
+    $table = renderElements(SIMPLE . "\n", $config)[0];
+
+    expect($table->getRows()[0]->getCells()[0]->getWidth())->toBeNull();
+});
+
     /**
      * @return list<array{text: string, font: array<string, mixed>|string|null}>
      */
@@ -165,3 +202,19 @@ function cellAlignment(int $row, int $column) : ?string
 
         return $paragraph->getParagraphStyle()?->getAlignment();
     }
+
+/**
+ * The width of every cell in a table's first row — the row PHPWord takes the
+ * column widths from, and the widest one it finds.
+ *
+ * @return list<int|null>
+ */
+function headerCellWidths(string $markdown) : array
+{
+    $table = renderElements($markdown . "\n")[0];
+
+    return array_map(
+        static fn ($cell): ?int => $cell->getWidth(),
+        $table->getRows()[0]->getCells(),
+    );
+}

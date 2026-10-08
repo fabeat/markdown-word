@@ -393,6 +393,7 @@ final class DocumentRenderer
         $alignments = $this->columnAlignments($node);
         $headerRowStyle = $this->styles->slot(Styles::TABLE_HEADER_ROW);
         $cellStyle = $this->styles->slot(Styles::TABLE_CELL);
+        $widths = $this->columnWidths($node, $target, $cellStyle);
 
         $isHeader = true;
 
@@ -403,7 +404,7 @@ final class DocumentRenderer
             foreach ($this->rowCells($row) as $cell) {
                 $align = $alignments[$column] ?? null;
 
-                $tableCell = $table->addCell(null, $this->cellStyle($cellStyle));
+                $tableCell = $table->addCell($widths[$column] ?? null, $this->cellStyle($cellStyle));
                 $this->renderCellContent(
                     $cell,
                     $tableCell,
@@ -416,6 +417,72 @@ final class DocumentRenderer
 
             $isHeader = false;
         }
+    }
+
+    /**
+     * A width for every column, or none at all.
+     *
+     * A cell style that names its own unit is measuring itself: the widths here
+     * are twips, and a `w:tcW` in twips labelled as a percentage is not a narrower
+     * table but an unreadable one. Someone who has configured a unit has said what
+     * they want, so nothing is imposed on top of it.
+     *
+     * @return list<int>
+     */
+    private function columnWidths(MarkdownTable $node, AbstractContainer $target, mixed $cellStyle): array
+    {
+        if (is_array($cellStyle) && isset($cellStyle['unit'])) {
+            return [];
+        }
+
+        return (new TableLayout($target))->columnWidths($this->columnContentWidths($node));
+    }
+
+    /**
+     * The width of the widest cell in each column, in characters — the only thing
+     * a Markdown table offers in place of a width. Measured over the text nodes
+     * rather than the rendered runs, because a column of images has no characters
+     * in it and should not be laid out as if it were a column of long ones.
+     *
+     * @return list<int>
+     */
+    private function columnContentWidths(MarkdownTable $node): array
+    {
+        $widths = [];
+
+        foreach ($this->tableRows($node) as $row) {
+            foreach ($this->rowCells($row) as $index => $cell) {
+                $widths[$index] = max($widths[$index] ?? 0, $this->textLength($cell));
+            }
+        }
+
+        return $widths;
+    }
+
+    private function textLength(TableCell $cell): int
+    {
+        $length = 0;
+
+        foreach ($cell->children() as $child) {
+            $length += $child instanceof Text ? mb_strlen($child->getLiteral()) : $this->blockTextLength($child);
+        }
+
+        return $length;
+    }
+
+    private function blockTextLength(Node $node): int
+    {
+        if (!$node->hasChildren()) {
+            return 0;
+        }
+
+        $length = 0;
+
+        foreach ($node->children() as $child) {
+            $length += $child instanceof Text ? mb_strlen($child->getLiteral()) : $this->blockTextLength($child);
+        }
+
+        return $length;
     }
 
     /**
