@@ -35,7 +35,7 @@ final class Application
     // run when this and the tag pushed disagree. `CHANGELOG.md` carries the same
     // number and a test holds the two together, so a bump here needs a heading
     // there.
-    public const VERSION = '0.1.0';
+    public const VERSION = '0.1.1';
 
     /**
      * Exit code for a run that did what it was asked: a conversion, or an answer
