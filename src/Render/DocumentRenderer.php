@@ -42,6 +42,18 @@ final class DocumentRenderer
     /** One level of block quote, in twips (a twentieth of a point): half an inch. */
     private const QUOTE_INDENT = 720;
 
+    /**
+     * Cells ask Word to let their text wrap, unless a cell style says otherwise.
+     *
+     * PHPWord's cell style defaults `noWrap` to true, which writes `<w:noWrap/>`
+     * — Word's "Wrap text" cell option, unchecked — into every cell of every
+     * table. Word then lays each cell out on a single line and widens the column
+     * to fit it, so a table whose cells hold a sentence runs off the page and the
+     * line cannot break anywhere. LibreOffice reads `w:noWrap` as a hint it may
+     * ignore, which is why the file looks right there and wrong in Word.
+     */
+    private const CELL_WRAPPING = ['noWrap' => false];
+
     public function __construct(
         private readonly Configuration $config,
         private readonly StyleResolver $styles,
@@ -513,13 +525,15 @@ final class DocumentRenderer
     private function cellStyle(mixed $configured): array
     {
         if (!is_array($configured)) {
-            return [];
+            return self::CELL_WRAPPING;
         }
 
         $cellOnly = $configured;
         unset($cellOnly['bold'], $cellOnly['italic'], $cellOnly['alignment']);
 
-        return $cellOnly;
+        // `+` and not `array_merge`, so it fills in the default rather than
+        // overwriting a `noWrap` the cell style asked for.
+        return $cellOnly + self::CELL_WRAPPING;
     }
 
     /**

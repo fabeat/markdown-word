@@ -166,6 +166,32 @@ it('a custom table style keeps the full width', function () {
     expect($xml)->toContain('<w:tblLayout w:type="fixed"/>');
 });
 
+it('no cell asks word to suppress its wrapping', function () {
+    $file = Scratch::path('out');
+    saveDocument("| a | b |\n| --- | --- |\n| one | two |", $file);
+
+    $xml = TemplateFactory::xmlOf($file);
+
+    // `<w:noWrap/>` is Word's "Wrap text" cell option with the box ticked off.
+    // Word keeps the cell on one line and widens the column to suit, so a table
+    // holding a sentence leaves the page; LibreOffice treats it as a hint it may
+    // ignore, so the same file looks right there and wrong here. Asserted on the
+    // written XML rather than on the style, because the element is what Word
+    // reads and PHPWord emits it whether or not anybody asked for it.
+    expect($xml)->not->toContain('<w:noWrap/>');
+});
+
+it('a cell style can still switch wrapping off', function () {
+    $file = Scratch::path('out');
+
+    $config = Configuration::create()->withStyles([
+        \MarkdownWord\Configuration\Styles::TABLE_CELL => ['noWrap' => true],
+    ]);
+    saveDocument("| a |\n| --- |\n| 1 |", $file, $config);
+
+    expect(TemplateFactory::xmlOf($file))->toContain('<w:noWrap/>');
+});
+
 it('code blocks keep their whitespace', function () {
     $text = TemplateFactory::textOf(reportDocument());
 

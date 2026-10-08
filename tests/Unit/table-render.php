@@ -114,6 +114,31 @@ it('cell style applies to every cell', function () {
     expect($paragraph->getParagraphStyle()->getAlignment())->toBe('center');
 });
 
+it('lets cell text wrap', function () {
+    // PHPWord's cell style defaults `noWrap` to true, so a cell that says nothing
+    // about wrapping writes `<w:noWrap/>` — Word's "Wrap text" option, unchecked.
+    // Word honours it, lays the cell out on one line and widens the column to
+    // fit, so the table runs off the page; LibreOffice treats it as a hint and
+    // looks fine, which is what made this a Word-only fault.
+    $table = renderElements(SIMPLE . "\n")[0];
+
+    foreach ($table->getRows() as $row) {
+        foreach ($row->getCells() as $cell) {
+            expect($cell->getStyle()->getNoWrap())->toBeFalse();
+        }
+    }
+});
+
+it('a cell style that asks for no wrapping still gets it', function () {
+    $config = Configuration::create()->withStyles([
+        Styles::TABLE_CELL => ['noWrap' => true],
+    ]);
+
+    $table = renderElements(SIMPLE . "\n", $config)[0];
+
+    expect($table->getRows()[1]->getCells()[0]->getStyle()->getNoWrap())->toBeTrue();
+});
+
     /**
      * @return list<array{text: string, font: array<string, mixed>|string|null}>
      */

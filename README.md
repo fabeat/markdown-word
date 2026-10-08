@@ -708,6 +708,18 @@ php smoke.php build/mdword.phar
   library writes `<w:tblW w:w="5000" w:type="pct"/>` instead, as a percentage of
   the column, so it follows the page size and the margins. `tableWidth` changes
   it, and `0` hands the sizing back to Word.
+- **Cells let their text wrap.** PHPWord's cell style defaults `noWrap` to true, so
+  a cell that says nothing about wrapping is written as `<w:noWrap/>` — Word's
+  "Wrap text" option, with the box ticked off. Word honours it: the cell is laid
+  out on one line and the column widened to suit, so a table holding a sentence
+  runs off the page with nowhere for the line to break. LibreOffice reads it as a
+  hint it may ignore, so the same file looks right there and wrong in Word.
+
+  Every cell is therefore rendered with `['noWrap' => false]`, and a `tableCell`
+  style of `['noWrap' => true]` gets the old behaviour back. It is a cell style
+  and not an `Options` entry because `noWrap` is a cell property, and the
+  `tableCell` slot already takes a PHPWord cell style array — a new option would
+  have been a second way to say one thing.
 - **PHPWord 1.4 emits a deprecation on PHP 8.1+** (`Using null as an array
   offset`). It comes from `PhpWord\Style::getStyle()` being called with a null
   name while writing a paragraph that carries no numbering of its own, which
