@@ -166,6 +166,61 @@ it('a custom table style keeps the full width', function () {
     expect($xml)->toContain('<w:tblLayout w:type="fixed"/>');
 });
 
+it('no cell asks word to suppress its wrapping', function () {
+    $file = Scratch::path('out');
+    saveDocument("| a | b |\n| --- | --- |\n| one | two |", $file);
+
+    $xml = TemplateFactory::xmlOf($file);
+
+    // `<w:noWrap/>` is Word's "Wrap text" cell option with the box ticked off.
+    // Word keeps the cell on one line and widens the column to suit, so a table
+    // holding a sentence leaves the page; LibreOffice treats it as a hint it may
+    // ignore, so the same file looks right there and wrong here. Asserted on the
+    // written XML rather than on the style, because the element is what Word
+    // reads and PHPWord emits it whether or not anybody asked for it.
+    expect($xml)->not->toContain('<w:noWrap/>');
+});
+
+it('a cell style can still switch wrapping off', function () {
+    $file = Scratch::path('out');
+
+    $config = Configuration::create()->withStyles([
+        \MarkdownWord\Configuration\Styles::TABLE_CELL => ['noWrap' => true],
+    ]);
+    saveDocument("| a |\n| --- |\n| 1 |", $file, $config);
+
+    expect(TemplateFactory::xmlOf($file))->toContain('<w:noWrap/>');
+});
+
+it('every column of the grid is given a width', function () {
+    $file = Scratch::path('out');
+    saveDocument("| a | b |\n| --- | --- |\n| one | two |", $file);
+
+    $xml = TemplateFactory::xmlOf($file);
+
+    // `<w:gridCol/>` with no `w:w` is what PHPWord writes for a cell that was
+    // given no width, and it is what Word narrows a column to a character or two
+    // on. Asserted on the grid because that is the element Word lays out from;
+    // the `w:tcW` beside it has a test in table-render.php.
+    expect($xml)->toContain('<w:gridCol w:w=')
+        ->and($xml)->not->toContain('<w:gridCol/>');
+});
+
+it('the column widths add up to the text column', function () {
+    $file = Scratch::path('out');
+    saveDocument("| a | b | c |\n| --- | --- | --- |\n| 1 | 2 | 3 |", $file);
+
+    $xml = TemplateFactory::xmlOf($file);
+
+    preg_match_all('/<w:gridCol w:w="(\d+)"/', $xml, $matches);
+
+    // A4 with an inch of margin: 11906 − 1440 − 1440. A total below it is what
+    // sends Word off to invent a width of its own, and one above is a table that
+    // leaves the page.
+    expect($matches[1])->toHaveCount(3)
+        ->and(array_sum(array_map(intval(...), $matches[1])))->toBe(9026);
+});
+
 it('code blocks keep their whitespace', function () {
     $text = TemplateFactory::textOf(reportDocument());
 

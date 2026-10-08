@@ -42,6 +42,18 @@ final class DocumentRenderer
     /** One level of block quote, in twips (a twentieth of a point): half an inch. */
     private const QUOTE_INDENT = 720;
 
+    /**
+     * Cells ask Word to let their text wrap, unless a cell style says otherwise.
+     *
+     * PHPWord's cell style defaults `noWrap` to true, which writes `<w:noWrap/>`
+     * — Word's "Wrap text" cell option, unchecked — into every cell of every
+     * table. Word then lays each cell out on a single line and widens the column
+     * to fit it, so a table whose cells hold a sentence runs off the page and the
+     * line cannot break anywhere. LibreOffice reads `w:noWrap` as a hint it may
+     * ignore, which is why the file looks right there and wrong in Word.
+     */
+    private const CELL_WRAPPING = ['noWrap' => false];
+
     public function __construct(
         private readonly Configuration $config,
         private readonly StyleResolver $styles,
@@ -381,6 +393,7 @@ final class DocumentRenderer
         $alignments = $this->columnAlignments($node);
         $headerRowStyle = $this->styles->slot(Styles::TABLE_HEADER_ROW);
         $cellStyle = $this->styles->slot(Styles::TABLE_CELL);
+        $widths = $this->columnWidths($node, $target, $cellStyle);
 
         $isHeader = true;
 
@@ -391,7 +404,7 @@ final class DocumentRenderer
             foreach ($this->rowCells($row) as $cell) {
                 $align = $alignments[$column] ?? null;
 
-                $tableCell = $table->addCell(null, $this->cellStyle($cellStyle));
+                $tableCell = $table->addCell($widths[$column] ?? null, $this->cellStyle($cellStyle));
                 $this->renderCellContent(
                     $cell,
                     $tableCell,
@@ -404,6 +417,72 @@ final class DocumentRenderer
 
             $isHeader = false;
         }
+    }
+
+    /**
+     * A width for every column, or none at all.
+     *
+     * A cell style that names its own unit is measuring itself: the widths here
+     * are twips, and a `w:tcW` in twips labelled as a percentage is not a narrower
+     * table but an unreadable one. Someone who has configured a unit has said what
+     * they want, so nothing is imposed on top of it.
+     *
+     * @return list<int>
+     */
+    private function columnWidths(MarkdownTable $node, AbstractContainer $target, mixed $cellStyle): array
+    {
+        if (is_array($cellStyle) && isset($cellStyle['unit'])) {
+            return [];
+        }
+
+        return (new TableLayout($target))->columnWidths($this->columnContentWidths($node));
+    }
+
+    /**
+     * The width of the widest cell in each column, in characters — the only thing
+     * a Markdown table offers in place of a width. Measured over the text nodes
+     * rather than the rendered runs, because a column of images has no characters
+     * in it and should not be laid out as if it were a column of long ones.
+     *
+     * @return list<int>
+     */
+    private function columnContentWidths(MarkdownTable $node): array
+    {
+        $widths = [];
+
+        foreach ($this->tableRows($node) as $row) {
+            foreach ($this->rowCells($row) as $index => $cell) {
+                $widths[$index] = max($widths[$index] ?? 0, $this->textLength($cell));
+            }
+        }
+
+        return $widths;
+    }
+
+    private function textLength(TableCell $cell): int
+    {
+        $length = 0;
+
+        foreach ($cell->children() as $child) {
+            $length += $child instanceof Text ? mb_strlen($child->getLiteral()) : $this->blockTextLength($child);
+        }
+
+        return $length;
+    }
+
+    private function blockTextLength(Node $node): int
+    {
+        if (!$node->hasChildren()) {
+            return 0;
+        }
+
+        $length = 0;
+
+        foreach ($node->children() as $child) {
+            $length += $child instanceof Text ? mb_strlen($child->getLiteral()) : $this->blockTextLength($child);
+        }
+
+        return $length;
     }
 
     /**
@@ -513,13 +592,15 @@ final class DocumentRenderer
     private function cellStyle(mixed $configured): array
     {
         if (!is_array($configured)) {
-            return [];
+            return self::CELL_WRAPPING;
         }
 
         $cellOnly = $configured;
         unset($cellOnly['bold'], $cellOnly['italic'], $cellOnly['alignment']);
 
-        return $cellOnly;
+        // `+` and not `array_merge`, so it fills in the default rather than
+        // overwriting a `noWrap` the cell style asked for.
+        return $cellOnly + self::CELL_WRAPPING;
     }
 
     /**
