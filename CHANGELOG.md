@@ -8,6 +8,53 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **OpenDocument Text and Rich Text output.** `MarkdownToWord` grows `toOdt()`,
+  `toRtf()` and a format-taking `to()` beside `toDocx()`, and `convertTo()` for
+  the path-writing side the constructor's `source` already implies. `.docx` stays
+  the default everywhere: `toDocx()` and `convert()` keep their signatures and
+  their behaviour, and `toDocx()` is now the same call as `convert()` rather than
+  a second way of doing it, so the two cannot answer differently. `Format` is the
+  value type that names the three.
+- **`mdword to-odt` and `mdword to-rtf`.** The same conversion in two more
+  formats, with `.docx` the default of all three: a run with nothing else said
+  still writes a `.docx` and still derives that name from the input. `ToDocx`
+  gives up `final` and grows a `format()`, so the layering of configuration, the
+  image base path, the overwrite guards and the reports on standard error are
+  written once and cannot drift between the three. Before: `mdword to-docx` was
+  the only way out. After: `mdword to-odt`, `mdword to-rtf` and `--to odt` /
+  `--to rtf`, with `to-docx` and `--to docx` unchanged.
+- **`--to` takes `odt` and `rtf`.** The check that a `--to` contradicts the file
+  is by which way the run reads rather than by which command it ends up in,
+  because the three word formats are three answers to one question. An unknown
+  format now says `Use docx, odt, rtf or markdown.`
+- **A link whose label contains emphasis is a real link in all three formats.**
+  `OdfHyperlinkPass` and `RtfHyperlinkPass` are the ODF and RTF counterparts of
+  `HyperlinkPass`, and they exist because the defect was not Word's alone:
+  `Writer\ODText\Element\Link` and `Writer\RTF\Element\Link` each take a single
+  plain string, so `[**Release** notes](url)` came out of both as the literal
+  text `⁣MDWL⁣0⁣MDWL⁣`. After: a `text:a` with the runs inside it, and a
+  `HYPERLINK` field with them.
+- **A picture's alternative text reaches an `.odt`.** `OdfImageDescriptionPass`
+  writes the `svg:desc` a `draw:frame` takes, where `Writer\ODText\Element\Image`
+  writes none. Before: the picture was there and its alt text was not. After: both.
+- **`Writer\Staging`, and the atomic-write contract for every format.** Staging
+  the document in the temporary directory, patching it there and moving it into
+  place in one step was `DocxWriter`'s, because that was the one place a document
+  was written. Nothing about it is particular to a `.docx`, so it moved out. No
+  behaviour of the `.docx` path changed.
+- **`Loss` and `MarkdownToWord::pendingLosses()`.** What a writer cannot carry,
+  filtered down to what this document actually used. `Format::drops()` is the
+  list; `Writer\Survey` answers whether the document asked for any of it; and
+  `pendingLosses()` hands a caller one sentence per loss, written for whoever
+  opens the finished document rather than for whoever wrote the code. A `.docx`
+  drops nothing and is what the other two are measured against, so a run into one
+  never prints a line of this kind.
+- **`Application::reportLosses()`**, which prints them on standard error where the
+  rest of a run's progress goes, so a piped result stays clean.
+- **`examples/markdown/20-formats.md`**, built into a `.docx`, an `.odt` and an
+  `.rtf` for opening side by side, and `tests/Readme/examples-formats.php`, which
+  asserts every row of the README's capability table against the files.
+
 - **Frontmatter configures the conversion.** The YAML block at the top of a
   document is read as configuration rather than discarded. `options:` and
   `styles:` mean what they mean in a config file; `template_file` and
@@ -68,6 +115,17 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **A named style loses its character half in an `.odt`.** ODF keeps a style's
+  character half and its paragraph half in two families that do not see each
+  other, and a paragraph references only the second, so a heading keeps the air
+  above it and nothing else: the size, weight and colour a Word style carries on
+  one `w:styleId` never reach the spans. Before: this was reported as carried,
+  because the style is in the file; a rendered page says otherwise. After:
+  `Format::Odt` lists it, and the README table says which half survives.
+- **An SVG silently lost its vector outside a `.docx`.** The original is collected
+  during the render and only `SvgPass` puts it back, so an `.odt` and an `.rtf`
+  were left with the raster and no word about it. Before: flattened, silently.
+  After: flattened, and reported.
 - **`CommonMarkParser::withAllExtensions()` threw on any document with
   frontmatter.** The method registers `FrontMatterExtension`, which needs a YAML
   parser, but `symfony/yaml` was only a `suggest`. So the one document shape

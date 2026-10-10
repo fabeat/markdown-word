@@ -316,15 +316,143 @@ specification's expected text mentions.
 `examples/out/11-round-trip.md` is `01-kitchen-sink.docx` read back, for looking
 at side by side.
 
+## Output formats
+
+`.docx` is the format everything defaults to: `toDocx()` and `convert()` are what
+they were, and `mdword to-docx` is what a run with nothing else said does. The
+other two are there for the readers that want them, and each has to say for
+itself what it cannot carry — a document that quietly lost its lists is worse
+than one that says it has none, because the loss is only visible by comparing
+the Markdown with the result.
+
+```php
+use MarkdownWord\Format;
+use MarkdownWord\MarkdownToWord;
+
+$converter = new MarkdownToWord('notes.md');
+
+$converter->save('notes.docx');                       // the default
+$converter->convertTo(Format::Odt, 'notes.odt');
+$converter->convertTo(Format::Rtf, 'notes.rtf');
+
+$bytes = $converter->toOdt('notes.md');               // → the document's bytes
+$bytes = $converter->toRtf('notes.md');
+```
+
+```sh
+mdword to-docx notes.md
+mdword to-odt  notes.md
+mdword to-rtf  notes.md
+mdword notes.md --to odt
+```
+
+All three go through the same staging the `.docx` path has always used: the
+document is finished in the temporary directory and moved into place in one step,
+so a failed conversion never leaves half a document where someone will open it
+and never exposes a whole document to every account on the machine while it is in
+flight. That is a property of the move rather than of any writer, so it holds for
+the two new formats as it does for the old one.
+
+### What each format carries
+
+Every row below was measured by writing the same document through each of
+PHPWord's three writers and reading the result back, and each one is asserted by
+`tests/Readme/examples-formats.php`. "Dropped" means the feature is not in the
+file; "flattened" means something is there but not what it was.
+
+| | `.docx` | `.odt` | `.rtf` |
+| --- | --- | --- | --- |
+| Headings | carried | degraded, the spacing survives and the size, weight and colour do not | dropped, written as body text |
+| Bold, italic, underline, strikethrough | carried | carried | carried |
+| Font size | carried | carried | carried |
+| Typeface and run colour | carried | carried | dropped |
+| Bullet lists, including nesting | carried | carried | dropped, every item left out |
+| Ordered list numbering | carried | dropped, each item comes out bulleted | dropped, every item left out |
+| Table borders | carried | dropped | carried |
+| Table column alignment | carried | dropped | carried |
+| Bold header row | carried | dropped | carried |
+| Block quotes | carried | degraded, the indentation survives and the italic and colour do not | dropped, written as body text |
+| Paragraph background (a code block) | carried | dropped | dropped |
+| The rule under a thematic break | carried | dropped | dropped |
+| A link | carried | carried | carried |
+| A link whose label contains emphasis | carried | carried | carried |
+| A PNG or JPEG picture | carried | carried | carried |
+| A WebP picture | carried as PNG | carried as PNG | carried as PNG |
+| A picture's alternative text | carried | carried | dropped |
+| An SVG | carried, vector beside its raster | flattened to a raster | flattened to a raster |
+| Rendering into a template | carried | not available | not available |
+
+Three of those are worth naming in full, because they are the ones a reader is
+least likely to notice.
+
+**RTF leaves every list item out of the document.** Not the bullet, not the
+number — the text of the item. PHPWord has no writer for a list item under its RTF
+writer, and its element writer skips an element it has none for, so three items
+of Markdown become an empty body. There is no way to write a `.rtf` with a list
+in it from this library, and the run says so on standard error rather than
+leaving it to be found.
+
+**A JPEG is written into an `.rtf` labelled as a PNG.** The RTF writer emits
+`\pngblip` whatever the bytes are, and a reader is left to work out what it has
+been given. It is named in the report for the same reason as the rest.
+
+**A named style loses its character half in an `.odt`.** The style is in the
+file and the spacing comes through, so the document is not malformed — but ODF
+keeps a style's character half and its paragraph half in two families that do not
+see each other, and a paragraph references only the second. A Word style carries
+both on one `w:styleId`, which is why a `.docx` heading is blue and large and an
+`.odt` heading is body text with air above it.
+
+### Being told what was lost
+
+`Format::drops()` is the list of features a writer cannot express, whatever the
+document. Whether this document used any of them is a separate question, answered
+over the same element tree every writer is handed, and a feature nobody used is
+not reported: a document with no tables says nothing about table borders.
+
+```php
+foreach ($converter->pendingLosses() as $loss) {
+    echo $loss->message, "\n";
+    // every list item is left out of the document
+    // a run keeps its size and its weight but loses its typeface and colour
+}
+```
+
+`mdword` prints the same lines on standard error, where the rest of its progress
+goes, so a piped result stays clean:
+
+```sh
+$ mdword to-rtf notes.md
+mdword: rtf cannot carry named-styles: headings and other named styles are written as body text
+mdword: rtf cannot carry lists: every list item is left out of the document
+mdword: notes.md → notes.rtf
+```
+
+A `.docx` drops nothing and is what the other two are measured against, so a run
+into one never prints a line of this kind.
+
+### What is not here
+
+**Only `.docx` is read back.** `WordToMarkdown` reads a `.docx`; handing it an
+`.odt` is not supported, and neither is an `.rtf`.
+
+**A template is a `.docx`.** PHPWord's template processor reads that package and
+nothing else, so `mdword to-odt --template` is refused rather than half
+attempted.
+
+**An SVG needs `ext-imagick` whichever format it is going to.** The raster beside
+the vector is drawn by something, and without it an SVG raises and says so rather
+than going in silently flattened.
+
 ## Command line
 
 `mdword` is the whole library at a terminal, and it works out for itself which
 way the data has to go. A Word document is a zip archive and Markdown is text,
 and the four bytes that say which is which are part of the format rather than a
 convention — so the *name* of the file is never consulted, and a Markdown file
-called `notes.docx` still converts the right way. `--to docx` or
-`--to markdown` says it outright, which is the only way to be explicit when
-reading from a pipe.
+called `notes.docx` still converts the right way. `--to docx`, `--to odt`,
+`--to rtf` or `--to markdown` says it outright, which is the only way to be
+explicit when reading from a pipe.
 
 From a checkout, `php bin/mdword`. As a single file with nothing installed,
 `php mdword.phar`.
@@ -334,6 +462,8 @@ than being short:
 
 ```sh
 mdword to-docx notes.md
+mdword to-odt notes.md
+mdword to-rtf notes.md
 mdword to-markdown report.docx
 ```
 
@@ -355,9 +485,9 @@ The options both directions share:
 | Option | Meaning |
 | --- | --- |
 | `-o, --output <file>` | where the result goes; `-` for standard output |
-| `--to <docx\|word\|markdown\|md>` | which way to convert; detected from the file otherwise |
+| `--to <docx\|word\|odt\|rtf\|markdown\|md>` | which way to convert; detected from the file otherwise |
 
-`to-docx` also takes:
+`to-docx`, `to-odt` and `to-rtf` also take:
 
 | Option | Meaning |
 | --- | --- |
@@ -370,6 +500,9 @@ The options both directions share:
 | `--image-base <dir>` | where relative image paths resolve from |
 | `--table-width <n>` | table width in fiftieths of a percent; `5000` is full width |
 | `--plain` | no code colouring, no quote style, no table borders |
+
+`--template` is `.docx` only; `to-odt` and `to-rtf` refuse it, because a template
+is a `.docx` package and there is nothing to render into otherwise.
 
 `to-markdown` also takes:
 

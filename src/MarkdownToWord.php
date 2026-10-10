@@ -281,7 +281,7 @@ final class MarkdownToWord implements Converter
     private function write(Format $format, PhpWord $phpWord, ?string $target): string
     {
         $this->format = $format;
-        $this->survey = Survey::of($phpWord, $this->images);
+        $this->survey = Survey::of($phpWord, $this->images, $this->vectors);
 
         return match ($format) {
             Format::Docx => $target === null

@@ -42,4 +42,18 @@ final class SvgAttachmentCollector
     {
         return $this->attachments;
     }
+
+    /**
+     * Whether an SVG has been rasterised at all.
+     *
+     * A separate question from {@see self::all()}, which a writer that cannot
+     * reattach the vector never asks. An SVG embedded here was flattened into a
+     * raster whatever the format is, and only {@see \MarkdownWord\Writer\SvgPass} can
+     * put the vector back — so a writer that never calls it loses something, and
+     * {@see \MarkdownWord\Format} has to be able to say so.
+     */
+    public function anyAttached(): bool
+    {
+        return $this->attachments !== [];
+    }
 }

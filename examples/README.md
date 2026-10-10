@@ -7,9 +7,10 @@ any code.
 php examples/build.php
 ```
 
-The Markdown sources are in `markdown/`, the results in `out/`. Each `.docx` has
+The Markdown sources are in `markdown/`, the results in `out/`. Each document has
 a `.png` of its first page beside it if LibreOffice is installed, so the output
-can be checked without opening Word.
+can be checked without opening Word; where a stem has more than one format behind
+it, the format goes into the preview's name as well.
 
 | File | What it shows |
 | --- | --- |
@@ -32,12 +33,45 @@ can be checked without opening Word.
 | `16-styled-tables.docx` | `styles.table`, `styles.tableHeaderRow` and `styles.tableCell` from the block, with `tableWidth` and `tableHeaderBold`. |
 | `17-borderless-tables.docx` | `tableBorders`, `tableHeaderBold` and `tableWidth` with no style slot at all. |
 | `19-vector.docx` | An SVG embedded as a **vector** beside its raster, which is the only way Word holds one. Not built where `ext-imagick` is absent; the build says so rather than failing. |
+| `20-formats.docx` | One page holding every construct the three output formats are asked about, as the `.docx` the other two are measured against. |
+| `20-formats.odt` | The same page as an OpenDocument Text. Headings and quotes keep their spacing but not their character formatting, the table has no borders, and the ordered list comes out bulleted. |
+| `20-formats.rtf` | The same page as Rich Text. There is no list in it at all, headings are body text, and the code block has no background. |
 | `18-round-trip.md` | `01-kitchen-sink.docx` read back into Markdown, for comparing the two side by side. |
 
 Numbering is one sequence and nothing shares a number. `markdown/14-rejected.md` is
 not in this table because `build.php` does not build it — converting it is the failure
 it exists to demonstrate — and `18-round-trip.md` used to be `14-round-trip.md` before
 the images and the two table examples took 15, 16 and 17.
+
+## The three output formats
+
+**`20-formats.docx`, `20-formats.odt` and `20-formats.rtf`** are one Markdown page
+written three times, and they exist to be opened together. `.docx` is what this
+library defaults to and what the other two are measured against; each of the two
+loses something, and a page with everything on it shows what.
+
+Open the three side by side and the differences are immediate:
+
+- **The `.rtf` has no list in it.** Not the bullet — the text of the item. There is
+  no way to write a `.rtf` with a list in it from this library, and a run that tries
+  prints a line on standard error saying so.
+- **The `.odt` has `%1.` where the numbers should be.** An ordered list comes out
+  with a literal `%1.` bullet in front of each item.
+- **Neither has a rule under the `---`,** because a rule is a paragraph with a
+  bottom border and neither writer writes one.
+- **Only the `.odt` has the table borders missing** — the `.rtf` has them.
+- **The headings are body text in the `.rtf` and barely different in the `.odt`:**
+  both keep the air above them, neither keeps the size or the colour, and a block
+  quote keeps its indentation in both and its italics only in the `.docx`.
+
+The preview images are named after the document and, for the two that are not the
+default, after the format too: `20-formats.png`, `20-formats.odt.png` and
+`20-formats.rtf.png`. Each is a first page rendered by LibreOffice where it is
+installed.
+
+The README table says the same thing in writing, and
+`tests/Readme/examples-formats.php` asserts every row of it against the files the
+build produces.
 
 ## Comparing pairs
 

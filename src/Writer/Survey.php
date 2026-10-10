@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MarkdownWord\Writer;
 
 use MarkdownWord\Render\ImageDescriptionCollector;
+use MarkdownWord\Render\SvgAttachmentCollector;
 use PhpOffice\PhpWord\Element\AbstractContainer;
 use PhpOffice\PhpWord\Element\Cell;
 use PhpOffice\PhpWord\Element\Image;
@@ -42,8 +43,11 @@ final class Survey
     {
     }
 
-    public static function of(PhpWord $phpWord, ?ImageDescriptionCollector $images = null): self
-    {
+    public static function of(
+        PhpWord $phpWord,
+        ?ImageDescriptionCollector $images = null,
+        ?SvgAttachmentCollector $vectors = null,
+    ): self {
         $survey = new self();
 
         foreach ($phpWord->getSections() as $section) {
@@ -52,6 +56,10 @@ final class Survey
 
         if ($images?->anyDescribed() === true) {
             $survey->used['image-alt-text'] = true;
+        }
+
+        if ($vectors?->anyAttached() === true) {
+            $survey->used['svg-vector'] = true;
         }
 
         return $survey;

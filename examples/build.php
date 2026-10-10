@@ -18,6 +18,7 @@ use League\CommonMark\Extension\FrontMatter\FrontMatterExtension;
 use MarkdownWord\Configuration;
 use MarkdownWord\Configuration\Options;
 use MarkdownWord\Configuration\Styles;
+use MarkdownWord\Format;
 use MarkdownWord\MarkdownToWord;
 use MarkdownWord\Parser\CommonMarkParser;
 use MarkdownWord\WordToMarkdown;
@@ -257,6 +258,34 @@ $built[] = [
     $out . '/18-round-trip.md',
 ];
 
+// --- The other two output formats --------------------------------------------
+//
+// One source, three documents. The page carries everything the three formats are
+// asked about, so the differences between them can be looked at rather than taken
+// on trust: the `.rtf` has no list in it, the `.odt` has bullets where the
+// numbers should be, and neither has a rule under the `---`.
+//
+// `.docx` is built here too, so the three are the same conversion and not three
+// documents that happen to share a heading.
+
+$formats = (string) file_get_contents($root . '/markdown/20-formats.md');
+
+foreach (Format::cases() as $format) {
+    $path = $out . '/20-formats' . $format->extension();
+    $converter = new MarkdownToWord($formats, Configuration::create()->withOptions([
+        'images' => Options::IMAGE_EMBED,
+        'imageBasePath' => $root . '/markdown',
+    ]), $frontmatterParser);
+
+    $converter->convertTo($format, $path);
+
+    $built[] = [
+        '20-formats' . $format->extension(),
+        sprintf('The format comparison page as %s %s.', $format->value === 'rtf' ? 'an' : 'a', $format->value),
+        $path,
+    ];
+}
+
 // --- Report ------------------------------------------------------------------
 
 echo "\nBuilt:\n\n";
@@ -361,25 +390,36 @@ function renderPreviews(array $built): void
         return;
     }
 
+    // Every format the examples write, so the comparison page can be looked at as
+    // well as read. The round trip is Markdown and has no first page to look at.
+    $documents = ['docx', 'odt', 'rtf'];
     $rendered = 0;
 
     foreach ($built as [, , $path]) {
-        // Only a document has a first page to look at; the round-trip example is
-        // written as Markdown.
-        if (!str_ends_with($path, '.docx')) {
+        $extension = pathinfo($path, PATHINFO_EXTENSION);
+
+        if (!in_array($extension, $documents, true)) {
             continue;
         }
 
-        $command = sprintf(
+        // Into a directory of its own, because LibreOffice names its output after
+        // the file it was given: three documents sharing a stem would otherwise
+        // each overwrite the last one's preview, and the one left standing would
+        // stand for all three — the opposite of what the comparison page is for.
+        $scratch = sys_get_temp_dir() . '/mdword-preview-' . bin2hex(random_bytes(6));
+
+        if (!is_dir($scratch) && !mkdir($scratch, 0o777, true) && !is_dir($scratch)) {
+            continue;
+        }
+
+        exec(sprintf(
             '%s --headless --convert-to png --outdir %s %s 2>/dev/null',
             escapeshellcmd($soffice),
-            escapeshellarg(dirname($path)),
+            escapeshellarg($scratch),
             escapeshellarg($path),
-        );
+        ), $output, $status);
 
-        exec($command, $output, $status);
-
-        if ($status === 0 && is_file(preg_replace('/\.docx$/', '.png', $path))) {
+        if ($status === 0 && movePreview($scratch, $path, $extension)) {
             $rendered++;
         }
 
@@ -387,6 +427,27 @@ function renderPreviews(array $built): void
     }
 
     printf("Rendered %d preview image(s) next to the documents.\n", $rendered);
+}
+
+/**
+ * Put a document's preview image beside it, under a name of its own.
+ *
+ * The format goes into the name wherever it is not the default, so the `.docx` is
+ * `20-formats.png` and its two siblings are `20-formats.odt.png` and
+ * `20-formats.rtf.png`.
+ */
+function movePreview(string $scratch, string $path, string $extension): bool
+{
+    $stem = (string) preg_replace('/\.[^.]+$/', '', $path);
+    $produced = $scratch . '/' . basename($stem) . '.png';
+
+    if (!is_file($produced)) {
+        return false;
+    }
+
+    $wanted = $extension === 'docx' ? $stem . '.png' : $stem . '.' . $extension . '.png';
+
+    return rename($produced, $wanted);
 }
 
 function locateLibreOffice(): ?string

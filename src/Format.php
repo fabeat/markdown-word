@@ -56,12 +56,22 @@ enum Format: string
             // whatever a level's format is, so an ordered list comes out bulleted;
             // and neither `Writer\ODText\Element\Table` nor
             // `Writer\ODText\Style\Paragraph` writes a border or a background.
+            //
+            // A named style is half of a loss rather than all of it, and the half is
+            // the visible one. ODF keeps a style's character half and its paragraph
+            // half in two families that do not see each other, so a paragraph whose
+            // `text:style-name` points at the paragraph half inherits only the
+            // spacing: the size, weight and colour a Word style carries on the same
+            // `w:styleId` never reach the spans. A heading keeps its air above it
+            // and its font is that of the body text.
             self::Odt => [
+                'named-styles',
                 'numbered-lists',
                 'table-borders',
                 'cell-emphasis',
                 'shading',
                 'paragraph-border',
+                'svg-vector',
             ],
             // `Writer\RTF\Element\AbstractElement::writeOpening()` wants a
             // `Style\Paragraph` and this library's named styles are `Style\Font`;
@@ -76,6 +86,7 @@ enum Format: string
                 'paragraph-border',
                 'image-alt-text',
                 'jpeg-label',
+                'svg-vector',
             ],
         };
     }
@@ -126,7 +137,7 @@ enum Format: string
      * @var array<string, string>
      */
     private const FEATURES = [
-        'named-styles' => 'headings and other named styles are written as body text',
+        'named-styles' => 'a heading and every other named style come out as body text',
         'font-face' => 'a run keeps its size and its weight but loses its typeface and colour',
         'lists' => 'every list item is left out of the document',
         'numbered-lists' => 'an ordered list comes out with a bullet in front of each item',
@@ -137,5 +148,6 @@ enum Format: string
         'paragraph-border' => 'the rule under a thematic break is dropped',
         'image-alt-text' => 'a picture is left with no alternative text',
         'jpeg-label' => 'a JPEG is written into the file labelled as a PNG',
+        'svg-vector' => 'an SVG is flattened into a raster and cannot be scaled like a vector',
     ];
 }

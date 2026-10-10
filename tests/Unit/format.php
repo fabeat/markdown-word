@@ -232,7 +232,11 @@ it('writes an .odt a reader can open', function () {
         ->and($parts)->toHaveKey('styles.xml');
 });
 
-it('keeps a heading as a named style rather than as body text', function () {
+it('keeps the spacing of a heading in an .odt, and nothing else of it', function () {
+    // ODF keeps a style's two halves in two families that do not see each other, so
+    // a paragraph that references the paragraph half of a Word style inherits the
+    // spacing and nothing more. The style *is* in the file, which is what makes this
+    // a degradation rather than a loss — but the file is what a reader sees.
     $converter = formatDocument();
     $path = Scratch::path('probe', '.odt');
 
@@ -240,9 +244,19 @@ it('keeps a heading as a named style rather than as body text', function () {
 
     $content = partOfFormat($path, 'content.xml');
 
-    expect($content)->toMatch('~<text:p text:style-name="[^"]*"[^>]*>\s*<text:span[^>]*>Heading</text:span>~')
-        ->and($content)->toContain('style:parent-style-name="Heading1"')
-        ->and(partOfFormat($path, 'styles.xml'))->toContain('style:name="Heading1"');
+    preg_match('~<text:p text:style-name="[^"]*Heading1">(.*?)</text:p>~s', $content, $heading);
+    $text = $heading[1] ?? '';
+
+    expect($content)->toContain('style:parent-style-name="Heading1"')
+        ->and(partOfFormat($path, 'styles.xml'))->toContain('style:name="Heading1"')
+        ->and($text)->toContain('Heading')
+        ->and(array_column($converter->pendingLosses(), 'feature'))->toContain('named-styles');
+
+    // Asserted on what is absent: an empty `style:text-properties` is written by one
+    // serialiser and dropped by the other, and neither is a claim.
+    expect($text)->not->toContain('fo:font-size')
+        ->and($text)->not->toContain('fo:font-weight')
+        ->and($text)->not->toContain('fo:color');
 });
 
 it('keeps bold, italics and strikethrough in an .odt', function () {
