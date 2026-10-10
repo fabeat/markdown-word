@@ -39,7 +39,7 @@ logo($assets . '/logo.png');
 
 $built = [];
 
-// --- The Markdown sources, rendered with the default configuration -----------
+// The Markdown sources, rendered with the default configuration
 
 $default = new Configuration();
 
@@ -65,7 +65,7 @@ foreach ([
     $built[] = [$name, $description, $path];
 }
 
-// --- The same source, without any decoration --------------------------------
+// The same source, without any decoration
 //
 // Shows what the configuration controls, side by side with the default.
 
@@ -76,7 +76,7 @@ $path = $out . '/07-no-decoration.docx';
 ))->save($path);
 $built[] = ['07-no-decoration', 'The kitchen sink with every default switched off.', $path];
 
-// --- A house style, defined in code ------------------------------------------
+// A house style, defined in code
 
 $path = $out . '/08-house-style.docx';
 (new MarkdownToWord(
@@ -85,7 +85,7 @@ $path = $out . '/08-house-style.docx';
 ))->save($path);
 $built[] = ['08-house-style', 'The kitchen sink in a custom house style.', $path];
 
-// --- The same source, with the extras a README tends to use ------------------
+// The same source, with the extras a README tends to use
 
 $path = $out . '/09-extended-parser.docx';
 (new MarkdownToWord(
@@ -99,7 +99,7 @@ $path = $out . '/09-extended-parser.docx';
 ))->save($path);
 $built[] = ['09-extended-parser', 'Footnotes and description lists.', $path];
 
-// --- A Word template ---------------------------------------------------------
+// A Word template
 
 $templatePath = $out . '/template-invoice.docx';
 $outputPath = $out . '/10-template.docx';
@@ -118,7 +118,7 @@ buildInvoiceTemplate($templatePath);
 
 $built[] = ['10-template', 'Markdown rendered into a Word template.', $outputPath];
 
-// --- Frontmatter -------------------------------------------------------------
+// Frontmatter
 //
 // Three files, so the block can be seen doing something and seen losing.
 //
@@ -178,7 +178,7 @@ $built[] = ['13-frontmatter-override', 'Frontmatter outranked by the configurati
 // 14 is `markdown/14-rejected.md`, which is deliberately not built: converting it is
 // the failure it exists to demonstrate.
 
-// --- Images ------------------------------------------------------------------
+// Images
 //
 // One source, three documents. `images` is a single setting and a document cannot
 // hold three of it, so the modes are shown side by side rather than in one file.
@@ -207,7 +207,7 @@ foreach ([
     $built[] = ['15-images-' . $mode, 'Images in ' . $mode . ' mode.', $path];
 }
 
-// --- Tables ------------------------------------------------------------------
+// Tables
 
 foreach ([
     '16-styled-tables' => 'Table style slots from the frontmatter.',
@@ -246,7 +246,7 @@ if (\extension_loaded('imagick')) {
     echo "\nSkipped 19-vector: ext-imagick is not loaded, so an SVG cannot be embedded.\n";
 }
 
-// --- The way back ------------------------------------------------------------
+// The way back
 
 
 $roundTripped = (new WordToMarkdown($out . '/01-kitchen-sink.docx'))->convert();
@@ -258,7 +258,7 @@ $built[] = [
     $out . '/18-round-trip.md',
 ];
 
-// --- The other two output formats --------------------------------------------
+// The other two output formats
 //
 // One source, three documents. The page carries everything the three formats are
 // asked about, so the differences between them can be looked at rather than taken
@@ -286,7 +286,7 @@ foreach (Format::cases() as $format) {
     ];
 }
 
-// --- Report ------------------------------------------------------------------
+// Report
 
 echo "\nBuilt:\n\n";
 

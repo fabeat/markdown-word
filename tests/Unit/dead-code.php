@@ -122,13 +122,15 @@ it('does not claim again what the code does not do', function (string $claim) {
 
 it('has no decorative dividers in it', function () {
     // A rule of dashes above a run of methods says what the method names below it
-    // already say, in seventy characters, on every read of the file. There were
-    // fifty-nine: none left in `src/` after the first pass, and all of the rest
-    // in the two directories that pass did not cover. The policy bans them; this is
-    // what makes that a rule rather than a note.
+    // already say, in seventy characters, on every read of the file. The policy bans
+    // them; this is what makes that a rule rather than a note.
+    //
+    // `examples/` is scanned for the same reason `tests/` and `tools/` are: the
+    // eleven banners in `build.php` sat outside every directory this test looked
+    // at, so they were there the whole time the rule was said to hold.
     $dividers = [];
 
-    foreach (['src', 'tests', 'tools'] as $area) {
+    foreach (['src', 'tests', 'tools', 'examples'] as $area) {
         $files = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator(dirname(__DIR__, 2) . '/' . $area, FilesystemIterator::SKIP_DOTS)
         );
@@ -140,7 +142,7 @@ it('has no decorative dividers in it', function () {
 
             foreach (file($file->getPathname()) as $number => $line) {
                 if (preg_match('#^\s*//\s*[-=*_]{4,}#', $line) === 1) {
-                    $dividers[] = $file->getFilename() . ':' . ($number + 1) . ' ' . trim($line);
+                    $dividers[] = $area . '/' . $file->getFilename() . ':' . ($number + 1) . ' ' . trim($line);
                 }
             }
         }
