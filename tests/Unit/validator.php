@@ -159,6 +159,17 @@ it('skips a section that is not a mapping rather than reading its keys', functio
         ->and(Validator::problems(['styles' => 3, 'other' => ['x' => 1]]))->toBe([]);
 });
 
+it('checks a style slot against the styles, not against the options', function () {
+    // `thematicBreak` is both an option and a style slot, and a loop that asked each
+    // section which of the two it was sent every recognised key to the same value
+    // check whichever section it was written in. So a style naming a Word style was
+    // refused, and the refusal called itself an option.
+    expect(Validator::problems(['styles' => ['thematicBreak' => 'Rule']]))->toBe([])
+        ->and(Validator::problems(['styles' => ['thematicBreak' => ['color' => 'FF0000']]]))->toBe([])
+        ->and(Validator::problems(['options' => ['thematicBreak' => 'nonsense']]))
+        ->toContain('The "thematicBreak" option is "nonsense". It is one of: border, text.');
+});
+
 it('raises for a configuration built in code as well', function () {
     Validator::assertValid(['options' => ['nope' => 1]]);
 })->throws(UnknownConfigurationKey::class, 'Unknown option "nope"');

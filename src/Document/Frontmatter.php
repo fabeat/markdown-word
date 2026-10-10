@@ -37,14 +37,11 @@ final class Frontmatter
      *                   and null when it is not. Every reader below reads null as
      *                   "there is nothing here", which is true, and which is also why
      *                   the block itself has to be checked somewhere else.
-     * @param list<string> $lines The block's own lines, fences excluded.
-     * @param int          $offset The file line that `$lines[0]` is on.
      */
     private function __construct(
         private readonly mixed $raw,
         private readonly ?array $entries,
-        private readonly array $lines,
-        private readonly int $offset,
+        private readonly BlockLines $lines,
     ) {
     }
 
@@ -58,10 +55,9 @@ final class Frontmatter
      * second can be told from the first by looking at the source.
      *
      * @param string $markdown The Markdown the document was parsed from, when the caller
-     *        has it. It is the only place the block's own text survives — the parse tree
-     *        keeps positions for what comes after the block and not for the block — so
-     *        without it {@see self::lineOf()} has nothing to find and every problem is
-     *        reported without a line.
+     *        has it. It is the only place the block's own text survives, so without it
+     *        {@see self::lineOf()} has nothing to find and every problem is reported
+     *        without a line.
      */
     public static function fromDocument(Document $document, string $markdown = ''): self
     {
@@ -70,14 +66,12 @@ final class Frontmatter
         // without it and asking for it raises rather than answering.
         $raw = $document->data->get('front_matter', null);
 
-        [$lines, $offset] = self::block($markdown);
-
-        return new self($raw, self::mappingOf($raw), $lines, $offset);
+        return new self($raw, self::mappingOf($raw), BlockLines::of($markdown));
     }
 
     public static function none(): self
     {
-        return new self(null, null, [], 1);
+        return new self(null, null, BlockLines::of(''));
     }
 
     /**
@@ -85,7 +79,7 @@ final class Frontmatter
      */
     public static function of(array $data): self
     {
-        return new self($data, $data, [], 1);
+        return new self($data, $data, BlockLines::of(''));
     }
 
     public function isEmpty(): bool
@@ -186,26 +180,12 @@ final class Frontmatter
      * The file line a configuration key sits on, or null when the block's text was
      * not kept or the key is written in a shape this cannot follow.
      *
-     * `options/images` is the path, separated by a slash rather than a dot because a
-     * slot name has one in it: `heading.1` is the commonest slot there is.
-     *
-     * It is followed by indentation rather than by parsing the YAML again, which is
-     * enough for the block style people write and gives up — returning null, and so a
-     * message without a line — on the flow style and the anchors, where guessing
-     * would be worse than saying nothing.
+     * @see \MarkdownWord\Document\BlockLines::lineOf() for the path syntax, and for
+     *      what it gives up on.
      */
     public function lineOf(string $path): ?int
     {
-        $indent = -1;
-        $index = 0;
-
-        foreach (explode('/', $path) as $segment) {
-            if (!$this->find($segment, $indent, $index)) {
-                return null;
-            }
-        }
-
-        return $this->offset + $index - 1;
+        return $this->lines->lineOf($path);
     }
 
     /**
@@ -213,7 +193,7 @@ final class Frontmatter
      */
     public function firstLine(): ?int
     {
-        return $this->lines === [] ? null : $this->offset;
+        return $this->lines->firstLine();
     }
 
     /**
@@ -247,7 +227,7 @@ final class Frontmatter
      */
     public function assertValid(): void
     {
-        Validator::assertValid($this->readable(), $this->locator(), $this->shapeProblems());
+        Validator::assertValid($this->readable(), $this->lines->locator(), $this->shapeProblems());
     }
 
     /**
@@ -314,113 +294,5 @@ final class Frontmatter
         }
 
         return $problems;
-    }
-
-    /**
-     * @return callable(string): ?int
-     */
-    private function locator(): callable
-    {
-        return fn (string $path): ?int => $this->lineOf($path);
-    }
-
-    /**
-     * The block's own lines, and the file line the first of them is on.
-     *
-     * The extension only reads a block that opens the document, so a `---` further
-     * down is a thematic break and there is nothing to find here.
-     *
-     * @return array{0: list<string>, 1: int}
-     */
-    private static function block(string $markdown): array
-    {
-        if ($markdown === '') {
-            return [[], 1];
-        }
-
-        $lines = preg_split('/\R/', $markdown) ?: [];
-
-        if (rtrim($lines[0] ?? '') !== '---') {
-            return [[], 1];
-        }
-
-        $body = [];
-
-        for ($index = 1, $total = \count($lines); $index < $total; $index++) {
-            $trimmed = rtrim($lines[$index]);
-
-            // The closing fence, and the alternative spelling YAML allows for one at
-            // the end of a stream.
-            if ($trimmed === '---' || $trimmed === '...') {
-                return [$body, 2];
-            }
-
-            $body[] = $lines[$index];
-        }
-
-        return [[], 1];
-    }
-
-    /**
-     * Advance `$index` past the block whose key is `$segment`, recording how deep it
-     * sits. False when the segment is not in the block being searched.
-     */
-    private function find(string $segment, int &$indent, int &$index): bool
-    {
-        for ($position = $index, $total = \count($this->lines); $position < $total; $position++) {
-            $line = $this->lines[$position];
-            $trimmed = ltrim($line);
-
-            // A comment or a blank line is not a boundary: a block routinely has a
-            // comment above every key in it.
-            if ($trimmed === '' || str_starts_with($trimmed, '#')) {
-                continue;
-            }
-
-            $key = self::keyIn($line);
-
-            if ($key === null) {
-                continue;
-            }
-
-            // Any other key at the same depth or shallower is the end of the block
-            // being searched, so the segment is not in it.
-            if (self::indentOf($line) <= $indent) {
-                $index = $position;
-
-                return false;
-            }
-
-            if ($key === $segment) {
-                $indent = self::indentOf($line);
-                $index = $position + 1;
-
-                return true;
-            }
-        }
-
-        $index = \count($this->lines);
-
-        return false;
-    }
-
-    /**
-     * The key a line defines, or null for a line that defines none.
-     *
-     * The quotes are stripped because `heading.1` is one people write both ways, and
-     * because the lookup has to agree with the parser on what the key is.
-     */
-    private static function keyIn(string $line): ?string
-    {
-        if (preg_match('/^(?<key>"[^"]*"|\'[^\']*\'|[^\s#:][^:]*?)\s*:(?:\s|$)/', ltrim($line), $match) !== 1) {
-            return null;
-        }
-
-        return trim($match['key'], "\"'");
-    }
-
-    private static function indentOf(string $line): int
-    {
-        return \strlen($line) - \strlen(ltrim($line));
     }
 }
