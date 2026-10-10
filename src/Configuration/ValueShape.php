@@ -31,22 +31,21 @@ final class ValueShape
      * A scalar is quoted so a value of `no` cannot be read as the sentence, and a
      * block is described by its keys rather than reproduced: the point is to let
      * someone recognise what they wrote, not to echo it.
+     *
+     * One dispatch rather than four guards, because every `if` here is final: there
+     * is nothing after the first `return` for a chain to fall through to, so the
+     * chain reads as a sequence of steps where there is one choice between four
+     * spellings.
      */
     public static function show(mixed $value): string
     {
-        if ($value === null) {
-            return 'nothing';
-        }
-
-        if (\is_bool($value)) {
-            return $value ? 'true' : 'false';
-        }
-
-        if (\is_array($value)) {
-            return self::showBlock($value);
-        }
-
-        return \is_scalar($value) ? '"' . (string) $value . '"' : get_debug_type($value);
+        return match (true) {
+            $value === null => 'nothing',
+            \is_bool($value) => $value ? 'true' : 'false',
+            \is_array($value) => self::showBlock($value),
+            \is_scalar($value) => '"' . (string) $value . '"',
+            default => \get_debug_type($value),
+        };
     }
 
     /**
