@@ -8,6 +8,7 @@ use DOMDocument;
 use DOMElement;
 use DOMXPath;
 use MarkdownWord\Exception\MalformedDocument;
+use MarkdownWord\Render\SvgAttachmentCollector;
 use ZipArchive;
 
 /**
@@ -174,7 +175,7 @@ final class SvgPass
                 continue;
             }
 
-            $found[\sha1($bytes)] = \substr($name, \strlen('word/'));
+            $found[SvgAttachmentCollector::fingerprint($bytes)] = \substr($name, \strlen('word/'));
         }
 
         return $found;

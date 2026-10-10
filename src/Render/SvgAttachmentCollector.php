@@ -30,9 +30,26 @@ final class SvgAttachmentCollector
     public function add(string $fallback, string $vector): void
     {
         $this->attachments[] = [
-            'fallback' => \sha1($fallback),
+            'fallback' => self::fingerprint($fallback),
             'vector' => $vector,
         ];
+    }
+
+    /**
+     * The name a set of raster bytes is known by, on both sides of the pairing.
+     *
+     * {@see \MarkdownWord\Writer\SvgPass} looks the same bytes up again in the archive
+     * it is rewriting, and a digest the two sides compute differently is not a
+     * failure — it is a vector quietly dropped from every picture in the document. So
+     * there is one function rather than a call on each side.
+     *
+     * Nothing here is a secret and nothing is stored: the name lives for one
+     * conversion, inside one process, to answer "is this the same bytes I already
+     * rasterised".
+     */
+    public static function fingerprint(string $bytes): string
+    {
+        return \hash('sha256', $bytes);
     }
 
     /**

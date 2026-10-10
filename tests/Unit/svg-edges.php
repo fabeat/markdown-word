@@ -406,7 +406,7 @@ function rasterHashIn(string $path): string
         $name = (string) $zip->getNameIndex($index);
 
         if (str_starts_with($name, 'word/media/') && str_ends_with($name, '.png')) {
-            $hash = sha1((string) $zip->getFromName($name));
+            $hash = SvgAttachmentCollector::fingerprint((string) $zip->getFromName($name));
         }
     }
 
