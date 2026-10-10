@@ -58,7 +58,7 @@ function sourcesWithClaim(string $claim): array
                 continue;
             }
 
-            $source = (string) file_get_contents($file->getPathname());
+            $source = spelledOut((string) file_get_contents($file->getPathname()));
 
             if (str_contains($source, $claim)) {
                 $found[] = $area . '/' . $file->getFilename();
@@ -70,13 +70,34 @@ function sourcesWithClaim(string $claim): array
     // about Composer that was false, and nothing else in the repository reads it.
     $attributes = $root . '/.gitattributes';
 
-    if (str_contains((string) file_get_contents($attributes), $claim)) {
+    if (str_contains(spelledOut((string) file_get_contents($attributes)), $claim)) {
         $found[] = basename($attributes);
     }
 
     sort($found);
 
     return $found;
+}
+
+/**
+ * A source with its comment markers and line breaks flattened away.
+ *
+ * A phrase to ban is written here as the claim reads, not as it happens to be
+ * wrapped: "inherits only the spacing" is one clause of a sentence that a
+ * `//` comment puts on two lines, and matching the raw bytes for it finds
+ * nothing — so the guard passes against the very words it was added to forbid.
+ * Taking the markers out first and the wrapping out second makes a case
+ * survive an editor that rewraps the comment around it.
+ */
+function spelledOut(string $source): string
+{
+    $lines = [];
+
+    foreach (preg_split('/\R/', $source) ?: [] as $line) {
+        $lines[] = trim((string) preg_replace('~^\s*(?://+|\*+|\#+)\s?~', '', $line));
+    }
+
+    return (string) preg_replace('/\s+/', ' ', implode(' ', $lines));
 }
 
 it('does not claim again what the code does not do', function (string $claim) {
@@ -93,6 +114,8 @@ it('does not claim again what the code does not do', function (string $claim) {
     'a default heading is body text in an .odt or an .rtf' => 'headings are body text',
     'the built-in look is a no-op because it matches the default' => 'currently re-applies what is already the default',
     'a built-in style id carries an outline level by itself' => 'only the built-in ids carry an outline level',
+    "the RTF font table is filled from the section's elements" => 'only walks section-level',
+    'a named style keeps its spacing in an .odt' => 'inherits only the spacing',
 ]);
 
 it('has no decorative dividers in it', function () {

@@ -57,19 +57,24 @@ enum Format: string
             // and neither `Writer\ODText\Element\Table` nor
             // `Writer\ODText\Style\Paragraph` writes a border or a background.
             //
-            // A named style is half of a loss rather than all of it, and the half is
-            // the visible one. ODF keeps a style's character half and its paragraph
-            // half in two families that do not see each other, so a paragraph whose
-            // `text:style-name` points at the paragraph half inherits only the
-            // spacing: the size, weight and colour a Word style carries on the same
-            // `w:styleId` never reach the spans.
+            // What is caught is a slot pointed at a style of the caller's own, which
+            // is what {@see \MarkdownWord\Writer\Survey} asks about — it records
+            // the loss for a paragraph whose whole style is that name, and for
+            // nothing else.
             //
-            // The built-in look is not caught by it: a default slot is direct
-            // formatting and names a style only so a `.docx` heading is still a
-            // `Heading1`. What is caught is a slot pointed at a style of the
-            // caller's own, which is what {@see \MarkdownWord\Writer\Survey} asks
-            // about — it records the loss for a paragraph whose whole style is that
-            // name, and for nothing else.
+            // Nothing of it survives, and that is the whole of the loss rather
+            // than the visible half of one. ODF keeps a style's character half
+            // and its paragraph half in two families that do not see each other,
+            // so the paragraph half a `text:style-name` points at cannot reach
+            // the spans — and the style it names is the caller's, which this
+            // library writes no definition of, so there is no paragraph half to
+            // inherit either. A `P1_CorpTitle` is emitted with an empty
+            // `style:paragraph-properties` and a parent nothing defines.
+            //
+            // The built-in look is not caught by it, because its slots are
+            // direct formatting rather than a name: a default heading carries
+            // `Heading1` beside its properties, and those properties are what
+            // every reader resolves.
             self::Odt => [
                 'named-styles',
                 'numbered-lists',
@@ -82,8 +87,10 @@ enum Format: string
             // `Writer\RTF\Element\AbstractElement::writeOpening()` wants a
             // `Style\Paragraph` and this library's named styles are `Style\Font`;
             // `Element\ListItemRun` has no RTF writer at all; and
-            // `Writer\RTF\Part\Header::registerFont()` only walks section-level
-            // elements, so a run's typeface never reaches `\fonttbl`.
+            // `Writer\RTF\Part\Header::registerFont()` reaches a typeface through
+            // `Style::getStyles()` and through section-level elements, while this
+            // library's runs are `Text` inside a `TextRun` — and `TextRun` has no
+            // `getFontStyle()` for it to ask.
             self::Rtf => [
                 'named-styles',
                 'font-face',

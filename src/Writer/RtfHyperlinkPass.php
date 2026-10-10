@@ -100,10 +100,11 @@ final class RtfHyperlinkPass
      * Only the control words that name no entry in a table.
      *
      * A typeface and a colour are written as an index into `\fonttbl` and
-     * `\colortbl`, and PHPWord fills those from the section's own elements — which
-     * is no use here, because the runs carrying a link's label are inside a text
-     * run rather than in the section. An index with no entry behind it is what a
-     * reader draws as, so they are left out and {@see \MarkdownWord\Format} says so.
+     * `\colortbl`, and an index with no entry behind it is what a reader draws
+     * as, so they are left out and {@see \MarkdownWord\Format} says so. An
+     * index can still be written for a colour that happens to be in the table
+     * because a registered style carried the same one — which is why this is a
+     * default rather than a promise that the words are never wrong.
      *
      * @param array<string, mixed> $style
      */
