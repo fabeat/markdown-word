@@ -195,9 +195,13 @@ final class OdfHyperlinkPass
     }
 
     /**
-     * The namespaces a fragment is built from. They are declared once, on the
-     * fragment's own root, because a `content.xml` PHPWord writes declares `text` and
-     * `xlink` but not `style` and `fo` — and a prefix used without one is not XML.
+     * The namespaces a fragment is built from, declared on the fragment's own root.
+     *
+     * A fragment is parsed on its own, before it goes anywhere near the document,
+     * so a prefix it uses has to be declared there or the parse fails on
+     * something that is not malformed. The declarations are dropped again on the
+     * way in, because the root of a `content.xml` PHPWord writes already declares
+     * all four.
      */
     private function declarations(): string
     {

@@ -118,6 +118,7 @@ it('does not claim again what the code does not do', function (string $claim) {
     'a named style keeps its spacing in an .odt' => 'inherits only the spacing',
     'a style name makes a heading a heading' => 'the reason a heading is still a heading',
     'a style name is what makes a .docx heading a Heading 1' => 'heading a `Heading 1` rather than',
+    'an .odt root leaves the style and fo prefixes undeclared' => 'but not `style` and `fo`',
 ]);
 
 it('has no decorative dividers in it', function () {
