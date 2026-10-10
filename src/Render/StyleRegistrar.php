@@ -16,6 +16,10 @@ use PhpOffice\PhpWord\Style\Paragraph;
  * A fresh `styles.xml` carries only `Normal` and `FootnoteReference`, so the
  * `w:pStyle` a heading carries has nothing to resolve against. Defining them keeps a
  * standalone document self-contained while still using the styleIds Word recognises.
+ * What that does not do is make a heading one: PHPWord writes the definition's
+ * `w:name` from the same string as its `w:styleId`, so `Heading1` reaches a reader
+ * as a style of its own rather than as the canonical `heading 1`, and nothing here
+ * sets an outline level.
  *
  * The definition is taken from the slot rather than from a table here, so a document
  * that overrides a heading writes a definition of its own and not the library's.

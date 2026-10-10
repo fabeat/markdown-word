@@ -116,6 +116,8 @@ it('does not claim again what the code does not do', function (string $claim) {
     'a built-in style id carries an outline level by itself' => 'only the built-in ids carry an outline level',
     "the RTF font table is filled from the section's elements" => 'only walks section-level',
     'a named style keeps its spacing in an .odt' => 'inherits only the spacing',
+    'a style name makes a heading a heading' => 'the reason a heading is still a heading',
+    'a style name is what makes a .docx heading a Heading 1' => 'heading a `Heading 1` rather than',
 ]);
 
 it('has no decorative dividers in it', function () {

@@ -72,11 +72,11 @@ final class Styles
 
     /**
      * `styleName` and `lineHeight` are here because {@see LookAndFeel} writes with
-     * them: a heading's `styleName` is what makes a `.docx` heading a `Heading 1`
-     * rather than a large bold paragraph, and PHPWord dispatches it to the same
-     * `setStyleName()` as anything else in the array. A body's `lineHeight` reaches
-     * `w:spacing w:line`, `fo:line-height` and `\sl`, which are the three ways of
-     * saying it.
+     * them: a heading's `styleName` is what a template's own `Heading1` has to be
+     * called for the template's look to apply, and PHPWord dispatches it to the
+     * same `setStyleName()` as anything else in the array. A body's `lineHeight`
+     * reaches `w:spacing w:line`, `fo:line-height` and `\sl`, which are the three
+     * ways of saying it.
      */
     public const PARAGRAPH_KEYS = ['indentation', 'space', 'shading', 'keepNext', 'alignment', 'styleName', 'lineHeight'];
 
