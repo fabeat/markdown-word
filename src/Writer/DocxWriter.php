@@ -7,6 +7,7 @@ namespace MarkdownWord\Writer;
 use MarkdownWord\Exception\FileNotWritable;
 use MarkdownWord\Exception\MalformedDocument;
 use MarkdownWord\Exception\UnreadableDocument;
+use MarkdownWord\Format;
 use MarkdownWord\Render\ImageDescriptionCollector;
 use MarkdownWord\Render\LinkPayloadCollector;
 use MarkdownWord\Render\SvgAttachmentCollector;
@@ -59,7 +60,7 @@ final class DocxWriter
     ): string {
         return Staging::write(
             $phpWord,
-            'Word2007',
+            Format::Docx->writer(),
             $path,
             static function (string $staged) use ($links, $images, $vectors): void {
                 self::patch($staged, $links, $images, $vectors);
@@ -83,7 +84,7 @@ final class DocxWriter
     ): string {
         return Staging::toString(
             $phpWord,
-            'Word2007',
+            Format::Docx->writer(),
             static function (string $staged) use ($links, $images, $vectors): void {
                 self::patch($staged, $links, $images, $vectors);
             },

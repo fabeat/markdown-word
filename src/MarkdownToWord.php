@@ -22,6 +22,9 @@ use MarkdownWord\Render\NumberingRegistry;
 use MarkdownWord\Render\StyleRegistrar;
 use MarkdownWord\Render\StyleResolver;
 use MarkdownWord\Writer\DocxWriter;
+use MarkdownWord\Writer\OdtWriter;
+use MarkdownWord\Writer\RtfWriter;
+use MarkdownWord\Writer\Survey;
 use PhpOffice\PhpWord\Element\AbstractContainer;
 use PhpOffice\PhpWord\PhpWord;
 
@@ -39,6 +42,14 @@ final class MarkdownToWord implements Converter
     private ?ImageConversionCollector $conversions = null;
 
     private ?SvgAttachmentCollector $vectors = null;
+
+    /**
+     * The format the last write went through, and what that document asked of the
+     * writer, so {@see self::pendingLosses()} has something to answer with.
+     */
+    private ?Format $format = null;
+
+    private ?Survey $survey = null;
 
     /**
      * The Markdown of the document last rendered, kept for one reason: a wrong key
@@ -156,14 +167,14 @@ final class MarkdownToWord implements Converter
     }
 
     /**
-     * @throws NothingToConvert             when the converter was built without a source.
-     * @throws Exception\UnreadableFile     when the source names a file that cannot be read.
-     * @throws Exception\UnsupportedImageFormat when a document names an image that is
-     *        on disk and in a format neither Word nor the local GD build can take.
-     * @throws Exception\UnreadableDocument when the finished archive cannot be reopened.
-     * @throws Exception\MalformedDocument  when a part of it is not XML.
-     * @throws Exception\FileNotWritable    when the document cannot be written.
-     */
+ * @throws NothingToConvert             when the converter was built without a source.
+ * @throws Exception\UnreadableFile     when the source names a file that cannot be read.
+ * @throws Exception\UnsupportedImageFormat when a document names an image that is
+ *        on disk and in a format neither Word nor the local GD build can take.
+ * @throws Exception\UnreadableDocument when the finished archive cannot be reopened.
+ * @throws Exception\MalformedDocument  when a part of it is not XML.
+ * @throws Exception\FileNotWritable    when the document cannot be written.
+ */
     public function convert(?string $target = null): string
     {
         if ($this->source === null) {
@@ -173,18 +184,37 @@ final class MarkdownToWord implements Converter
             );
         }
 
-        $markdown = Input::markdown($this->source);
-        $phpWord = $this->toPhpWord($markdown);
+        return $this->write(Format::Docx, $this->toPhpWord(Input::markdown($this->source)), $target);
+    }
 
-        if ($target === null) {
-            return DocxWriter::toString($phpWord, $this->links, $this->images, $this->vectors);
+    /**
+     * {@see self::convert()} for a format other than `.docx`.
+     *
+     * A separate method rather than a parameter on {@see self::convert()}, because
+     * that one is {@see Converter}'s and both directions have to keep the same
+     * signature: the other direction has no format to choose.
+     *
+     * @param string|null $target Where the document goes, or null to hand back the
+     *        bytes instead.
+     *
+     * @throws NothingToConvert             when the converter was built without a source.
+     * @throws Exception\UnreadableFile     when the source names a file that cannot be read.
+     * @throws Exception\UnsupportedImageFormat when a document names an image that is
+     *        on disk and in a format neither Word nor the local GD build can take.
+     * @throws Exception\UnreadableDocument when the finished archive cannot be reopened.
+     * @throws Exception\MalformedDocument  when a part of it is not XML.
+     * @throws Exception\FileNotWritable    when the document cannot be written.
+     */
+    public function convertTo(Format $format, ?string $target = null): string
+    {
+        if ($this->source === null) {
+            throw new NothingToConvert(
+                'There is no Markdown to convert. Give some to the constructor, '
+                . 'or to ' . self::class . '::toDocx().',
+            );
         }
 
-        // Through the writer rather than `file_put_contents`: it stages the archive
-        // in the temp directory and moves it into place, so a half-written document
-        // is never left where someone will open it, and a directory that is not
-        // there yet is made rather than warned about.
-        return DocxWriter::write($phpWord, $target, $this->links, $this->images, $this->vectors);
+        return $this->write($format, $this->toPhpWord(Input::markdown($this->source)), $target);
     }
 
     public function save(string $target): void
@@ -198,9 +228,72 @@ final class MarkdownToWord implements Converter
      */
     public function toDocx(string $markdown, ?PhpWord $phpWord = null): string
     {
-        $phpWord = $this->toPhpWord($markdown, $phpWord);
+        return $this->to(Format::Docx, $markdown, $phpWord);
+    }
 
-        return DocxWriter::toString($phpWord, $this->links, $this->images, $this->vectors);
+    /**
+     * Markdown as the raw bytes of an `.odt`.
+     *
+     * @see self::to() for what the other two formats drop
+     */
+    public function toOdt(string $markdown, ?PhpWord $phpWord = null): string
+    {
+        return $this->to(Format::Odt, $markdown, $phpWord);
+    }
+
+    /**
+     * Markdown as the raw bytes of an `.rtf`.
+     *
+     * @see self::to() for what RTF drops
+     */
+    public function toRtf(string $markdown, ?PhpWord $phpWord = null): string
+    {
+        return $this->to(Format::Rtf, $markdown, $phpWord);
+    }
+
+    /**
+     * Markdown as the bytes of the named format.
+     *
+     * The document is the same one every format is given, so a format that cannot
+     * carry something drops it rather than doing something else — and
+     * {@see self::pendingLosses()} says what. `.docx` is the default everywhere
+     * else in the library; naming a format is the only way to get another one.
+     *
+     * @throws FileNotWritable when the document cannot be written.
+     * @throws UnreadableDocument when a pass cannot reopen the staged document.
+     * @throws MalformedDocument when a part of it is not XML.
+     */
+    public function to(Format $format, string $markdown, ?PhpWord $phpWord = null): string
+    {
+        return $this->write($format, $this->toPhpWord($markdown, $phpWord), null);
+    }
+
+    /**
+     * The one place a document is written, so the format is recorded and the
+     * document surveyed for every path out — {@see self::convert()} and
+     * {@see self::to()} alike — and {@see self::pendingLosses()} cannot disagree
+     * with the bytes that were actually produced.
+     *
+     * @throws FileNotWritable when the document cannot be written.
+     * @throws UnreadableDocument when a pass cannot reopen the staged document.
+     * @throws MalformedDocument when a part of it is not XML.
+     */
+    private function write(Format $format, PhpWord $phpWord, ?string $target): string
+    {
+        $this->format = $format;
+        $this->survey = Survey::of($phpWord, $this->images);
+
+        return match ($format) {
+            Format::Docx => $target === null
+                ? DocxWriter::toString($phpWord, $this->links, $this->images, $this->vectors)
+                : DocxWriter::write($phpWord, $target, $this->links, $this->images, $this->vectors),
+            Format::Odt => $target === null
+                ? OdtWriter::toString($phpWord, $this->links, $this->images)
+                : OdtWriter::write($phpWord, $target, $this->links, $this->images),
+            Format::Rtf => $target === null
+                ? RtfWriter::toString($phpWord, $this->links)
+                : RtfWriter::write($phpWord, $target, $this->links),
+        };
     }
 
     /**
@@ -212,6 +305,26 @@ final class MarkdownToWord implements Converter
     public function pendingHyperlinks(): array
     {
         return $this->links?->payloads() ?? [];
+    }
+
+    /**
+     * What the format last written drops that {@see Format::Docx} would have
+     * carried.
+     *
+     * Empty until something has been written, and empty for a document with nothing
+     * in it that the writer cannot express: a conversion into `.rtf` of a document
+     * with no lists, no tables and no images loses nothing, and saying so would be
+     * noise.
+     *
+     * @return list<Loss>
+     */
+    public function pendingLosses(): array
+    {
+        if ($this->format === null || $this->survey === null) {
+            return [];
+        }
+
+        return $this->format->losses($this->survey);
     }
 
     /**
