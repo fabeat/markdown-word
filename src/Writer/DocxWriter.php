@@ -98,9 +98,9 @@ final class DocxWriter
      *
      * @param list<array{placeholder: string, url: string, title: ?string, runs: list<array{text: string, style: array<string, mixed>}>}> $payloads
      *
-     * @throws \RuntimeException When the archive cannot be opened, or is missing
-     *         the document part or the relationship part.
-     * @throws MalformedDocument When either of those parts is not XML.
+     * @throws UnreadableDocument When the file is not a zip archive at all.
+     * @throws MalformedDocument When the document part or the relationship part is
+     *         missing, or when either of those parts is not XML.
      */
     public static function patchHyperlinks(string $docxPath, array $payloads): void
     {

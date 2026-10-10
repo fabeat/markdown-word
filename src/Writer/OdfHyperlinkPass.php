@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MarkdownWord\Writer;
 
 use MarkdownWord\Exception\MalformedDocument;
+use MarkdownWord\Exception\UnreadableDocument;
 use MarkdownWord\Render\LinkPlaceholder;
 use MarkdownWord\Xml;
 use ZipArchive;
@@ -37,22 +38,22 @@ final class OdfHyperlinkPass
     }
 
     /**
-     * @throws \RuntimeException When the archive cannot be opened or has no content part.
-     * @throws MalformedDocument When that part is not XML.
+     * @throws UnreadableDocument When the file is not a zip archive at all.
+     * @throws MalformedDocument When that part is missing or is not XML.
      */
     public function applyTo(string $odtPath): void
     {
         $zip = new ZipArchive();
 
         if ($zip->open($odtPath) !== true) {
-            throw new \RuntimeException(sprintf('Unable to open "%s" as a zip archive.', $odtPath));
+            throw new UnreadableDocument(sprintf('Unable to open "%s" as a zip archive.', $odtPath));
         }
 
         try {
             $content = $zip->getFromName(self::CONTENT_PATH);
 
             if ($content === false) {
-                throw new \RuntimeException('The document is missing content.xml.');
+                throw new MalformedDocument('The document is missing content.xml.');
             }
 
             $zip->deleteName(self::CONTENT_PATH);
