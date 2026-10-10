@@ -8,14 +8,16 @@ opened next to each other. The words are the same in both.
 | | `11-frontmatter.docx` | this file |
 | --- | --- | --- |
 | Font | Georgia | Calibri |
-| H1 | 30pt, `#8B0000`, air under it | Word's built-in Heading 1 |
-| H2 | 17pt, `#B22222`, air above and below | Word's built-in Heading 2 |
+| H1 | 30pt, `#8B0000`, air under it | the built-in look: 16pt, `#2F5496` |
+| H2 | 17pt, `#B22222`, air above and below | the built-in look: 13pt, `#2F5496` |
 | H3 | a paragraph | a heading |
 | Code | Courier New 11pt `#006400` | Consolas 9pt `#A31515` |
 | Link | `#0000EE` | `#0563C1` |
 
 The headings are the difference you will see first and the spacing the one you
-will notice second, once the colour has stopped being surprising.
+will notice second, once the colour has stopped being surprising. Nothing here
+is Word's own `Heading 1`: it is the library's built-in look, written onto the
+text itself, and it comes out the same in a `.docx`, an `.odt` and an `.rtf`.
 
 ## And this one is a heading here
 

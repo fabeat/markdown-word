@@ -462,7 +462,9 @@ final class Validator
 
         return match ($property) {
             'name' => \is_string($given) ? null : 'It is a font name, written as a string.',
+            'styleName' => \is_string($given) ? null : 'It is the name of a Word style, written as a string.',
             'size' => self::number($given, 0.001),
+            'lineHeight' => self::number($given, 0.001),
             'color' => self::colour($given),
             'bold', 'italic', 'strikethrough', 'keepNext' => self::boolean($given),
             'underline' => \is_bool($given) ? null : self::oneOf($given, self::wordValues(Font::class, 'UNDERLINE_')),

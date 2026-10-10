@@ -90,6 +90,9 @@ it('does not claim again what the code does not do', function (string $claim) {
     'the version is written down in only one place' => 'The one place the version is written down',
     'shipping the lock file makes an install reproducible' => 'a reproducible install is worth',
     'one list of style keys covers every slot' => 'The keys a style slot\'s array form understands',
+    'a default heading is body text in an .odt or an .rtf' => 'headings are body text',
+    'the built-in look is a no-op because it matches the default' => 'currently re-applies what is already the default',
+    'a built-in style id carries an outline level by itself' => 'only the built-in ids carry an outline level',
 ]);
 
 it('has no decorative dividers in it', function () {
@@ -211,8 +214,8 @@ it('clamps a heading level to the six there are styles for', function () {
     // rather than nothing.
     $styles = new Styles();
 
-    expect($styles->heading(9))->toBe('Heading6')
-        ->and($styles->heading(0))->toBe('Heading1');
+    expect($styles->heading(9))->toBe($styles->get(Styles::HEADING_6))
+        ->and($styles->heading(0))->toBe($styles->get(Styles::HEADING_1));
 });
 
 it('reports a template that is not there as the caller\'s mistake', function () {

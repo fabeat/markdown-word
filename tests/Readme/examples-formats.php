@@ -93,6 +93,26 @@ function readmeBody(string $archive): string
         : readmePart($archive, 'word/document.xml') . readmePart($archive, 'word/_rels/document.xml.rels');
 }
 
+/**
+ * The same page with its first heading pointed at a style of the caller's own,
+ * which is the one thing the built-in look does not cover.
+ *
+ * @return array{0: MarkdownToWord, 1: string}
+ */
+function namedHeadingFormat(Format $format): array
+{
+    $converter = new MarkdownToWord(
+        "---\nstyles:\n  heading.1: CorpTitle\n---\n\n# One document, three formats\n\nBody.\n",
+        Configuration::create(),
+        new CommonMarkParser([...CommonMarkParser::FLAVOURS['gfm'], FrontMatterExtension::class]),
+    );
+
+    $path = Scratch::path('readme-named', $format->extension());
+    $converter->convertTo($format, $path);
+
+    return [$converter, $path];
+}
+
 /** What the run reported as lost. */
 function readmeLosses(MarkdownToWord $converter): array
 {
@@ -224,37 +244,48 @@ it('drops the background of a code block in the two that are not a .docx', funct
     'rtf' => [Format::Rtf, '\\pard'],
 ]);
 
-it('keeps the spacing of a named style in an .odt and none of its character half', function () {
-    [$converter, $path] = readmeFormat(Format::Odt);
-    $content = readmePart($path, 'content.xml');
+it('carries a heading in all three, as a heading rather than as body text', function (Format $format, string $needle) {
+    [, $path] = readmeFormat($format);
+    $body = readmeBody($path);
 
-    preg_match('~<text:p text:style-name="[^"]*Heading1">(.*?)</text:p>~s', $content, $heading);
-    $text = $heading[1] ?? '';
+    // The size and the weight of `heading.1`, which is what a reader sees as a
+    // heading. A `w:pStyle` on its own is not evidence: it is in the `.odt` and the
+    // `.rtf` too, where neither writer resolves it.
+    expect($body)->toContain($needle);
+})->with([
+    'docx' => [Format::Docx, '<w:sz w:val="32"'],
+    'odt' => [Format::Odt, 'fo:font-size="16pt"'],
+    'rtf' => [Format::Rtf, '\fs32'],
+]);
 
-    // Half a claim, asserted as half. The style is in the file and the paragraph
-    // references it — and nothing inside the heading sizes, weights or colours the
-    // text, which is what a reader sees as body text with air above it. The
-    // assertion is on what is absent, because an empty `style:text-properties` is
-    // written by one serialiser and dropped by the other.
-    expect($content)->toContain('style:parent-style-name="Heading1"')
-        ->and(readmePart($path, 'styles.xml'))
-        ->toMatch('~<style:style [^>]*style:name="Heading1"[^>]*style:family="text"[^>]*>\s*<style:text-properties[^>]*fo:font-size~')
-        ->and($text)->toContain('One document, three formats')
-        ->and(readmeLosses($converter))->toContain('named-styles');
+it('keeps the style name on a .docx heading', function () {
+    [, $path] = readmeFormat(Format::Docx);
 
-    expect($text)->not->toContain('fo:font-size')
-        ->and($text)->not->toContain('fo:font-weight')
-        ->and($text)->not->toContain('fo:color');
+    // The conventional hook, and what a template's own `Heading1` has to be called.
+    // See `tests/Unit/look-and-feel.php` for what it does and does not amount to.
+    expect(readmePart($path, 'word/document.xml'))->toContain('<w:pStyle w:val="Heading1"/>')
+        // The definition too, or the name resolves to nothing in a document built
+        // from scratch.
+        ->and(readmePart($path, 'word/styles.xml'))->toMatch('~<w:style [^>]*w:styleId="Heading1"~');
 });
 
-it('writes a heading as body text in an .rtf', function () {
-    [$converter, $path] = readmeFormat(Format::Rtf);
+it('writes a slot that names a style as a reference to it in all three', function (Format $format, string $needle) {
+    [, $path] = namedHeadingFormat($format);
 
-    // No `\s<N>` reference at all: the RTF writer has no stylesheet for a named
-    // style to be referenced from.
-    expect(readmeBody($path))->not->toMatch('~\\\\s\d~')
-        ->and(readmeLosses($converter))->toContain('named-styles');
-});
+    expect(readmeBody($path))->toContain($needle);
+})->with([
+    'docx' => [Format::Docx, 'w:val="CorpTitle"'],
+    'odt' => [Format::Odt, 'style:parent-style-name="CorpTitle"'],
+    'rtf' => [Format::Rtf, '\pard'],
+]);
+
+it('reports a named style as lost by the two formats that cannot resolve one', function (Format $format) {
+    [$converter, $path] = namedHeadingFormat($format);
+
+    // `.docx` drops nothing, so it has nothing to report; the other two write the
+    // id and nothing else, and a reader gets body text.
+    expect(in_array('named-styles', readmeLosses($converter), true))->toBe($format !== Format::Docx);
+})->with(Format::cases());
 
 it('drops a typeface and a run colour in an .rtf and keeps them elsewhere', function (Format $format) {
     [$converter, $path] = readmeFormat($format);

@@ -6,6 +6,69 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **A built-in Look & Feel, written as direct formatting.** Every style slot now
+  has a concrete formatting before anybody configures it, and it is written onto
+  the runs and the paragraph rather than pointed at a style in Word's catalogue.
+  `Configuration\LookAndFeel` holds the values and `Styles::defaults()` is them.
+
+  **This changes what a default `.docx` looks like.** Before, a default
+  conversion wrote `Heading1` … `Heading6` and `IntenseQuote` into
+  `word/styles.xml` with the definitions this library chose, and the appearance
+  came from those definitions. After, the same definitions are still written —
+  `w:styleId="Heading1"` with its size, weight and colour — and the same
+  properties are *also* written onto the text. Headings, quotes, code blocks and
+  body spacing now come out of Word's own copy of the stylesheet, or out of a
+  copy the reader does not have at all, identically. Paragraphs also carry a
+  space after (6pt) and a 1.15 line height they did not carry before, and a code
+  block is indented a quarter inch.
+
+  The reason is that a named style is not a thing the other two writers can
+  resolve. An `.odt` or an `.rtf` of a perfectly good Markdown file came out as an
+  undifferentiated wall of body text: no heading hierarchy, no quote styling, no
+  code shading. Both writers do carry direct formatting, and the renderer already
+  had the machinery to write some — `InlineStyle`'s forced font. The default
+  simply never used it.
+
+  **What it does not change.** A slot configured with a style *name* is used
+  verbatim: the Look & Feel is not layered over a template's own `Heading1`, and
+  that rule is asserted rather than assumed. `Configuration::withBuiltInHeadingStyles()`
+  is now what its name says — it hands every heading, the quote and the lists to
+  Word's own styles and clears the body, list and code block spacing, so the
+  pre-Look-&-Feel behaviour is one call away and documented.
+  `Configuration::withoutDecoration()` — and the `--plain` flag that reads it —
+  now clears the body and list spacing too, or "no decoration" would have meant
+  something narrower than its name.
+
+  **What it does not fix.** A `.docx` heading still carries `w:pStyle Heading1`
+  and that is the conventional hook, but it is not an outline level: PHPWord
+  writes a style's `w:name` from the same string as its `w:styleId`, and
+  `Heading1` is not the canonical `heading 1`. LibreOffice reads the document as
+  a style of its own with no `text:outline-level`, and PHPWord's paragraph
+  writer only emits `w:outlineLvl` for a numbered paragraph, so there is no
+  setting that would change it. This is unchanged from before.
+
+  **What it closes and what it does not**, measured against rendered pages rather
+  than against markup: headings, block quotes and paragraph spacing are now
+  carried in all three formats; the `.rtf` keeps a run's colour when the same
+  colour is already in a registered style, which is where the heading colour
+  comes from, and its typeface is still dropped. Table borders, column
+  alignment, header-row boldness in `.odt`, ordered numbering in `.odt`, lists
+  and rule-under-a-break in both, and any paragraph background in both, are
+  PHPWord writer limits this does not reach. The README's capability table says
+  which is which.
+
+- **The reader no longer mistakes a style's own weight for emphasis.**
+  `Reverse\StyleTable` resolves a paragraph style's `w:rPr` as well as its
+  indentation and alignment, and `DocumentReader` subtracts it from every run in
+  the paragraph. Before, a heading written by this library came back as
+  `# **Heading**` and a block quote as `> *quoted*`, because the runs repeat the
+  formatting their style already implies. It also stopped resolving anything at
+  all: `StyleTable` used `DOMElement` without a leading backslash in a namespaced
+  file, so every `instanceof` in it was false and `indentOf()` and `alignmentOf()`
+  always returned the default.
+
 ### Added
 
 - **OpenDocument Text and Rich Text output.** `MarkdownToWord` grows `toOdt()`,
@@ -120,8 +183,9 @@ All notable changes to this project are documented here. The format follows
   other, and a paragraph references only the second, so a heading keeps the air
   above it and nothing else: the size, weight and colour a Word style carries on
   one `w:styleId` never reach the spans. Before: this was reported as carried,
-  because the style is in the file; a rendered page says otherwise. After:
-  `Format::Odt` lists it, and the README table says which half survives.
+  because the style is in the file; a rendered page says otherwise. After: the
+  built-in look does not use a named style, so a default document is unaffected,
+  and `Format::Odt` reports the loss for the document that does name one.
 - **An SVG silently lost its vector outside a `.docx`.** The original is collected
   during the render and only `SvgPass` puts it back, so an `.odt` and an `.rtf`
   were left with the raster and no word about it. Before: flattened, silently.

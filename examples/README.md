@@ -34,8 +34,8 @@ it, the format goes into the preview's name as well.
 | `17-borderless-tables.docx` | `tableBorders`, `tableHeaderBold` and `tableWidth` with no style slot at all. |
 | `19-vector.docx` | An SVG embedded as a **vector** beside its raster, which is the only way Word holds one. Not built where `ext-imagick` is absent; the build says so rather than failing. |
 | `20-formats.docx` | One page holding every construct the three output formats are asked about, as the `.docx` the other two are measured against. |
-| `20-formats.odt` | The same page as an OpenDocument Text. Headings and quotes keep their spacing but not their character formatting, the table has no borders, and the ordered list comes out bulleted. |
-| `20-formats.rtf` | The same page as Rich Text. There is no list in it at all, headings are body text, and the code block has no background. |
+| `20-formats.odt` | The same page as an OpenDocument Text. The headings, the quote and the spacing are the same as in the `.docx`; the table has no borders, its header row is not bold, and the ordered list comes out bulleted. |
+| `20-formats.rtf` | The same page as Rich Text. There is no list in it at all, the code block has no background and no colour, and there is no rule under the `---`. |
 | `18-round-trip.md` | `01-kitchen-sink.docx` read back into Markdown, for comparing the two side by side. |
 
 Numbering is one sequence and nothing shares a number. `markdown/14-rejected.md` is
@@ -50,7 +50,10 @@ written three times, and they exist to be opened together. `.docx` is what this
 library defaults to and what the other two are measured against; each of the two
 loses something, and a page with everything on it shows what.
 
-Open the three side by side and the differences are immediate:
+Open the three side by side and the differences are immediate — and the first
+thing you will *not* see is a difference, because the headings, the quote and the
+spacing are written onto the text itself rather than pointed at a style only Word
+has. What is left is the writer's:
 
 - **The `.rtf` has no list in it.** Not the bullet — the text of the item. There is
   no way to write a `.rtf` with a list in it from this library, and a run that tries
@@ -59,10 +62,10 @@ Open the three side by side and the differences are immediate:
   with a literal `%1.` bullet in front of each item.
 - **Neither has a rule under the `---`,** because a rule is a paragraph with a
   bottom border and neither writer writes one.
-- **Only the `.odt` has the table borders missing** — the `.rtf` has them.
-- **The headings are body text in the `.rtf` and barely different in the `.odt`:**
-  both keep the air above them, neither keeps the size or the colour, and a block
-  quote keeps its indentation in both and its italics only in the `.docx`.
+- **Neither has a background behind the code block,** for the same reason.
+- **Only the `.odt` is missing the table borders** — the `.rtf` has them — and the
+  `.odt`'s header row is not bold either, because PHPWord never walks into a table's
+  cells when it collects the text styles of a document.
 
 The preview images are named after the document and, for the two that are not the
 default, after the format too: `20-formats.png`, `20-formats.odt.png` and
@@ -112,8 +115,8 @@ to it, and every table would come out as a paragraph of pipes.
 from `styles:`. The H3 is a paragraph, because `options.maxHeadingLevel` is 2. The
 table has borders. The code is Menlo 9pt in `#A31515`.
 
-In `12` the same words use Word's own `Heading1`–`Heading3`, the H3 is a heading,
-and the code font is the built-in one.
+In `12` the same words use the library's built-in look — blue 16pt and 13pt
+headings — the H3 is a heading, and the code font is the built-in one.
 
 In `13` the block asks for the opposite of all of that and loses: the H1 is 11pt grey
 and the table has no borders, because the configuration passed to the constructor sits

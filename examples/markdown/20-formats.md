@@ -5,10 +5,12 @@ between `.docx`, `.odt` and `.rtf` can be looked at rather than taken on trust.
 
 - `examples/out/20-formats.docx`, `20-formats.odt` and `20-formats.rtf`.
 
-Open all three side by side. The `.rtf` has no list in it at all, the `.odt`
-has bullets where the numbers should be, and neither of the two has a rule
-under the `---` or a border round the table. The conversion printed a line on
-standard error for each of those.
+Open all three side by side. The headings, the quote and the spacing are the same
+in all three, because they are written onto the text rather than pointed at a
+style only Word has. What is left is the writer's: the `.rtf` has no list in it
+at all, the `.odt` has bullets where the numbers should be, and neither of the
+two has a rule under the `---`, a border round the table or a background behind
+the code. The conversion printed a line on standard error for each of those.
 
 ## What is in the page
 
@@ -32,8 +34,7 @@ plain string.
 | alpha  |     1 |
 | beta   |     2 |
 
-> A block quote, which is indented in all three and keeps its italics only
-> in the `.docx`.
+> A block quote, which is indented and italic in all three.
 
 ---
 

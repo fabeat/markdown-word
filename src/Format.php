@@ -62,8 +62,14 @@ enum Format: string
             // half in two families that do not see each other, so a paragraph whose
             // `text:style-name` points at the paragraph half inherits only the
             // spacing: the size, weight and colour a Word style carries on the same
-            // `w:styleId` never reach the spans. A heading keeps its air above it
-            // and its font is that of the body text.
+            // `w:styleId` never reach the spans.
+            //
+            // The built-in look is not caught by it: a default slot is direct
+            // formatting and names a style only so a `.docx` heading is still a
+            // `Heading1`. What is caught is a slot pointed at a style of the
+            // caller's own, which is what {@see \MarkdownWord\Writer\Survey} asks
+            // about — it records the loss for a paragraph whose whole style is that
+            // name, and for nothing else.
             self::Odt => [
                 'named-styles',
                 'numbered-lists',

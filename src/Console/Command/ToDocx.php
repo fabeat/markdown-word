@@ -421,7 +421,7 @@ class ToDocx extends BaseCommand
             ['--no-images', 'shorthand for --images skip'],
             ['--image-base <dir>', 'where relative image paths resolve from'],
             ['--table-width <n>', 'table width in fiftieths of a percent; 5000 is full width'],
-            ['--plain', 'no code colouring, no quote style, no table borders'],
+            ['--plain', 'no code colouring, no quote style, no table borders, no added spacing'],
             ['--to <format>', 'which way to convert; detected from the file otherwise'],
             ['-h, --help', 'this text'],
         ];

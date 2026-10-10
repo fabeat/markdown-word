@@ -10,10 +10,12 @@ namespace MarkdownWord\Configuration;
  * `bulletList`), which holds either a **styleId**, an inline style definition as
  * an array, or `null` for no styling.
  *
- * A styleId has no spaces even though the style's display name in the Word UI
- * does: the built-in heading styles are `Heading1`…`Heading6`, not
- * `Heading 1`. Because the slots are plain names, pointing the renderer at the
- * styleIds of a template of your own is a configuration change rather than a
+ * The defaults are {@see LookAndFeel}'s: properties rather than styleIds, so a
+ * document that configures nothing is written with direct formatting and looks the
+ * same whichever writer writes it. A styleId has no spaces even though the style's
+ * display name in the Word UI does — the built-in heading styles are `Heading1`…`Heading6`,
+ * not `Heading 1` — and because the slots are plain names, pointing the renderer at
+ * the styleIds of a template of your own is a configuration change rather than a
  * change to the code.
  */
 final class Styles
@@ -68,7 +70,15 @@ final class Styles
      */
     public const FONT_KEYS = ['name', 'size', 'color', 'bold', 'italic', 'strikethrough', 'underline'];
 
-    public const PARAGRAPH_KEYS = ['indentation', 'space', 'shading', 'keepNext', 'alignment'];
+    /**
+     * `styleName` and `lineHeight` are here because {@see LookAndFeel} writes with
+     * them: a heading's `styleName` is what makes a `.docx` heading a `Heading 1`
+     * rather than a large bold paragraph, and PHPWord dispatches it to the same
+     * `setStyleName()` as anything else in the array. A body's `lineHeight` reaches
+     * `w:spacing w:line`, `fo:line-height` and `\sl`, which are the three ways of
+     * saying it.
+     */
+    public const PARAGRAPH_KEYS = ['indentation', 'space', 'shading', 'keepNext', 'alignment', 'styleName', 'lineHeight'];
 
     public function __construct(array $slots = [])
     {
@@ -81,31 +91,10 @@ final class Styles
     public static function defaults(): array
     {
         return [
-            // The styleIds of the built-in Word styles, which is what Word
-            // resolves a `w:pStyle` against. Using the display names ("Heading
-            // 1") would leave the text unstyled.
-            self::HEADING_1 => 'Heading1',
-            self::HEADING_2 => 'Heading2',
-            self::HEADING_3 => 'Heading3',
-            self::HEADING_4 => 'Heading4',
-            self::HEADING_5 => 'Heading5',
-            self::HEADING_6 => 'Heading6',
-            self::PARAGRAPH => null,
-            self::BLOCK_QUOTE => 'IntenseQuote',
-            self::CODE_BLOCK => null,
+            ...LookAndFeel::slots(),
+
             self::THEMATIC_BREAK => null,
             self::HTML_FALLBACK => null,
-            self::LIST_PARAGRAPH => null,
-
-            self::CODE_FONT => [
-                'name' => 'Consolas',
-                'size' => 9,
-                'color' => 'A31515',
-            ],
-            self::LINK_FONT => [
-                'color' => '0563C1',
-                'underline' => 'single',
-            ],
 
             // Numbering style names, created on demand by the renderer.
             self::BULLET_LIST => 'MarkdownWord-Bullet',

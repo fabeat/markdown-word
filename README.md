@@ -356,22 +356,30 @@ the two new formats as it does for the old one.
 ### What each format carries
 
 Every row below was measured by writing the same document through each of
-PHPWord's three writers and reading the result back, and each one is asserted by
-`tests/Readme/examples-formats.php`. "Dropped" means the feature is not in the
-file; "flattened" means something is there but not what it was.
+PHPWord's three writers, rendering the result, and reading the file back.
+"Dropped" means the feature is not in the file; "flattened" means something is
+there but not what it was.
+
+A row that says *a named style* is the one case the built-in look cannot help
+with: it is written as direct formatting, so it reaches every writer, while a
+slot you have pointed at a style of your own is a name and a name is all two of
+these formats resolve it to. See [The built-in
+look](#the-built-in-look) for the other half of that sentence.
 
 | | `.docx` | `.odt` | `.rtf` |
 | --- | --- | --- | --- |
-| Headings | carried | degraded, the spacing survives and the size, weight and colour do not | dropped, written as body text |
+| Headings | carried | carried | carried |
+| A slot naming a style of your own | carried | dropped, written as body text | dropped, written as body text |
 | Bold, italic, underline, strikethrough | carried | carried | carried |
 | Font size | carried | carried | carried |
-| Typeface and run colour | carried | carried | dropped |
+| Typeface | carried | carried | dropped |
+| Run colour | carried | carried | carried when the same colour is in a registered style, otherwise dropped |
 | Bullet lists, including nesting | carried | carried | dropped, every item left out |
 | Ordered list numbering | carried | dropped, each item comes out bulleted | dropped, every item left out |
 | Table borders | carried | dropped | carried |
 | Table column alignment | carried | dropped | carried |
 | Bold header row | carried | dropped | carried |
-| Block quotes | carried | degraded, the indentation survives and the italic and colour do not | dropped, written as body text |
+| Block quotes | carried | carried | carried |
 | Paragraph background (a code block) | carried | dropped | dropped |
 | The rule under a thematic break | carried | dropped | dropped |
 | A link | carried | carried | carried |
@@ -382,7 +390,7 @@ file; "flattened" means something is there but not what it was.
 | An SVG | carried, vector beside its raster | flattened to a raster | flattened to a raster |
 | Rendering into a template | carried | not available | not available |
 
-Three of those are worth naming in full, because they are the ones a reader is
+Five of those are worth naming in full, because they are the ones a reader is
 least likely to notice.
 
 **RTF leaves every list item out of the document.** Not the bullet, not the
@@ -396,12 +404,19 @@ leaving it to be found.
 `\pngblip` whatever the bytes are, and a reader is left to work out what it has
 been given. It is named in the report for the same reason as the rest.
 
-**A named style loses its character half in an `.odt`.** The style is in the
-file and the spacing comes through, so the document is not malformed — but ODF
-keeps a style's character half and its paragraph half in two families that do not
-see each other, and a paragraph references only the second. A Word style carries
-both on one `w:styleId`, which is why a `.docx` heading is blue and large and an
-`.odt` heading is body text with air above it.
+**An `.rtf` run keeps a colour only if something else in the document already
+uses it.** RTF has a colour table, and PHPWord fills it by walking the styles
+registered on the document — not by walking the runs. A heading comes out blue
+because the `Heading1` style this library defines into every document is blue, so
+the colour is in the table before the run asks for it. An inline code span's
+`#A31515` is in no registered style, and comes out black. Nothing in the library
+promises this; it is what the writer does.
+
+**A named style is still only a name in an `.odt`.** The built-in look writes
+its properties onto the text, so a default document is unaffected. A slot you
+have pointed at `CorpTitle` writes that id into the paragraph, and ODF and RTF
+have no such style to resolve it against, so the paragraph comes out as body
+text. `pendingLosses()` reports it, and only for a document that did it.
 
 ### Being told what was lost
 
@@ -499,7 +514,7 @@ The options both directions share:
 | `--no-images` | shorthand for `--images skip` |
 | `--image-base <dir>` | where relative image paths resolve from |
 | `--table-width <n>` | table width in fiftieths of a percent; `5000` is full width |
-| `--plain` | no code colouring, no quote style, no table borders |
+| `--plain` | no code colouring, no quote style, no table borders, no added spacing |
 
 `--template` is `.docx` only; `to-odt` and `to-rtf` refuse it, because a template
 is a `.docx` package and there is nothing to render into otherwise.
@@ -663,16 +678,6 @@ documents in a config file:
 Configuration::fromArray(require 'config/markdown.php');
 ```
 
-`withBuiltInHeadingStyles()` points every heading at the matching built-in Word
-style *and* moves the quote and list slots to the built-in list styles, which is
-not the default set — the defaults use `IntenseQuote` and numbering definitions
-of this library's own:
-
-```php
-$config = Configuration::create()->withBuiltInHeadingStyles();
-// blockQuote → Quote, bulletList → ListBullet, orderedList → ListNumber
-```
-
 Whatever a configuration holds can be read back as the array it came from, which
 is what to write into a config file, to log, or to compare:
 
@@ -683,6 +688,72 @@ $config->toArray();   // ['styles' => [...], 'options' => [...]]
 `Configuration\Styles` and `Configuration\Options` have a `toArray()` of their own,
 and so does `Reverse\Options` — which is how the reader's options are spelled as
 an array in the first place.
+
+### The built-in look
+
+Every slot has a formatting before anybody configures it, and it is written onto
+the document rather than pointed at a style in Word's catalogue. That is the
+whole reason a `.docx`, an `.odt` and an `.rtf` of the same Markdown look the
+same: the ODF and RTF writers resolve a named style against a stylesheet of their
+own, and there is no `Heading1` in either.
+
+| Slot | |
+| --- | --- |
+| `heading.1` … `heading.6` | bold; 16 / 13 / 12 / 11 / 11 / 11pt; `#2F5496`, `#1F3763`; italic on 4 and 6; air above and below; kept with the next paragraph |
+| `paragraph` | 6pt after; 1.15 lines |
+| `blockQuote` | italic, `#404040`; half an inch in from both sides; 6pt above and below |
+| `codeBlock` | indented a quarter inch; no space above or below |
+| `listParagraph` | 3pt after |
+| `codeFont` | Consolas 9pt `#A31515` |
+| `linkFont` | `#0563C1`, underlined |
+
+It lives in `Configuration\LookAndFeel` and is reachable as `Styles::defaults()`.
+Any of it is overridden by writing the slot, in code or in a `styles:` block:
+
+```yaml
+styles:
+  heading.1:
+    size: 24
+    color: 8B0000
+    space:
+      before: 0
+      after: 480
+```
+
+A heading also keeps the Word style name underneath it — `Heading1` through
+`Heading6`, `IntenseQuote` for the quote — and the definition of each is written
+into the document, so a `.docx` heading is a real `Heading 1` and a template's
+own style of that name has something to be resolved against. That is why a slot
+carries `styleName` as well as its properties.
+
+That name is the conventional hook and nothing more. PHPWord writes a style's
+`w:name` from the same string as its `w:styleId`, and `Heading1` is not the
+canonical `heading 1`, so a reader that maps Word's built-in styles by name treats
+it as a style of its own — LibreOffice does, and gives the paragraph no outline
+level at all when it reads one back. PHPWord's paragraph writer only emits
+`w:outlineLvl` for a numbered paragraph, so there is no setting here that
+changes that, and nothing in this library claims otherwise.
+
+Two rules follow from it, and they are the two halves of every slot:
+
+- **A slot configured with a style *name* is used verbatim.** That is a template
+  saying what its own `Heading1` looks like, and nothing of the built-in look is
+  layered over it.
+- **A slot left at its default is written as direct formatting.** That is what
+  makes the three formats agree.
+
+`withBuiltInHeadingStyles()` is the way back to the first rule for everything at
+once: it hands every heading to `Heading1`…`Heading6`, the quote to `Quote` and
+the lists to `ListBullet` and `ListNumber`, and clears the body, list and code
+block spacing, so Word's own styles decide what the document looks like.
+
+```php
+$config = Configuration::create()->withBuiltInHeadingStyles();
+```
+
+The two formats that cannot resolve a style name will then bring out the
+paragraph as body text, which is what a Word built-in style looks like when
+nothing defines it — and `pendingLosses()` says so.
 
 ### Frontmatter
 
@@ -913,16 +984,17 @@ client and will not invent a download.
 
 ### Styles
 
-Each slot holds a styleId, an inline style array, or `null`.
+Each slot holds a styleId, an inline style array, or `null`. The default is the
+[built-in look](#the-built-in-look): an array, with the styleId named inside it.
 
 | Slot | Default | Controls |
 | --- | --- | --- |
-| `heading.1` … `heading.6` | `Heading1` … `Heading6` | headings |
-| `paragraph` | `null` | body text |
-| `blockQuote` | `IntenseQuote` | `>` blocks |
-| `codeBlock` | `null` | fenced code paragraphs |
-| `thematicBreak` | `null` | `---` |
-| `listParagraph` | `null` | list item paragraphs |
+| `heading.1` … `heading.6` | blue bold 16…11pt, `styleName: Heading1`… | headings |
+| `paragraph` | 6pt after, 1.15 lines | body text |
+| `blockQuote` | italic `#404040`, indented, `styleName: IntenseQuote` | `>` blocks |
+| `codeBlock` | indented, no space above or below | fenced code paragraphs |
+| `thematicBreak` | `null`, which draws a rule | `---` |
+| `listParagraph` | 3pt after | list item paragraphs |
 | `htmlFallback` | `null` | raw HTML |
 | `codeFont` | Consolas 9pt, dark red | `` `code` `` |
 | `linkFont` | blue, underlined | hyperlink text |

@@ -83,9 +83,9 @@ function formatAssets(): string
     return $directory;
 }
 
-function formatDocument(string $markdown = EVERYTHING): MarkdownToWord
+function formatDocument(string $markdown = EVERYTHING, array $overrides = []): MarkdownToWord
 {
-    return new MarkdownToWord($markdown, overrides: ['options' => [
+    return new MarkdownToWord($markdown, overrides: [...$overrides, 'options' => [
         'imageBasePath' => formatAssets(),
         'images' => Options::IMAGE_EMBED,
     ]]);
@@ -232,11 +232,11 @@ it('writes an .odt a reader can open', function () {
         ->and($parts)->toHaveKey('styles.xml');
 });
 
-it('keeps the spacing of a heading in an .odt, and nothing else of it', function () {
-    // ODF keeps a style's two halves in two families that do not see each other, so
-    // a paragraph that references the paragraph half of a Word style inherits the
-    // spacing and nothing more. The style *is* in the file, which is what makes this
-    // a degradation rather than a loss — but the file is what a reader sees.
+it('carries the whole of a default heading into an .odt', function () {
+    // The built-in look is direct formatting with the style id named beside it, so
+    // the ODF span carries the size, the weight and the colour, and the paragraph
+    // resolves the id for the spacing. Nothing about this depends on a stylesheet
+    // the ODF reader has of its own.
     $converter = formatDocument();
     $path = Scratch::path('probe', '.odt');
 
@@ -244,19 +244,33 @@ it('keeps the spacing of a heading in an .odt, and nothing else of it', function
 
     $content = partOfFormat($path, 'content.xml');
 
-    preg_match('~<text:p text:style-name="[^"]*Heading1">(.*?)</text:p>~s', $content, $heading);
+    preg_match('~<text:p text:style-name="Heading1">(.*?)</text:p>~s', $content, $heading);
     $text = $heading[1] ?? '';
 
-    expect($content)->toContain('style:parent-style-name="Heading1"')
-        ->and(partOfFormat($path, 'styles.xml'))->toContain('style:name="Heading1"')
-        ->and($text)->toContain('Heading')
-        ->and(array_column($converter->pendingLosses(), 'feature'))->toContain('named-styles');
+    expect($text)->toContain('Heading')
+        ->and($content)->toMatch('~<style:style style:name="T1"[^>]*>\s*<style:text-properties[^>]*fo:font-size="16pt"[^>]*fo:color="#2F5496"[^>]*fo:font-weight="bold"~')
+        ->and(partOfFormat($path, 'styles.xml'))->toMatch('~<style:style [^>]*style:name="Heading1"[^>]*style:family="paragraph"[^>]*>\s*<style:paragraph-properties[^>]*fo:margin-top="12pt"~')
+        // A default document names no style it depends on, so there is no loss to
+        // report about named styles however many of them the slots carry.
+        ->and(array_column($converter->pendingLosses(), 'feature'))->not->toContain('named-styles');
+});
 
-    // Asserted on what is absent: an empty `style:text-properties` is written by one
-    // serialiser and dropped by the other, and neither is a claim.
-    expect($text)->not->toContain('fo:font-size')
-        ->and($text)->not->toContain('fo:font-weight')
-        ->and($text)->not->toContain('fo:color');
+it('still loses a heading whose slot names a style, and says so', function () {
+    // The other half of the row, and the one the Look & Feel cannot close: a
+    // template author naming their own style gets the id written into the
+    // paragraph, and neither ODF nor RTF has that style to resolve it against.
+    $converter = formatDocument(EVERYTHING, ['styles' => ['heading.1' => 'CorpTitle']]);
+    $path = Scratch::path('probe', '.odt');
+
+    $converter->convertTo(Format::Odt, $path);
+
+    $content = partOfFormat($path, 'content.xml');
+
+    // The template author's style reaches the paragraph as a name and nothing else:
+    // the automatic style inherits from an id the file never defines.
+    expect($content)->toContain('style:parent-style-name="CorpTitle"')
+        ->and(partOfFormat($path, 'styles.xml'))->not->toContain('style:name="CorpTitle"')
+        ->and(array_column($converter->pendingLosses(), 'feature'))->toContain('named-styles');
 });
 
 it('keeps bold, italics and strikethrough in an .odt', function () {
@@ -456,15 +470,29 @@ it('writes no paragraph background in either format, and says so', function () {
     }
 });
 
-it('writes headings as body text in an .rtf, and says so', function () {
+it('carries a default heading into an .rtf, and says nothing about losing it', function () {
     $converter = formatDocument();
+    $path = Scratch::path('probe', '.rtf');
+
+    $converter->convertTo(Format::Rtf, $path);
+    $rtf = file_get_contents($path);
+
+    // The RTF writer has no stylesheet, so `\s1` can never appear; the size and
+    // the weight arrive as run properties instead, which is what a reader sees.
+    expect($rtf)->not->toContain('\s1')
+        ->and($rtf)->toMatch('~\\\\cf\d+\\\\f\d+\\\\fs32\\\\b~')
+        ->and(array_column($converter->pendingLosses(), 'feature'))->not->toContain('named-styles');
+});
+
+it('writes a heading whose slot names a style as body text in an .rtf, and says so', function () {
+    $converter = formatDocument(EVERYTHING, ['styles' => ['heading.1' => 'CorpTitle']]);
     $path = Scratch::path('probe', '.rtf');
 
     $converter->convertTo(Format::Rtf, $path);
 
     // `writeOpening()` wants a `Style\Paragraph` and this library's named styles
-    // are `Style\Font`, so a heading carries neither its size nor its weight.
-    expect(file_get_contents($path))->not->toContain('\s1')
+    // are `Style\Font`, so a named heading carries neither its size nor its weight.
+    expect(file_get_contents($path))->not->toMatch('~\\\\fs32\\\\b~')
         ->and(array_column($converter->pendingLosses(), 'feature'))->toContain('named-styles');
 });
 

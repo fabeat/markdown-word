@@ -413,7 +413,7 @@ it('a configuration gives its array back', function () {
     $array = $config->toArray();
 
     expect($array)->toHaveKeys(['styles', 'options'])
-        ->and($array['styles'][Styles::HEADING_1])->toBe('Heading1')
+        ->and($array['styles'][Styles::HEADING_1])->toBe(Styles::defaults()[Styles::HEADING_1])
         ->and($array['options']['tableBorders'])->toBeFalse();
 
     // Round trip: what comes out can go back in.
@@ -436,13 +436,13 @@ it('the style slots can be read and replaced one at a time', function () {
     // `defaults()` is what a new instance starts from, `heading()` resolves a
     // level, and `with()` returns a new instance with one slot replaced.
     expect($styles->toArray())->toBe(Styles::defaults())
-        ->and($styles->heading(1))->toBe('Heading1')
-        ->and($styles->heading(9))->toBe('Heading6');
+        ->and($styles->heading(1))->toBe(Styles::defaults()[Styles::HEADING_1])
+        ->and($styles->heading(9))->toBe(Styles::defaults()[Styles::HEADING_6]);
 
     $changed = $styles->with(Styles::HEADING_1, 'CorpTitle');
 
     expect($changed->get(Styles::HEADING_1))->toBe('CorpTitle')
-        ->and($styles->get(Styles::HEADING_1))->toBe('Heading1');
+        ->and($styles->get(Styles::HEADING_1))->toBe(Styles::defaults()[Styles::HEADING_1]);
 });
 
 // Advanced use

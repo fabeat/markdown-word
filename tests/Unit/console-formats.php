@@ -111,13 +111,37 @@ it('refuses a template for a format that has none', function () {
 });
 
 it('reports what the format dropped, on standard error', function () {
-    [$input] = formatInput('lossy.md', "# Notes\n\n- one\n- two\n");
+    // A heading named after a style rather than styled directly: the default slots
+    // are direct formatting, which every writer carries, and `named-styles` is
+    // the loss a template author is told about rather than one everybody is.
+    [$input] = formatInput('lossy.md', <<<'MD'
+        ---
+        styles:
+          heading.1: Title
+        ---
+
+        # Notes
+
+        - one
+        - two
+        MD);
 
     $run = runCli(['to-rtf', $input, '-o', Scratch::path('lossy.rtf')]);
 
     expect($run['code'])->toBe(Application::SUCCESS)
         ->and($run['err'])->toContain('rtf cannot carry lists')
         ->and($run['err'])->toContain('named-styles');
+});
+
+it('says nothing about named styles for a document written with the built-in look', function () {
+    [$input] = formatInput('styled.md', "# Notes\n\n> quoted\n");
+
+    $run = runCli(['to-rtf', $input, '-o', Scratch::path('styled.rtf')]);
+
+    // Every slot is direct formatting, so there is no style name for either writer
+    // to fail to resolve and nothing for the reader to be warned about.
+    expect($run['code'])->toBe(Application::SUCCESS)
+        ->and($run['err'])->not->toContain('named-styles');
 });
 
 it('reports nothing for a .docx, which drops nothing', function () {

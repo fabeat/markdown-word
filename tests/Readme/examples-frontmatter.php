@@ -108,15 +108,16 @@ it('spaces the heading the way the block asked', function () {
     expect(exampleXml('11-frontmatter'))->toMatch('/<w:spacing[^>]*w:before="0"[^>]*w:after="480"/');
 });
 
-it('gives the second document Word\'s own heading, untouched', function () {
+it('gives the second document the built-in look, with the style name kept', function () {
     [$text, $font, $size] = firstRun(exampleXml('12-frontmatter-none'));
 
     expect($text)->toStartWith('The same Markdown')
-        // No run-level font, size or colour at all: the paragraph carries `Heading1`
-        // and Word resolves that itself, which is the whole difference between the
-        // two documents.
+        // No block means no configuration, so the heading is drawn with the
+        // library's own properties — and still says which Word style it is,
+        // which is what a template of the reader's own would have to match.
         ->and($font)->toBe('default')
-        ->and($size)->toBe('default')
+        ->and($size)->toBe('32')
+        ->and(exampleXml('12-frontmatter-none'))->toContain('w:val="2F5496"')
         ->and(exampleXml('12-frontmatter-none'))->toContain('w:val="Heading1"');
 });
 
