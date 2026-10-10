@@ -72,5 +72,5 @@ on it:
 `README.md` has the full list, and `Reverse\Options` is where each one is
 configurable.
 
-[0.1.1]: https://github.com/fabeat/markdown-word/releases/tag/v0.1.1
-[0.1.0]: https://github.com/fabeat/markdown-word/releases/tag/v0.1.0
+[0.1.1]: https://github.com/markdown-office/markdown-word/releases/tag/v0.1.1
+[0.1.0]: https://github.com/markdown-office/markdown-word/releases/tag/v0.1.0

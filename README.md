@@ -1,13 +1,13 @@
 # markdown-word
 
-[![tests](https://github.com/fabeat/markdown-word/actions/workflows/tests.yml/badge.svg)](https://github.com/fabeat/markdown-word/actions/workflows/tests.yml)
-[![phar](https://github.com/fabeat/markdown-word/actions/workflows/phar.yml/badge.svg)](https://github.com/fabeat/markdown-word/actions/workflows/phar.yml)
+[![tests](https://github.com/markdown-office/markdown-word/actions/workflows/tests.yml/badge.svg)](https://github.com/markdown-office/markdown-word/actions/workflows/tests.yml)
+[![phar](https://github.com/markdown-office/markdown-word/actions/workflows/phar.yml/badge.svg)](https://github.com/markdown-office/markdown-word/actions/workflows/phar.yml)
 [![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=fabeat_markdown-word&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=fabeat_markdown-word)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=fabeat_markdown-word&metric=coverage)](https://sonarcloud.io/summary/new_code?id=fabeat_markdown-word)
 
-[![Latest release](https://img.shields.io/github/v/release/fabeat/markdown-word)](https://github.com/fabeat/markdown-word/releases/latest)
-[![Licence](https://img.shields.io/github/license/fabeat/markdown-word)](https://github.com/fabeat/markdown-word#licence)
-[![php](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffabeat%2Fmarkdown-word%2Fmain%2Fcomposer.json&query=%24.require.php&label=php&logo=php&logoColor=white)](https://github.com/fabeat/markdown-word#requirements)
+[![Latest release](https://img.shields.io/github/v/release/markdown-office/markdown-word)](https://github.com/markdown-office/markdown-word/releases/latest)
+[![Licence](https://img.shields.io/github/license/markdown-office/markdown-word)](https://github.com/markdown-office/markdown-word#licence)
+[![php](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffabeat%2Fmarkdown-word%2Fmain%2Fcomposer.json&query=%24.require.php&label=php&logo=php&logoColor=white)](https://github.com/markdown-office/markdown-word#requirements)
 
 Convert Markdown to Word documents in pure PHP — and back again.
 
@@ -87,7 +87,7 @@ mdword README.docx        # writes README.md
 ## Installation
 
 ```sh
-composer require fabeat/markdown-word
+composer require markdown-office/markdown-word
 ```
 
 That installs the command line along with the library, because `composer.json`
@@ -97,7 +97,7 @@ declares `bin: ["bin/mdword"]` — after a Composer install it is at
 Or the whole thing as one file, with nothing installed but PHP:
 
 ```sh
-curl -L -o mdword.phar https://github.com/fabeat/markdown-word/releases/latest/download/mdword.phar
+curl -L -o mdword.phar https://github.com/markdown-office/markdown-word/releases/latest/download/mdword.phar
 chmod +x mdword.phar
 ./mdword.phar --version
 ```
@@ -786,7 +786,7 @@ MIT — see [LICENSE](LICENSE). PHPWord, which this library builds on, is
 LGPL-3.0.
 
 [commonmark]: https://github.com/thephpleague/commonmark
-[issues]: https://github.com/fabeat/markdown-word/issues
+[issues]: https://github.com/markdown-office/markdown-word/issues
 [sonarcloud]: https://sonarcloud.io/summary/new_code?id=fabeat_markdown-word
 [sonar-token]: https://sonarcloud.io/account/security
 [pest]: https://pestphp.com

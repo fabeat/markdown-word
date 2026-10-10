@@ -168,7 +168,7 @@ it('installation: the package, the bin entry and the version', function () {
     // `composer require` puts the CLI in `vendor/bin` because of the `bin` entry,
     // so a page naming `vendor/bin/mdword` and a `bin` naming something else is a
     // page that is wrong.
-    expect($composer['name'])->toBe('fabeat/markdown-word')
+    expect($composer['name'])->toBe('markdown-office/markdown-word')
         ->and($composer['bin'])->toBe(['bin/mdword'])
         ->and(is_file(dirname(__DIR__, 2) . '/bin/mdword'))->toBeTrue();
 

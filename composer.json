@@ -1,5 +1,5 @@
 {
-    "name": "fabeat/markdown-word",
+    "name": "markdown-office/markdown-word",
     "description": "Pure PHP Markdown to Word (DOCX) generator and back, built on PHPWord. Full CommonMark and GitHub-Flavored Markdown support, configurable styling, Word template rendering, and a command line utility.",
     "type": "library",
     "keywords": [
@@ -18,7 +18,7 @@
     "license": "MIT",
     "authors": [
         {
-            "name": "Fabian Graßl",
+            "name": "Fabian Gra\u00dfl",
             "email": "mail@fabiangrassl.de"
         }
     ],
