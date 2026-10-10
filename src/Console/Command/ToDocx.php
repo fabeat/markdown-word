@@ -9,12 +9,17 @@ use MarkdownWord\Configuration\Options;
 use MarkdownWord\Console\Application;
 use MarkdownWord\Console\CommandLine;
 use MarkdownWord\Console\ConsoleException;
+use MarkdownWord\Format;
 use ZipArchive;
 
 /**
  * `mdword to-docx` — Markdown in, a Word document out.
+ *
+ * {@see ToOdt} and {@see ToRtf} are this command with a different
+ * {@see self::format()}, so a run is written once and the three word formats cannot
+ * drift apart in anything but the format they name.
  */
-final class ToDocx extends BaseCommand
+class ToDocx extends BaseCommand
 {
     /** The region a template is expected to have, used when `--region` is not given. */
     public const DEFAULT_REGION = 'body';
@@ -24,7 +29,7 @@ final class ToDocx extends BaseCommand
      */
     public function execute(array $argv): int
     {
-        $command = $this->parseOptions($argv, 'convert Markdown to a Word document.');
+        $command = $this->parseOptions($argv, $this->summary());
 
         if ($command === null) {
             return Application::SUCCESS;
@@ -32,7 +37,7 @@ final class ToDocx extends BaseCommand
 
         $input = $command->input();
         $markdown = $this->application->readInput($input);
-        $output = $this->outputPath($command, '.docx');
+        $output = $this->outputPath($command, $this->format()->extension());
 
         // Two layers, and the difference is the whole point. `$settings` is the base
         // the document is rendered from, with anything the run inferred folded in; the
@@ -52,12 +57,49 @@ final class ToDocx extends BaseCommand
             $this->rejectWithoutTemplate($command);
             $this->convert($settings, $markdown, $input, $output, $overrides);
         } else {
+            $this->assertTemplateIsSupported($template);
             $this->intoTemplate($markdown, $template, $command, $settings, $input, $output, $overrides);
         }
 
         $this->report($input, $output);
 
         return Application::SUCCESS;
+    }
+
+    /**
+     * The format this command writes.
+     *
+     * The one thing {@see ToOdt} and {@see ToRtf} change; everything else a run does
+     * — the layering of configuration, the template, the guards, the report — is the
+     * same whichever of the three it is.
+     */
+    protected function format(): Format
+    {
+        return Format::Docx;
+    }
+
+    protected function summary(): string
+    {
+        return 'convert Markdown to a Word document.';
+    }
+
+    /**
+     * A template is a `.docx`, and the renderer fills one in through PHPWord's own
+     * template processor, which only reads that package. So this is not a limitation
+     * of the two newer writers that could be worked around later; it is the shape of
+     * the feature, and saying so is better than writing a document that was never
+     * rendered into anything.
+     */
+    protected function assertTemplateIsSupported(string $path): void
+    {
+        if ($this->format() === Format::Docx) {
+            return;
+        }
+
+        throw new ConsoleException(
+            sprintf('A template cannot be filled in for %s.', $this->format()->value),
+            ['A template is a .docx, and only `mdword to-docx` renders into one.'],
+        );
     }
 
     /**
@@ -77,15 +119,17 @@ final class ToDocx extends BaseCommand
     ): void {
         $this->guardAgainstOverwrite($input, $output);
 
+        $format = $this->format();
         $converter = $this->application->converter($config, $markdown, $overrides);
 
         if ($output === '-') {
-            $this->application->writeResult($output, $converter->convert());
+            $this->application->writeResult($output, $converter->convertTo($format));
         } else {
-            $converter->convert($output);
+            $converter->convertTo($format, $output);
         }
 
         $this->application->reportImageConversions($converter);
+        $this->application->reportLosses($converter, $format);
     }
 
     protected static function other(): string

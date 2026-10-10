@@ -11,7 +11,10 @@ use MarkdownWord\Console\CommandLine;
 use MarkdownWord\Console\Command\Command;
 use MarkdownWord\Console\Command\ToDocx;
 use MarkdownWord\Console\Command\ToMarkdown;
+use MarkdownWord\Console\Command\ToOdt;
+use MarkdownWord\Console\Command\ToRtf;
 use MarkdownWord\Exception\InvalidInput;
+use MarkdownWord\Format;
 use MarkdownWord\Input;
 use MarkdownWord\MarkdownToWord;
 use MarkdownWord\Parser\CommonMarkParser;
@@ -61,6 +64,8 @@ final class Application
      */
     private const COMMANDS = [
         'to-docx' => ToDocx::class,
+        'to-odt' => ToOdt::class,
+        'to-rtf' => ToRtf::class,
         'to-markdown' => ToMarkdown::class,
     ];
 
@@ -203,10 +208,14 @@ final class Application
         } else {
             $direction = self::directionFor($forced);
 
-            if ($detected !== null && $detected !== $direction) {
+            // Compared by which way the run reads rather than by which command it
+            // ends up in: `.docx`, `.odt` and `.rtf` are three answers to the same
+            // question, and a file of Markdown is Markdown whichever of them is
+            // going to be written.
+            if ($detected !== null && self::readsMarkdown($detected) !== self::readsMarkdown($direction)) {
                 throw new ConsoleException(
                     sprintf('--to %s does not match "%s".', $forced, $input),
-                    [sprintf('That file is %s.', $detected === 'to-docx' ? 'Markdown' : 'a Word document')],
+                    [sprintf('That file is %s.', self::readsMarkdown($detected) ? 'Markdown' : 'a Word document')],
                 );
             }
         }
@@ -220,12 +229,23 @@ final class Application
     {
         return match (strtolower($asked)) {
             'docx', 'word' => 'to-docx',
+            'odt', 'opendocument' => 'to-odt',
+            'rtf', 'rich text' => 'to-rtf',
             'markdown', 'md' => 'to-markdown',
             default => throw new ConsoleException(
                 sprintf('Unknown format "%s".', $asked),
-                ['Use docx or markdown.'],
+                ['Use docx, odt, rtf or markdown.'],
             ),
         };
+    }
+
+    /**
+     * Whether a command takes Markdown in, for the one comparison that must not
+     * care which of the three word formats is meant.
+     */
+    private static function readsMarkdown(string $command): bool
+    {
+        return $command !== 'to-markdown';
     }
 
     /**
@@ -342,14 +362,21 @@ final class Application
             'USAGE',
             '  ' . self::NAME . ' <file>            # the direction is worked out from the file',
             '  ' . self::NAME . ' to-docx     [<markdown>] [options]',
+            '  ' . self::NAME . ' to-odt      [<markdown>] [options]',
+            '  ' . self::NAME . ' to-rtf      [<markdown>] [options]',
             '  ' . self::NAME . ' to-markdown [<docx>]    [options]',
             '  ' . self::NAME . ' help',
             '  ' . self::NAME . ' --version',
             '',
             'A Word document is a zip archive and Markdown is text, so the file says',
             'which way it has to go. Naming the command anyway is allowed and is what',
-            'a script should do; `--to docx` or `--to markdown` says it in one word',
-            'and is the only way to be explicit when reading from standard input.',
+            'a script should do; `--to docx`, `--to odt`, `--to rtf` or `--to markdown`',
+            'says it in one word and is the only way to be explicit when reading from',
+            'standard input.',
+            '',
+            'to-docx, to-odt and to-rtf are one conversion in three formats, and .docx',
+            'is the default of all three. What the other two cannot carry is set out in',
+            'the README, and a run that loses any of it says so on standard error.',
             '',
             'The input is read from standard input when no file is named. The result is',
             'written to standard output when the output is "-", or when there is no input',
@@ -369,9 +396,11 @@ final class Application
         $lines[] = '  ' . self::NAME . ' README.md                    # -> README.docx';
         $lines[] = '  ' . self::NAME . ' README.docx                  # -> README.md';
         $lines[] = '  ' . self::NAME . ' to-docx README.md -o README.docx';
+        $lines[] = '  ' . self::NAME . ' to-odt README.md';
         $lines[] = '  ' . self::NAME . ' to-docx notes.md --template report.docx --region body --define customer=Northwind';
         $lines[] = '  ' . self::NAME . ' to-markdown report.docx --media assets -o report.md';
-        $lines[] = '  cat notes.md | ' . self::NAME . ' to-docx - -o - | pbcopy';
+        $lines[] = '  ' . self::NAME . ' README.md --to rtf';
+        $lines[] = '  ' . self::NAME . ' cat notes.md | ' . self::NAME . ' to-docx - -o - | pbcopy';
 
         return implode(PHP_EOL, $lines) . PHP_EOL;
     }
@@ -645,6 +674,26 @@ final class Application
                 $conversion['format'],
                 $conversion['embeddedAs'],
             ));
+        }
+    }
+
+    /**
+     * Say what the format asked for dropped, on standard error with the rest of the
+     * progress rather than into the document.
+     *
+     * `.docx` drops nothing and is the baseline the others are measured against, so
+     * a run that lost nothing says nothing here either — the alternative is a line on
+     * every conversion telling a reader of a perfect `.docx` that the document is
+     * what it always was.
+     */
+    public function reportLosses(Converter $converter, Format $format): void
+    {
+        if (!$converter instanceof MarkdownToWord) {
+            return;
+        }
+
+        foreach ($converter->pendingLosses() as $loss) {
+            $this->progress(sprintf('%s cannot carry %s: %s', $format->value, $loss->feature, $loss->message));
         }
     }
 
