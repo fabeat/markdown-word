@@ -38,7 +38,7 @@ function sourcesWithClaim(string $claim): array
     $found = [];
     $root = dirname(__DIR__, 2);
 
-    // `tests/` and `tools/` as well as `src/`: AGENTS.md applies the same rules
+    // `tests/` and `tools/` as well as `src/`: the policy applies the same rules
     // to all three, and the dividers it banned were mostly in the two that were
     // outside the first pass's scope.
     foreach (['src', 'tests', 'tools'] as $area) {
@@ -99,7 +99,7 @@ it('has no decorative dividers in it', function () {
     // A rule of dashes above a run of methods says what the method names below it
     // already say, in seventy characters, on every read of the file. There were
     // fifty-nine: none left in `src/` after the first pass, and all of the rest
-    // in the two directories that pass did not cover. AGENTS.md bans them; this is
+    // in the two directories that pass did not cover. The policy bans them; this is
     // what makes that a rule rather than a note.
     $dividers = [];
 
