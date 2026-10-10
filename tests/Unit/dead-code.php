@@ -120,6 +120,7 @@ it('does not claim again what the code does not do', function (string $claim) {
     'a style name is what makes a .docx heading a Heading 1' => 'heading a `Heading 1` rather than',
     'an .odt root leaves the style and fo prefixes undeclared' => 'but not `style` and `fo`',
     'which YAML implementation reads the block is the machine\'s choice' => 'which one is in play depends on the',
+    'a value list can be read off the upstream class at run time' => 'Read off the class rather than copied out',
 ]);
 
 it('has no decorative dividers in it', function () {

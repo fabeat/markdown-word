@@ -177,34 +177,4 @@ final class ValueShape
             ? null
             : \sprintf('It is a mapping, with %s beneath it.', $written);
     }
-
-    /**
-     * Every string constant PHPWord holds for a property, sorted.
-     *
-     * Read off the class rather than copied out, so the list in the message cannot
-     * fall behind the one in the writer: `w:jc` and `w:u` are closed sets, and
-     * anything outside one is written into the document and ignored by Word.
-     *
-     * Asked for as the public constants, because that is what the set is made of. A
-     * private constant in an upstream class is not something this library may offer a
-     * caller as an accepted value, and `getConstants()` with no filter hands those
-     * over along with the rest.
-     *
-     * @param class-string $class
-     * @return list<string>
-     */
-    public static function wordValues(string $class, string $prefix = ''): array
-    {
-        $values = [];
-
-        foreach ((new \ReflectionClass($class))->getConstants(\ReflectionClassConstant::IS_PUBLIC) as $name => $value) {
-            if (\is_string($value) && ($prefix === '' || str_starts_with((string) $name, $prefix))) {
-                $values[] = $value;
-            }
-        }
-
-        sort($values);
-
-        return $values;
-    }
 }

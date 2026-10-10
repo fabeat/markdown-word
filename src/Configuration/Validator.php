@@ -9,7 +9,6 @@ use MarkdownWord\Exception\InvalidConfigurationValue;
 use MarkdownWord\Exception\UnknownConfigurationKey;
 use PhpOffice\PhpWord\SimpleType\Jc;
 use PhpOffice\PhpWord\Style\Cell;
-use PhpOffice\PhpWord\Style\Font;
 use PhpOffice\PhpWord\Style\Row;
 use PhpOffice\PhpWord\Style\Table;
 
@@ -48,6 +47,22 @@ use PhpOffice\PhpWord\Style\Table;
  */
 final class Validator
 {
+    /**
+     * The underline styles `w:u` accepts: ECMA-376's `ST_Underline`.
+     *
+     * `Font::setUnderline()` takes any non-empty string and checks nothing, so unlike
+     * {@see Jc} there is no set here to ask PHPWord for: this one belongs to the
+     * format. PHPWord holds the same values under `Font::UNDERLINE_*`, and
+     * `tests/Unit/validator-values.php` asserts the message lists exactly those, so
+     * a value gained on either side is a test failure rather than a stale message.
+     */
+    private const UNDERLINE_VALUES = [
+        'dash', 'dashHeavy', 'dashLong', 'dashLongHeavy', 'dbl',
+        'dotDash', 'dotDashHeavy', 'dotDotDash', 'dotDotDashHeavy',
+        'dotted', 'dottedHeavy', 'heavy', 'none', 'single',
+        'wavy', 'wavyDbl', 'wavyHeavy', 'words',
+    ];
+
     /**
      * Every problem with a configuration array, in the order the keys were written.
      *
@@ -507,8 +522,8 @@ final class Validator
             'lineHeight' => ValueShape::number($given, 0.001),
             'color' => ValueShape::colour($given),
             'bold', 'italic', 'strikethrough', 'keepNext' => ValueShape::boolean($given),
-            'underline' => \is_bool($given) ? null : ValueShape::oneOf($given, ValueShape::wordValues(Font::class, 'UNDERLINE_')),
-            'alignment' => ValueShape::oneOf($given, ValueShape::wordValues(Jc::class)),
+            'underline' => \is_bool($given) ? null : ValueShape::oneOf($given, self::UNDERLINE_VALUES),
+            'alignment' => ValueShape::oneOf($given, Jc::values()),
             'space' => ValueShape::mapping($given, 'before: and after:'),
             'indentation' => ValueShape::mapping($given, 'left:, right:, firstLine: or hanging:'),
             // Colours rather than numbers: `fill` is a hex triplet, and `space` and
