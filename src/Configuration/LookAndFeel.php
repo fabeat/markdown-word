@@ -50,6 +50,18 @@ final class LookAndFeel
     public const CODE_BACKGROUND = 'F2F2F2';
 
     /**
+     * The two heading colours, which are the only colours a heading has.
+     *
+     * Named because a reader of {@see self::slots()} is looking at a table of defaults
+     * and the point of a table is that a value used twice is one value, not two that
+     * happen to match. Nothing about the hierarchy depends on which heading takes
+     * which: these are what this library's documents look like, not what Word's own
+     * heading styles look like.
+     */
+    private const HEADING_COLOR = '2F5496';
+    private const HEADING_COLOR_DEEP = '1F3763';
+
+    /**
      * The properties of every slot that has one, keyed by slot.
      *
      * `Styles::defaults()` is this with the slots that are not a look at all added
@@ -63,32 +75,32 @@ final class LookAndFeel
         return [
             Styles::HEADING_1 => [
                 'styleName' => 'Heading1',
-                'bold' => true, 'size' => 16, 'color' => '2F5496',
+                'bold' => true, 'size' => 16, 'color' => self::HEADING_COLOR,
                 'space' => ['before' => 240, 'after' => 120], 'keepNext' => true,
             ],
             Styles::HEADING_2 => [
                 'styleName' => 'Heading2',
-                'bold' => true, 'size' => 13, 'color' => '2F5496',
+                'bold' => true, 'size' => 13, 'color' => self::HEADING_COLOR,
                 'space' => ['before' => 200, 'after' => 100], 'keepNext' => true,
             ],
             Styles::HEADING_3 => [
                 'styleName' => 'Heading3',
-                'bold' => true, 'size' => 12, 'color' => '1F3763',
+                'bold' => true, 'size' => 12, 'color' => self::HEADING_COLOR_DEEP,
                 'space' => ['before' => 160, 'after' => 80], 'keepNext' => true,
             ],
             Styles::HEADING_4 => [
                 'styleName' => 'Heading4',
-                'bold' => true, 'italic' => true, 'size' => 11, 'color' => '2F5496',
+                'bold' => true, 'italic' => true, 'size' => 11, 'color' => self::HEADING_COLOR,
                 'space' => ['before' => 140, 'after' => 80], 'keepNext' => true,
             ],
             Styles::HEADING_5 => [
                 'styleName' => 'Heading5',
-                'bold' => true, 'size' => 11, 'color' => '2F5496',
+                'bold' => true, 'size' => 11, 'color' => self::HEADING_COLOR,
                 'space' => ['before' => 120, 'after' => 60], 'keepNext' => true,
             ],
             Styles::HEADING_6 => [
                 'styleName' => 'Heading6',
-                'italic' => true, 'size' => 11, 'color' => '1F3763',
+                'italic' => true, 'size' => 11, 'color' => self::HEADING_COLOR_DEEP,
                 'space' => ['before' => 120, 'after' => 60], 'keepNext' => true,
             ],
 
