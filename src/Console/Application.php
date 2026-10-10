@@ -114,38 +114,37 @@ final class Application
     /**
      * The run itself, with the deprecation filter already in place.
      *
+     * Both of the first two catches are the same failure: something the caller handed
+     * in that they can hand in differently — a bad command line, a key in a
+     * frontmatter block that names nothing, an image that is in hand and unusable.
+     * Their messages are written for a person reading them. Anything else is a defect
+     * in this library, and is reported as one.
+     *
      * @param list<string> $argv
      */
     private function runQuietly(array $argv): int
     {
         try {
             return $this->dispatch($argv);
-        } catch (ConsoleException $e) {
+        } catch (ConsoleException|InvalidInput $e) {
             $this->error($e->getMessage());
 
-            foreach ($e->hints() as $hint) {
-                $this->error('  ' . $hint);
+            // Only a `ConsoleException` carries hints. An `InvalidInput`'s message is
+            // the whole of what it has to say, and it says it for a person reading it.
+            if ($e instanceof ConsoleException) {
+                foreach ($e->hints() as $hint) {
+                    $this->error('  ' . $hint);
+                }
             }
-
-            return self::FAILURE;
-        } catch (InvalidInput $e) {
-            // A problem with what the caller handed in — a key in a frontmatter
-            // block that names nothing, an image that is in hand and unusable.
-            // Their message is written for a person reading it, and has no hint
-            // block to go with, so it is printed as it stands.
-            $this->error($e->getMessage());
-
-            return self::FAILURE;
         } catch (Throwable $e) {
-            // A defect rather than a mistake, so it is reported in full: the type,
-            // the message and where it happened. No stack trace — the phar has no
-            // source paths that mean anything to the person reading it — and the
-            // type named is what tells a defect from a mistake.
+            // The type, the message and where it happened. No stack trace — the phar
+            // has no source paths that mean anything to the person reading it — and
+            // the type named is what tells a defect from a mistake.
             $this->error(sprintf('%s: %s', $e::class, $e->getMessage()));
             $this->error(sprintf('  at %s:%d', $e->getFile(), $e->getLine()));
-
-            return self::FAILURE;
         }
+
+        return self::FAILURE;
     }
 
     /**

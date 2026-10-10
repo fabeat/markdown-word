@@ -57,7 +57,7 @@ class ToDocx extends BaseCommand
             $this->rejectWithoutTemplate($command);
             $this->convert($settings, $markdown, $input, $output, $overrides);
         } else {
-            $this->assertTemplateIsSupported($template);
+            $this->assertTemplateIsSupported();
             $this->intoTemplate($markdown, $template, $command, $settings, $input, $output, $overrides);
         }
 
@@ -89,8 +89,12 @@ class ToDocx extends BaseCommand
      * of the two newer writers that could be worked around later; it is the shape of
      * the feature, and saying so is better than writing a document that was never
      * rendered into anything.
+     *
+     * Which file the caller named is deliberately not part of the answer: whether a
+     * template can be filled in at all is a fact about the format, and
+     * {@see self::assertRegionExists()} is what reports the file by name.
      */
-    protected function assertTemplateIsSupported(string $path): void
+    protected function assertTemplateIsSupported(): void
     {
         if ($this->format() === Format::Docx) {
             return;
