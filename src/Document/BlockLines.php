@@ -39,7 +39,10 @@ final class BlockLines
      */
     public static function of(string $markdown): self
     {
-        $lines = $markdown === '' ? [] : (preg_split('/\R/', $markdown) ?: []);
+        // `preg_split()` answers an empty subject with one empty line rather than
+        // with none, so a document that has no block reaches the same `return` below
+        // as one that never opened one, and needs no guard of its own.
+        $lines = preg_split('/\R/', $markdown) ?: [];
 
         if (rtrim($lines[0] ?? '') !== '---') {
             return new self([], 1);
