@@ -250,6 +250,15 @@ All notable changes to this project are documented here. The format follows
 - **`14-round-trip.md` is `18-round-trip.md`** in `examples/out`, so that one
   number in the examples is not both a source and a result. `15`, `16` and `17`
   are the image and table examples.
+- **A frontmatter block meant different things on different machines.** Given no
+  parser of its own, `FrontMatterExtension` takes libyaml wherever `ext-yaml` is
+  loaded and symfony/yaml only where it is not — and a CI runner carries the
+  first by default where a checkout usually carries neither. The two disagree
+  about values and not only about types: `color: 000000` is the string `000000`
+  under symfony/yaml and the integer `0` under libyaml, so the same document was
+  accepted locally and refused on the runner as a colour that is not one. The
+  parser is now named in `CommonMarkParser` rather than discovered, which is
+  also what lets the class name and `withAllExtensions()` agree.
 
 ## [0.1.1] - 2026-10-08
 

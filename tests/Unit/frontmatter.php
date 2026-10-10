@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use League\CommonMark\Extension\FrontMatter\FrontMatterExtension;
 use MarkdownWord\Configuration;
 use MarkdownWord\Configuration\Options;
 use MarkdownWord\Document\ConfigurationMerger;
@@ -71,6 +72,23 @@ it('reads the block the extension already parsed', function () {
     $frontmatter = Frontmatter::fromDocument($document);
 
     expect($frontmatter->getString('title'))->toBe('Quarterly');
+});
+
+it('reads a six-digit colour as the string it was written as', function () {
+    // `FrontMatterExtension` given no parser takes libyaml wherever `ext-yaml` is
+    // loaded — a CI runner has it, a checkout usually does not — and the two
+    // disagree about this value rather than only about its type: `000000` is the
+    // string asserted below under symfony/yaml, and the integer 0 under libyaml,
+    // which the validator then refuses as though the document were malformed.
+    // Naming the extension by class has to read the same as naming it by factory.
+    $markdown = "---\nstyles:\n  heading.1:\n    color: 000000\n---\n\nBody";
+    $expected = ['styles' => ['heading.1' => ['color' => '000000']]];
+
+    $byClassName = (new CommonMarkParser([FrontMatterExtension::class]))->parse($markdown);
+
+    expect(Frontmatter::fromDocument(CommonMarkParser::withAllExtensions()->parse($markdown))->toArray())
+        ->toBe($expected)
+        ->and(Frontmatter::fromDocument($byClassName)->toArray())->toBe($expected);
 });
 
 it('reads a block that is not at the start of the file as no block', function () {
