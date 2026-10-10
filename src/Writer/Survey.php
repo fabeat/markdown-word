@@ -39,6 +39,14 @@ final class Survey
     /** @var array<string, true> */
     private array $used = [];
 
+    /**
+     * Private so that {@see self::of()} is the only way to get one.
+     *
+     * A survey is an answer to a question about a document somebody walked. One that
+     * could be constructed empty would answer "this document uses none of these
+     * features" about a document that was never looked at, which is the one answer
+     * {@see \MarkdownWord\Format} cannot tell from a real one.
+     */
     private function __construct()
     {
     }
