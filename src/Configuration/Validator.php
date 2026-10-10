@@ -47,6 +47,10 @@ use PhpOffice\PhpWord\Style\Table;
  */
 final class Validator
 {
+    /** The two keys a configuration array is written under. */
+    private const SECTION_OPTIONS = 'options';
+    private const SECTION_STYLES = 'styles';
+
     /**
      * The underline styles `w:u` accepts: ECMA-376's `ST_Underline`.
      *
@@ -224,8 +228,8 @@ final class Validator
             $problems = [
                 ...$problems,
                 ...match ($section) {
-                    'options' => self::optionKeys($value, $locate),
-                    'styles' => self::styleKeys($value, $locate),
+                    self::SECTION_OPTIONS => self::optionKeys($value, $locate),
+                    self::SECTION_STYLES => self::styleKeys($value, $locate),
                     default => [],
                 },
             ];
@@ -263,8 +267,8 @@ final class Validator
                     'option ',
                     '',
                     $known,
-                    'options',
-                ), self::line($locate, 'options/' . $key)),
+                    self::SECTION_OPTIONS,
+                ), self::line($locate, self::SECTION_OPTIONS, $key)),
                 'about' => 'key',
             ];
         }
@@ -303,8 +307,8 @@ final class Validator
                     'style ',
                     '',
                     $known,
-                    'styles',
-                ), self::line($locate, 'styles/' . $slot)),
+                    self::SECTION_STYLES,
+                ), self::line($locate, self::SECTION_STYLES, $slot)),
                 'about' => 'key',
             ];
         }
@@ -356,7 +360,7 @@ final class Validator
                     . 'themselves, one per line beneath it.',
                     $slot,
                     self::show($definition),
-                ), self::line($locate, 'styles/' . $slot)),
+                ), self::line($locate, self::SECTION_STYLES, $slot)),
                 'about' => 'value',
             ]];
         }
@@ -366,7 +370,6 @@ final class Validator
 
         foreach ($definition as $property => $given) {
             $property = (string) $property;
-            $path = 'styles/' . $slot . '/' . $property;
 
             if (!\in_array($property, $properties, true)) {
                 $problems[] = [
@@ -376,7 +379,7 @@ final class Validator
                         \sprintf(' property of the "%s" style', $slot),
                         $properties,
                         'style properties',
-                    ), self::line($locate, $path)),
+                    ), self::line($locate, self::SECTION_STYLES, $slot, $property)),
                     'about' => 'key',
                 ];
 
@@ -394,7 +397,7 @@ final class Validator
                     \sprintf('The "%s" property of the "%s" style', $property, $slot),
                     $given,
                     $rest,
-                    self::line($locate, $path),
+                    self::line($locate, self::SECTION_STYLES, $slot, $property),
                 ),
                 'about' => 'value',
             ];
@@ -440,7 +443,7 @@ final class Validator
                 \sprintf('The "%s" option', $key),
                 $given,
                 $rest,
-                self::line($locate, 'options/' . $key),
+                self::line($locate, self::SECTION_OPTIONS, $key),
             ),
             'about' => 'value',
         ]];
@@ -541,9 +544,17 @@ final class Validator
         );
     }
 
-    private static function line(?callable $locate, string $path): ?int
+    /**
+     * The line a key sits on, or null when there is no file to point into.
+     *
+     * The path is the section and the keys beneath it, which is what
+     * {@see \MarkdownWord\Document\BlockLines::lineOf()} follows. It is built here
+     * because a path spelled at each call site is a path spelled once per way of
+     * writing it, and only one of them is followed.
+     */
+    private static function line(?callable $locate, string $section, string ...$keys): ?int
     {
-        return $locate === null ? null : $locate($path);
+        return $locate === null ? null : $locate($section . '/' . implode('/', $keys));
     }
 
     /**
