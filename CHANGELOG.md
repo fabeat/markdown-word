@@ -259,6 +259,13 @@ All notable changes to this project are documented here. The format follows
   accepted locally and refused on the runner as a colour that is not one. The
   parser is now named in `CommonMarkParser` rather than discovered, which is
   also what lets the class name and `withAllExtensions()` agree.
+- **The package could not be installed on the PHP version it claims.**
+  `symfony/yaml` was required at `^8.1`, which needs PHP 8.4.1, while
+  `composer.json` has always said `"php": "^8.2"` and the README has always said
+  the published package installs on 8.2. `composer install --no-dev` therefore
+  failed outright on 8.2 and 8.3, taking the `minimum` job and the phar build
+  with it. The constraint is `^7.4 || ^8.1` and the lock carries 7.4, so the
+  floor holds; the test framework still needs 8.4, which the README already says.
 
 ## [0.1.1] - 2026-10-08
 
