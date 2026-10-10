@@ -169,7 +169,7 @@ final class SvgRasteriser
     {
         $length = \trim($length);
 
-        if ($length === '' || !\preg_match('~^([0-9]*\.?[0-9]+)\s*([a-z%]*)$~i', $length, $match)) {
+        if ($length === '' || !\preg_match('~^(\d*\.?\d+)\s*([a-z%]*)$~i', $length, $match)) {
             return null;
         }
 
