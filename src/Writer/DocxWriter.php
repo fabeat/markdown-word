@@ -9,6 +9,7 @@ use MarkdownWord\Exception\MalformedDocument;
 use MarkdownWord\Exception\UnreadableDocument;
 use MarkdownWord\Render\ImageDescriptionCollector;
 use MarkdownWord\Render\LinkPayloadCollector;
+use MarkdownWord\Render\SvgAttachmentCollector;
 use PhpOffice\PhpWord\IOFactory;
 use PhpOffice\PhpWord\PhpWord;
 
@@ -24,6 +25,8 @@ use PhpOffice\PhpWord\PhpWord;
  *    either the link or the formatting.
  *  - {@see ImageDescriptionPass} fills in the alternative text of the images,
  *    which PHPWord writes as an empty string.
+ *  - {@see SvgPass} puts the vector back behind the raster Word draws, for the SVG
+ *    images PHPWord could only have taken as a picture.
  *
  * {@see self::write()} and {@see self::toString()} both stage the archive in the
  * system temp directory and patch it there, so neither a document written to
@@ -51,8 +54,9 @@ final class DocxWriter
         string $path,
         ?LinkPayloadCollector $links = null,
         ?ImageDescriptionCollector $images = null,
+        ?SvgAttachmentCollector $vectors = null,
     ): string {
-        $temp = self::stage($phpWord, $links, $images);
+        $temp = self::stage($phpWord, $links, $images, $vectors);
 
         try {
             $contents = self::read($temp);
@@ -82,8 +86,9 @@ final class DocxWriter
         PhpWord $phpWord,
         ?LinkPayloadCollector $links = null,
         ?ImageDescriptionCollector $images = null,
+        ?SvgAttachmentCollector $vectors = null,
     ): string {
-        $temp = self::stage($phpWord, $links, $images);
+        $temp = self::stage($phpWord, $links, $images, $vectors);
 
         try {
             return self::read($temp);
@@ -119,6 +124,7 @@ final class DocxWriter
         PhpWord $phpWord,
         ?LinkPayloadCollector $links,
         ?ImageDescriptionCollector $images,
+        ?SvgAttachmentCollector $vectors = null,
     ): string {
         $path = tempnam(sys_get_temp_dir(), 'mdword_');
 
@@ -136,7 +142,7 @@ final class DocxWriter
         // this is the only moment its permissions can be narrowed.
         @chmod($path, 0o600);
 
-        self::patch($path, $links, $images);
+        self::patch($path, $links, $images, $vectors);
 
         return $path;
     }
@@ -145,6 +151,7 @@ final class DocxWriter
         string $docxPath,
         ?LinkPayloadCollector $links,
         ?ImageDescriptionCollector $images,
+        ?SvgAttachmentCollector $vectors = null,
     ): void {
         if ($links?->hasPayloads() === true) {
             self::patchHyperlinks($docxPath, $links->payloads());
@@ -154,6 +161,12 @@ final class DocxWriter
 
         if ($descriptions !== []) {
             (new ImageDescriptionPass($descriptions))->applyTo($docxPath);
+        }
+
+        $attachments = $vectors?->all() ?? [];
+
+        if ($attachments !== []) {
+            (new SvgPass())->applyTo($docxPath, $attachments);
         }
     }
 

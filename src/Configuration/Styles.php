@@ -51,6 +51,25 @@ final class Styles
     /**
      * @param array<string, mixed> $slots Slot overrides merged over the defaults.
      */
+    /**
+     * The keys a *font or paragraph* slot's array form understands.
+     *
+     * {@see \MarkdownWord\Render\StyleRegistrar} maps each of these onto a `set<Key>()`
+     * on PHPWord's font and paragraph styles and ignores anything else, so this is the
+     * list of names that can be written rather than the list of names that are read.
+     * Both live here because a key added to one and not the other is a key that is
+     * silently dropped.
+     *
+     * The table slots are not on this list and never were: `table`, `tableCell` and
+     * `tableHeaderRow` are handed a `Table`, a `Cell` and a `Row`, each with names of
+     * its own — `borderColor`, `vAlign`, `tblHeader`. {@see \MarkdownWord\Configuration\Validator}
+     * reads those three sets off the classes, which is where the two kinds of slot are
+     * told apart.
+     */
+    public const FONT_KEYS = ['name', 'size', 'color', 'bold', 'italic', 'strikethrough', 'underline'];
+
+    public const PARAGRAPH_KEYS = ['indentation', 'space', 'shading', 'keepNext', 'alignment'];
+
     public function __construct(array $slots = [])
     {
         $this->slots = array_merge(self::defaults(), $slots);

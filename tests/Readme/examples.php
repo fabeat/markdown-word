@@ -7,6 +7,8 @@ use MarkdownWord\Configuration\Options;
 use MarkdownWord\Configuration\Styles;
 use MarkdownWord\Console\Application;
 use MarkdownWord\Converter;
+use MarkdownWord\Document\ConfigurationMerger;
+use MarkdownWord\Document\Frontmatter;
 use MarkdownWord\MarkdownToWord;
 use MarkdownWord\Parser\CommonMarkParser;
 use MarkdownWord\Render\LinkPlaceholder;
@@ -560,4 +562,62 @@ it('the default parser: what needs extended() and what does not', function () {
         ->and($back($footnote, CommonMarkParser::extended()))->not->toContain('[^1]')
         ->and($back($description))->toContain(': Definition')
         ->and(trim($back($description, CommonMarkParser::extended())))->toBe('Definition');
+});
+
+// The frontmatter example, run.
+
+it('reads the frontmatter example off the page and merges it as the page says', function () {
+    $document = CommonMarkParser::withAllExtensions()->parse(<<<'MARKDOWN'
+        ---
+        template_file: report.dotx
+        options:
+          maxHeadingLevel: 3
+          tableBorders: false
+        styles:
+          heading.1: Title
+        ---
+
+        # Quarterly
+        MARKDOWN);
+
+    $configuration = ConfigurationMerger::resolve(
+        commandLine: ['options' => ['maxHeadingLevel' => 2]],
+        frontmatter: Frontmatter::fromDocument($document),
+        configFile: null,
+    );
+
+    // The block names a template and is not a Word option, so it is read as data and
+    // does not become a configuration key.
+    expect(Frontmatter::fromDocument($document)->getString('template_file'))->toBe('report.dotx')
+        ->and($configuration->getOptions()->maxHeadingLevel)->toBe(2)
+        // The option the command line did not mention came from the frontmatter, which
+        // is the claim the page makes about a source that says nothing about it.
+        ->and($configuration->getOptions()->tableBorders)->toBeFalse()
+        ->and($configuration->getStyles()->toArray())->toHaveKey('heading.1', 'Title');
+});
+
+it('keeps the frontmatter out of the document it configures', function () {
+    // The claim is that the block is configuration rather than content, so it must not
+    // also arrive as a paragraph.
+    $document = CommonMarkParser::withAllExtensions()->parse("---\ntitle: Quarterly\n---\n\nBody");
+
+    expect($document->firstChild())->toBeInstanceOf(League\CommonMark\Node\Block\Paragraph::class)
+        ->and($document->firstChild()?->firstChild()?->getLiteral())->toBe('Body');
+});
+
+it('orders the four sources the way the table on the page says', function () {
+    $fromFile = ['options' => ['maxHeadingLevel' => 4]];
+
+    $frontmatter = Frontmatter::of(['options' => ['maxHeadingLevel' => 3]]);
+    $commandLine = ['options' => ['maxHeadingLevel' => 2]];
+
+    $level = static fn (Configuration $c): int => $c->getOptions()->maxHeadingLevel;
+
+    // Each source against the one directly below it, because a merge that ignores a
+    // source in the middle of the chain produces a configuration that is valid and
+    // entirely wrong.
+    expect($level(ConfigurationMerger::resolve(configFile: $fromFile)))->toBe(4)
+        ->and($level(ConfigurationMerger::resolve(frontmatter: $frontmatter, configFile: $fromFile)))->toBe(3)
+        ->and($level(ConfigurationMerger::resolve(commandLine: $commandLine, frontmatter: $frontmatter)))->toBe(2)
+        ->and($level(ConfigurationMerger::resolve(commandLine: $commandLine, frontmatter: $frontmatter, configFile: $fromFile)))->toBe(2);
 });

@@ -2,12 +2,12 @@
 
 [![tests](https://github.com/markdown-office/markdown-word/actions/workflows/tests.yml/badge.svg)](https://github.com/markdown-office/markdown-word/actions/workflows/tests.yml)
 [![phar](https://github.com/markdown-office/markdown-word/actions/workflows/phar.yml/badge.svg)](https://github.com/markdown-office/markdown-word/actions/workflows/phar.yml)
-[![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=fabeat_markdown-word&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=fabeat_markdown-word)
-[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=fabeat_markdown-word&metric=coverage)](https://sonarcloud.io/summary/new_code?id=fabeat_markdown-word)
+[![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=markdown-office_markdown-word&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=markdown-office_markdown-word)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=markdown-office_markdown-word&metric=coverage)](https://sonarcloud.io/summary/new_code?id=markdown-office_markdown-word)
 
 [![Latest release](https://img.shields.io/github/v/release/markdown-office/markdown-word)](https://github.com/markdown-office/markdown-word/releases/latest)
 [![Licence](https://img.shields.io/github/license/markdown-office/markdown-word)](https://github.com/markdown-office/markdown-word#licence)
-[![php](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffabeat%2Fmarkdown-word%2Fmain%2Fcomposer.json&query=%24.require.php&label=php&logo=php&logoColor=white)](https://github.com/markdown-office/markdown-word#requirements)
+[![php](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmarkdown-office%2Fmarkdown-word%2Fmain%2Fcomposer.json&query=%24.require.php&label=php&logo=php&logoColor=white)](https://github.com/markdown-office/markdown-word#requirements)
 
 Convert Markdown to Word documents in pure PHP — and back again.
 
@@ -386,6 +386,25 @@ direction. The help and the parser are separate lists — one is for reading, on
 is for parsing — and a test holds them to each other, so neither can mention
 something the other does not have.
 
+**The flags outrank the document.** `--images`, `--image-base`, `--table-width` and
+`--plain` are the top of the four-source order below, so a `tableWidth:` in a
+document's own `---` block loses to a `--table-width` typed beside it. The
+`imageBasePath` the command line works out for itself — the directory the input file
+happens to sit in — is a default and loses to a document that names its own assets;
+`--image-base` is how you say it instead.
+
+**The command line reads frontmatter.** Unlike `new MarkdownToWord($markdown)` with
+the default parser, `mdword` builds its parser with `FrontMatterExtension`, so a
+document that carries its own configuration gets it from a terminal as well as from
+code. Without the extension a leading `---` is a thematic break and the rest of the
+block is printed at the top of the document.
+
+**A document that cannot be used says so and stops.** A wrong key in a `---` block, a
+value that is not what it is used as, or an image that is on disk and in a format
+nothing can embed: the message is printed as it stands, with no class name and no
+line from this repository, because it is the caller's mistake to fix and not a defect.
+Exit status is 1.
+
 A mistake is reported in a sentence, with what to do about it, and the exit code
 is non-zero — a wrong `--region` names the regions the template does have rather
 than producing a document full of `${...}`.
@@ -532,6 +551,233 @@ $config->toArray();   // ['styles' => [...], 'options' => [...]]
 and so does `Reverse\Options` — which is how the reader's options are spelled as
 an array in the first place.
 
+### Frontmatter
+
+A document can carry its own configuration in the YAML block at the top of the
+file, which is then used to render it:
+
+```markdown
+---
+template_file: report.dotx
+options:
+  maxHeadingLevel: 3
+  tableBorders: false
+styles:
+  heading.1: Title
+---
+
+# Quarterly
+```
+
+The block never reaches the document — it is configuration, not content — and
+`options:` and `styles:` mean exactly what they mean in a config file. `template_file`
+and `theme_file` name a template and are read separately, because neither means
+anything to a Word conversion and putting them in `Options` would add keys that no
+renderer looks at.
+
+Read the block off a parsed document and merge it with whatever else is in play:
+
+```php
+use MarkdownWord\Document\ConfigurationMerger;
+use MarkdownWord\Document\Frontmatter;
+
+$document = CommonMarkParser::withAllExtensions()->parse($markdown);
+
+$configuration = ConfigurationMerger::resolve(
+    commandLine: ['options' => ['maxHeadingLevel' => 2]],
+    frontmatter: Frontmatter::fromDocument($document),
+    configFile: $configFile,
+);
+```
+
+Four sources, and each one outranks the one below it:
+
+| Source | Wins over |
+| --- | --- |
+| the command line | the frontmatter |
+| the frontmatter | the config file |
+| the config file | the defaults |
+
+The file is what the author wrote; the command line is them saying it louder. A
+source that says nothing is skipped rather than read as "reset everything", so a
+command line with no option flags leaves the frontmatter in charge instead of
+clearing it.
+
+Merging preserves what a source did not mention. That matters because
+`Configuration::fromArray()` and `Configuration::withAll()` read a `null`
+differently on purpose — the first means "not configured, the default wins", the
+second "not mentioned, the current value stands" — and merging is the second kind.
+
+> **Pass an array, not a `Configuration`,** for the command line layer.
+> `MarkdownToWord`'s fourth constructor argument takes either, and
+> `Application::converter()` and `MarkdownTemplate` pass theirs on. An array is
+> sparse — a key nobody mentioned leaves the frontmatter standing — where a
+> `Configuration` names every setting there is, so handed to the merger it puts the
+> defaults above the frontmatter along with everything else.
+
+`Frontmatter` also reads the block for its own sake, if a caller wants it rather
+than the configuration: `getString()`, `getInt()`, `getBool()`, `getArray()`,
+`has()` and `toArray()`. A key of the wrong type returns the caller's default
+rather than being coerced, so `options: 3` cannot become a set of options.
+
+> Reading the block needs [`symfony/yaml`](https://symfony.com/doc/current/components/yaml.html),
+> which is a hard requirement. It used to be optional, which meant
+> `CommonMarkParser::withAllExtensions()` threw `MissingDependencyException` on any
+> document with frontmatter — including every document anyone would use it for.
+
+#### A key that names nothing, or a value that is not what it is used as
+
+Four places take a configuration key and quietly discard one they do not recognise:
+an unknown option, an unknown style slot, an unknown font property and an unknown
+paragraph property. Each leaves a document that renders cleanly and is configured as
+though the key had never been written — nothing looks broken, and the setting is
+simply absent. So a key in frontmatter is checked, and every key that fails is
+reported at once, with the alternatives and the nearest match:
+
+```
+Line 9: Unknown style "blockquote". Did you mean "blockQuote"? Known styles:
+blockQuote, bulletList, codeBlock, codeFont, heading.1, heading.2, ...
+
+Line 4: Unknown option "maxheadinglevel". Did you mean "maxHeadingLevel"? Known
+options: codeBlockShading, deferredHyperlinks, hardBreak, html, imageBasePath, ...
+
+Line 6: Unknown "colour" property of the "heading.1" style. Did you mean "color"?
+Known style properties: alignment, bold, color, indentation, italic, keepNext, ...
+```
+
+A value is the same class of problem and was the quieter half, because a wrong value
+still renders. `maxHeadingLevel: deep` is cast to `0`, the clamp turns `0` into `1`,
+and the document comes out with **every heading in it** rendered as body text.
+`color: "#8B0000"` reaches `w:color` with a `#` in it, which is not a colour there,
+and Word ignores it. A `space` with a word in it keeps the number beside it and drops
+the word, so the paragraph ends up with half the spacing that was asked for and
+nothing to say which half went missing. So the value is checked too, and the message
+carries the value, the line it is on, and what would have worked:
+
+```
+Line 3: The "maxHeadingLevel" option is "deep". It is a whole number between 1 and 6.
+
+Line 7: The "color" property of the "heading.1" style is "#8B0000". It is six
+hexadecimal digits, as in 8B0000, with no leading # and no colour name.
+
+Line 9: The "images" option is "maybe". It is one of: embed, placeholder, skip.
+```
+
+Every problem in a block is reported together, keys and values alike, and each of them
+names where it is. A block that is not a mapping at all is reported too:
+
+```
+Line 2: The frontmatter block is "hello", which is not a mapping of keys. It has to
+be key: value pairs, as `options:` and `styles:` are.
+
+Line 4: The "options" key of the frontmatter block is 3, which is not a mapping of
+keys. Each option or style goes on its own line, indented beneath it.
+```
+
+The line comes from the source text of the block, which the renderer has while it is
+converting. `Frontmatter::lineOf('styles/heading.1/color')` asks for one directly, and
+returns null when there is no source to ask — a document parsed elsewhere and handed
+to `configurationFor()`, where the message still stands without a line.
+
+`Exception\InvalidConfiguration` is the one type to catch: `UnknownConfigurationKey`
+for the key half, which is what callers have been catching since keys were checked,
+and `InvalidConfigurationValue` for the rest. Both extend it, and both extend
+`Exception\InvalidInput`.
+
+Only the `options:` and `styles:` sub-keys are checked. The rest of the block is
+metadata — `title`, `author`, `theme`, `template_file` — which is open-ended by
+nature and would fail every deck that carries one.
+
+The check is *not* in `Options::fromArray()` or `Styles::withAll()`, which keep
+discarding what they do not know and casting what they are handed: a config file has
+been allowed to carry entries for something else, and loose values, for a long time,
+and changing that would break callers. For a configuration built in code, ask
+explicitly:
+
+```php
+use MarkdownWord\Configuration\Validator;
+
+Validator::problems($config->toArray());   // a list of messages
+Validator::assertValid($config->toArray()); // throws, listing all of them
+```
+
+#### Images
+
+An image is resolved against `imageBasePath`, embedded, and scaled to
+`imageMaxWidth` when it is wider than that — the option is a maximum, so a small
+picture is not enlarged to reach it. `0` disables the scaling.
+
+**A format Word cannot embed is converted, and never quietly.** Word has no support
+for WebP and PHPWord has never added any, so a `.webp` is decoded with GD and written
+into the document as PNG. Failing on a format every browser has supported for years
+seemed worse than a bigger file; but a PNG of a photograph is several times the size
+of the WebP it came from and the picture is a re-encoding rather than the original
+bytes, so it is reported:
+
+```sh
+mdword: converted assets/hero.webp (image/webp) to PNG for embedding
+```
+
+```php
+$converter = new MarkdownToWord($markdown, $config);
+$converter->save($path);
+$converter->pendingImageConversions();
+// [['source' => '…/hero.webp', 'format' => 'image/webp', 'embeddedAs' => 'PNG']]
+```
+
+**An SVG is embedded as a vector, not flattened into a picture.** Word has held SVG
+since 2016 and holds it the only way it ever can: a raster beside the vector, with the
+vector referenced from an extension on the same picture element.
+
+```
+<a:blip r:embed="rId7">
+  <a:extLst>
+    <a:ext uri="{96DAC541-7B7A-43D3-8B79-37D633B846F1}">
+      <asvg:svgBlip r:embed="rId8"/>
+    </a:ext>
+  </a:extLst>
+</a:blip>
+```
+
+`rId7` is the PNG, `rId8` is the SVG, and both are in `word/media/`. A 2016-or-later
+Word scales the vector like one; an older one draws the raster. The raster is not
+optional in the sense of "used only if nothing better is available" — **every** reader
+draws it unless it knows to prefer the vector, and a picture carrying the `svgBlip`
+with no raster behind it renders *nothing at all*. So an SVG has to be rasterised on
+the way in.
+
+That needs `ext-imagick`, which is **optional**. Where it is absent, an SVG raises
+and says so:
+
+```
+Cannot embed "assets/diagram.svg": Word can hold an SVG, but only beside a raster of
+it, so an SVG needs rasterising before it can go in — and this PHP has no SVG
+rasteriser, and without one there is no picture to put beside the vector. Install
+ext-imagick, or convert the file to PNG yourself.
+```
+
+The reason is the rasteriser, not the format. An earlier version of this message said
+SVG "is not a format this library can put into a Word document", which was false and
+sent a reader to check something that was never wrong.
+
+Two things are worth knowing about the mechanics. PHPWord writes images as VML, which
+has nowhere to hang an extension on, so a picture with a vector is rewritten as
+DrawingML — the form Word writes today — while every other image keeps PHPWord's
+markup untouched. And the picture is sized from the SVG's own dimensions rather than
+from the raster's, because PHPWord reads an image's pixels as points and the raster is
+the SVG at 96dpi: a 480-unit diagram would otherwise be laid out a third too large.
+
+**A file that is there and cannot be used at all is refused.** A truncated download, a
+format this build has no decoder for: `Exception\UnsupportedImageFormat`, naming the
+file, what it is, and what can be done about it. The alternative is a document that
+looks finished with the picture missing and its alt text where the picture was.
+`images: placeholder` and `images: skip` never attempt an embed, so they never meet
+one.
+
+**A file that is not there, and a URL that is remote, still fall back to the alt
+text.** Nothing is wrong with the document in those cases: the library has no HTTP
+client and will not invent a download.
+
 ### Styles
 
 Each slot holds a styleId, an inline style array, or `null`.
@@ -549,9 +795,16 @@ Each slot holds a styleId, an inline style array, or `null`.
 | `linkFont` | blue, underlined | hyperlink text |
 | `bulletList` | `MarkdownWord-Bullet` | bullet numbering style name |
 | `orderedList` | `MarkdownWord-Ordered` | ordered numbering style name |
-| `table` | `null` | table style name |
-| `tableHeaderRow` | `null` | header row style |
-| `tableCell` | `null` | cell style |
+| `table` | `null` | table style name, or an array of table properties |
+| `tableHeaderRow` | `null` | header row properties |
+| `tableCell` | `null` | cell properties, and the font inside them |
+
+> **The three table slots are not font and paragraph slots.** A heading's array is
+> split between a `Font` and a `Paragraph`; `table` is a `Table`, `tableCell` a
+> `Cell` and `tableHeaderRow` a `Row`, and each has names the others do not have.
+> `borderColor` and `cellMargin` are table properties; `vAlign` is a cell one; a
+> row has three properties and no appearance at all, so `tableHeaderRow` can repeat
+> the header or stop it splitting across a page but cannot shade it.
 
 > **StyleIds, not display names.** Word looks a style up by its *identifier*, so
 > the built-in headings are `Heading1`, not `Heading 1`, and `IntenseQuote`, not
@@ -584,7 +837,7 @@ below the first with the first, since there is no other heading style to give.
 | `html` | `strip` | how raw HTML is handled: `strip` rebuilds it as Word, `preserve` shows it as monospaced text, `drop` discards it |
 | `images` | `embed` | `embed`, `placeholder`, `skip` |
 | `imageBasePath` | `null` | directory relative image paths resolve against |
-| `imageMaxWidth` | `15.0` | centimetres; `0` disables scaling |
+| `imageMaxWidth` | `15.0` | centimetres, as a maximum; `0` disables scaling |
 | `maxHeadingLevel` | `6` | deeper headings become paragraphs |
 | `orderedListFormat` | `decimal` | any OOXML `w:numFmt`, e.g. `lowerRoman` |
 | `orderedListSuffix` | `tab` | `tab`, `space`, `nothing` |
@@ -682,6 +935,14 @@ nothing at all if the writer pass never runs.
 
 PHP 8.2+ with `ext-zip`, `ext-dom`, `ext-mbstring` and `ext-gd`.
 
+`ext-imagick` is optional and enables [SVG](#images). Word holds an SVG only beside a
+raster of it, so something has to draw the raster; without the extension an SVG raises
+rather than going in silently flattened.
+
+`symfony/yaml` is a requirement rather than a suggestion. It is what reads the
+[frontmatter](#frontmatter) block, and it is bundled into the phar, so there is
+nothing extra to install either way.
+
 Working on the library needs PHP 8.4+, because Pest 5 does. That is a floor for
 the *test suite* only: the published package installs on 8.2, and the library is
 checked on 8.2 by the `minimum` job, which runs `smoke.php` and `stress.php`
@@ -748,11 +1009,26 @@ php smoke.php build/mdword.phar
   reporting off. Embedding the library in an application leaves it visible.
 - **Hyperlinks around images** are rendered as the image without the link.
   PHPWord's `Link` element holds only a string, so there is nowhere to put it.
+- **An image in a format Word cannot embed is re-encoded as PNG.** PHPWord takes
+  JPEG, GIF, PNG, BMP and TIFF and refuses the rest, so a `.webp` is decoded with GD
+  on the way in — losslessly for the pixels, and several times larger for the file.
+  It is never done quietly: `pendingImageConversions()` has it afterwards and
+  `mdword` prints a line.
 - **Image alt text and link titles are written by a pass over the finished
   file.** PHPWord has nowhere to put either through its API — it emits
   `o:title` as a literal empty string — so they are filled in while the archive
   is written. That is the same reason links whose label carries emphasis are
   resolved then rather than by PHPWord's own `Link` element.
+- **A picture that carries an SVG is rewritten from VML to DrawingML.** PHPWord
+  writes images as `w:pict`/`v:imagedata`, and VML has no extension list, so
+  `svgBlip` would have nowhere to go. Only pictures that have a vector are
+  touched; every other image keeps the markup PHPWord wrote. The description
+  crosses with it, from `o:title` to `wp:docPr/@descr`, because moving between
+  the two without carrying it would delete the alt text.
+- **SVG needs `ext-imagick`, which is optional.** Word holds a vector only
+  beside a raster of it and draws nothing at all without one, so something has to
+  produce the raster. Without the extension an SVG raises and names the
+  rasteriser as the reason, rather than going in flattened.
 - **A document in memory is written to the system temp directory to be read
   back**, because `ext-zip` only opens files. It is removed once the archive is
   closed. The library does not write anywhere near its own install directory, so
@@ -787,7 +1063,7 @@ LGPL-3.0.
 
 [commonmark]: https://github.com/thephpleague/commonmark
 [issues]: https://github.com/markdown-office/markdown-word/issues
-[sonarcloud]: https://sonarcloud.io/summary/new_code?id=fabeat_markdown-word
+[sonarcloud]: https://sonarcloud.io/summary/new_code?id=markdown-office_markdown-word
 [sonar-token]: https://sonarcloud.io/account/security
 [pest]: https://pestphp.com
 [phpword]: https://github.com/PHPOffice/PHPWord

@@ -4,6 +4,131 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Frontmatter configures the conversion.** The YAML block at the top of a
+  document is read as configuration rather than discarded. `options:` and
+  `styles:` mean what they mean in a config file; `template_file` and
+  `theme_file` are read as data, because neither means anything to a Word
+  conversion and both would otherwise become option keys nothing looks at.
+  `Document\Frontmatter` reads the block off a parsed document.
+- **`Document\ConfigurationMerger`** resolves four sources — command line,
+  frontmatter, config file, defaults — each outranking the one below it. A source
+  that says nothing is skipped rather than read as "reset everything".
+- **`Configuration::withAll()`** merges a batch over an existing configuration,
+  reading a missing key as "not mentioned" the way `Options::withAll()` already
+  did. Merging preserves what the batch did not mention; a batch naming only
+  `options` leaves the styles alone, and the other way round.
+- **Values are checked, not only keys.** `Configuration\Validator` reports a value
+  that is not what it is used as, with the value itself, what would have worked,
+  and the line it is on. `maxHeadingLevel: deep` is cast to 0, the clamp turns 0
+  into 1, and the document came out with every heading in it rendered as body
+  text; `color: "#8B0000"` reached `w:color` with a `#` in it, which is not a
+  colour there, and Word ignored it; a quoted `false` for a boolean option became
+  `true`.
+- **Every problem in a block says where it is.** `Frontmatter::lineOf()` answers
+  the file line for `options/images` or `styles/heading.1/color`, and every
+  message is prefixed with it. Multi-problem reporting still holds: keys, values
+  and a block that is not a mapping all arrive together.
+- **`Exception\InvalidConfiguration`** is the one type to catch, with
+  `Exception\UnknownConfigurationKey` for the key half — what callers have been
+  catching since keys were checked — and `Exception\InvalidConfigurationValue`
+  for the rest.
+- **A `.webp` is embedded rather than dropped.** Word has no support for it and
+  PHPWord has never added any, so it is decoded with GD and written into the
+  document as PNG. `MarkdownToWord::pendingImageConversions()` reports each one
+  and `mdword` prints a line on standard error, because the file that comes out
+  is several times larger than the one that went in.
+- **An SVG is embedded as a vector, not flattened into a picture.** Word has held
+  SVG since 2016 and holds it the only way it ever can: a raster beside the vector,
+  with the vector referenced from an extension on the same picture. A picture
+  carrying that extension and no raster renders nothing at all, so an SVG is
+  rasterised with `ext-imagick` and both parts go in. A 2016-or-later reader
+  scales it like a vector; an older one draws the raster, which is why it is
+  there. `ext-imagick` is optional and detected at runtime — without it an SVG
+  raises and says so, rather than going in silently flattened.
+- **`.svgz` is unpacked** rather than written into the archive still compressed,
+  which would leave a part named `.svg` that no reader could take a vector from.
+- **A file named `.svg` that holds no SVG is reported as an unreadable file**
+  rather than as an unsupported image format. The two send a reader to opposite
+  conclusions: one is a bad file, the other a claim about SVG that Word has not
+  been true of since 2016.
+- **`Exception\UnsupportedImageFormat`**, raised for a file that is on disk and
+  in a format neither Word nor this build of GD can take: an SVG, a truncated
+  download. The message names the file, the format and what Word does accept.
+  `images: placeholder` and `images: skip` never attempt an embed, so they never
+  meet one.
+- **`Application::parser()`** and the command line read frontmatter, so a
+  document that carries its own configuration gets it from a terminal as well as
+  from code.
+- **`MarkdownToWord::pendingImageConversions()`** and
+  `Application::reportImageConversions()`.
+
+### Fixed
+
+- **`CommonMarkParser::withAllExtensions()` threw on any document with
+  frontmatter.** The method registers `FrontMatterExtension`, which needs a YAML
+  parser, but `symfony/yaml` was only a `suggest`. So the one document shape
+  anyone would reach for that method to handle raised
+  `MissingDependencyException`. `symfony/yaml` is a `require` now, and is
+  bundled into the phar.
+- **`imageMaxWidth` did nothing.** The width was written as `'8cm'`, and
+  `PhpOffice\PhpWord\Style\Frame::setWidth()` puts its argument through
+  `setNumericVal()`, which keeps a number and discards anything else — so both
+  dimensions went unset and every image came out at its own size, however wide
+  the option said it could be. The cap is now a number of points, and it is a
+  *maximum*: an image already narrower than it keeps its own size rather than
+  being enlarged to reach it.
+- **A `.webp` was silently replaced by its alt text.** PHPWord refused the
+  format, `ImageResolver` caught the throwable and fell back, and the document
+  came out looking finished with the picture simply missing.
+- **A frontmatter block that was not a mapping raised a `TypeError`.** `---`
+  followed by a scalar reached `array_key_exists()` with a string and died with a
+  stack trace in it; a list was ignored without a word.
+- **The command line could not set the top of the precedence order.**
+  `ToDocx` folded `--images`, `--image-base` and `--table-width` into the
+  configuration file's own layer, so a `tableWidth:` in a document's block
+  outranked a flag typed beside it. The flags now sit where the documented order
+  says they do, and `--plain` goes with them. The `imageBasePath` the command
+  line infers from where the file sits is a default and still loses to the block.
+- **`MarkdownToWord`'s `$overrides` argument** pinned every default to the top of
+  the order when given a `Configuration`, because `toArray()` names every
+  setting. It takes an array as well, which is sparse; the array is what the
+  command line and `MarkdownTemplate` pass.
+- **The reason given for an unusable SVG was wrong.** It read "image/svg+xml is
+  not a format this library can put into a Word document. Word takes JPEG, PNG,
+  GIF, BMP and TIFF", which is false: Word has taken SVG since 2016. The real
+  reason was that this build had no rasteriser for the fallback PNG. The message
+  named the wrong thing, and a reader sent to check whether SVG is a Word format
+  would find it is.
+- **A style property was accepted and then dropped.** `Styles::FONT_KEYS` and
+  `PARAGRAPH_KEYS` are the property names of a font and a paragraph style, and
+  the validator applied them to every slot: `borderColor` on a `table` and
+  `tblHeader` on a header row were both rejected, and `shading` on a header row
+  was accepted and dropped by PHPWord's `RowStyle`, which has no `setShading()`.
+  Each slot is now checked against the class it is handed.
+
+### Changed
+
+- **`symfony/yaml` is no longer suggested.** It is required. A partial YAML
+  parser would be a worse answer for configuration that a person or a language
+  model writes.
+- **`mdword` reads frontmatter.** A leading `---` in a document converted from a
+  terminal is configuration; on the default parser it was a thematic break and
+  the rest of the block arrived as paragraphs of text at the top of the document.
+- **An image that is in hand and unusable raises instead of falling back.** A
+  missing file and a remote URL still fall back to the alt text — nothing is
+  wrong with the document in those cases — but a file that is there and cannot be
+  put into a Word document now stops the conversion.
+- **A document-level problem is reported as itself.** `Exception\InvalidInput`
+  and everything under it is printed by `mdword` as its message, without the
+  class name and the line in this repository that a genuine defect gets.
+- **`14-round-trip.md` is `18-round-trip.md`** in `examples/out`, so that one
+  number in the examples is not both a source and a result. `15`, `16` and `17`
+  are the image and table examples.
+
 ## [0.1.1] - 2026-10-08
 
 Tables come out wrong in Microsoft Word.

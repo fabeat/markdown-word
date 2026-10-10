@@ -106,14 +106,14 @@ final class StyleRegistrar
         // that does not exist, so the keys are the property names PHPWord's Font
         // style has — `italic`, not `italics`.
         $font = [];
-        foreach (['name', 'size', 'color', 'bold', 'italic', 'strikethrough', 'underline'] as $key) {
+        foreach (Styles::FONT_KEYS as $key) {
             if (array_key_exists($key, $definition)) {
                 $font[$key] = $definition[$key];
             }
         }
 
         $paragraph = new Paragraph();
-        foreach (['indentation', 'space', 'shading', 'keepNext', 'alignment'] as $key) {
+        foreach (Styles::PARAGRAPH_KEYS as $key) {
             if (!array_key_exists($key, $definition)) {
                 continue;
             }

@@ -4,14 +4,17 @@ declare(strict_types=1);
 
 namespace MarkdownWord\Console;
 
+use League\CommonMark\Extension\FrontMatter\FrontMatterExtension;
 use MarkdownWord\Configuration;
 use MarkdownWord\Converter;
 use MarkdownWord\Console\CommandLine;
 use MarkdownWord\Console\Command\Command;
 use MarkdownWord\Console\Command\ToDocx;
 use MarkdownWord\Console\Command\ToMarkdown;
+use MarkdownWord\Exception\InvalidInput;
 use MarkdownWord\Input;
 use MarkdownWord\MarkdownToWord;
+use MarkdownWord\Parser\CommonMarkParser;
 use MarkdownWord\Reverse\Options as ReverseOptions;
 use MarkdownWord\Template\MarkdownTemplate;
 use MarkdownWord\WordToMarkdown;
@@ -118,6 +121,14 @@ final class Application
             foreach ($e->hints() as $hint) {
                 $this->error('  ' . $hint);
             }
+
+            return self::FAILURE;
+        } catch (InvalidInput $e) {
+            // A problem with what the caller handed in — a key in a frontmatter
+            // block that names nothing, an image that is in hand and unusable.
+            // Their message is written for a person reading it, and has no hint
+            // block to go with, so it is printed as it stands.
+            $this->error($e->getMessage());
 
             return self::FAILURE;
         } catch (Throwable $e) {
@@ -560,12 +571,39 @@ final class Application
     }
 
     /**
+     * The dialect the command line reads Markdown with.
+ *
+     * Frontmatter is on here and not in the library's default parser, and that is
+     * the difference between a document that carries its own configuration and one
+     * that does not: without the extension a leading `---` is a thematic break and
+     * the rest of the block arrives as paragraphs of text at the top of the document.
+     *
+     * It is on because the precedence the README gives has a row for the frontmatter
+     * sitting below the command line, and that row means nothing from a terminal
+     * unless the terminal reads the block at all.
+     */
+    public static function parser(): CommonMarkParser
+    {
+        return new CommonMarkParser([...CommonMarkParser::FLAVOURS['gfm'], FrontMatterExtension::class]);
+    }
+
+    /**
      * Typed as the interface rather than the class, so a caller holding one of the
      * two directions cannot tell them apart by accident.
+     *
+     * `$overrides` is what the command line itself said, and it sits *above* the
+     * frontmatter rather than with the configuration the file names — see
+     * {@see \MarkdownWord\Document\ConfigurationMerger} for the order. It is a
+     * separate argument rather than merged into `$config` because the two are
+     * different claims: the configuration is the base a document is rendered from,
+     * and an override is one that outranks what the document says about itself.
      */
-    public function converter(Configuration $config, ?string $source = null): Converter
-    {
-        return new MarkdownToWord($source, $config);
+    public function converter(
+        Configuration $config,
+        ?string $source = null,
+        Configuration|array|null $overrides = null,
+    ): Converter {
+        return new MarkdownToWord($source, $config, self::parser(), $overrides);
     }
 
     /**
@@ -578,9 +616,36 @@ final class Application
         return new WordToMarkdown($source, $options);
     }
 
-    public function template(string $path, Configuration $config, array $values): MarkdownTemplate
+    public function template(string $path, Configuration $config, array $values, Configuration|array|null $overrides = null): MarkdownTemplate
     {
-        return new MarkdownTemplate($path, $config, $values);
+        return new MarkdownTemplate($path, $config, $values, self::parser(), $overrides);
+    }
+
+    /**
+     * Say what had to be decoded on the way into the document.
+     *
+     * A `.webp` is embedded rather than dropped, but it is re-encoded on the way in
+     * and a PNG of a photograph is several times the size of the WebP it came from.
+     * That is a trade the run made on the reader's behalf, so it goes to standard
+     * error with the rest of the progress rather than into the document.
+     *
+     * Typed as the interface, because {@see self::reader()} returns one too and only
+     * the Markdown direction has images to convert.
+     */
+    public function reportImageConversions(Converter $converter): void
+    {
+        if (!$converter instanceof MarkdownToWord) {
+            return;
+        }
+
+        foreach ($converter->pendingImageConversions() as $conversion) {
+            $this->progress(sprintf(
+                'converted %s (%s) to %s for embedding',
+                $conversion['source'],
+                $conversion['format'],
+                $conversion['embeddedAs'],
+            ));
+        }
     }
 
     /**

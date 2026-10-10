@@ -34,19 +34,25 @@ final class ToDocx extends BaseCommand
         $markdown = $this->application->readInput($input);
         $output = $this->outputPath($command, '.docx');
 
-        $config = $this->application->configuration(
+        // Two layers, and the difference is the whole point. `$settings` is the base
+        // the document is rendered from, with anything the run inferred folded in; the
+        // flags are what was *typed*, and they sit above the frontmatter so that
+        // `--table-width` beats a `tableWidth:` in the document itself.
+        $settings = $this->application->configuration(
             $command->value('config'),
             $this->overrides($command, $input),
             $command->flag('plain'),
         );
 
+        $overrides = $this->typedConfiguration($command);
+
         $template = $command->value('template');
 
         if ($template === null) {
             $this->rejectWithoutTemplate($command);
-            $this->convert($config, $markdown, $input, $output);
+            $this->convert($settings, $markdown, $input, $output, $overrides);
         } else {
-            $this->intoTemplate($markdown, $template, $command, $config, $input, $output);
+            $this->intoTemplate($markdown, $template, $command, $settings, $input, $output, $overrides);
         }
 
         $this->report($input, $output);
@@ -62,19 +68,24 @@ final class ToDocx extends BaseCommand
      * bytes away and build a second converter to do it all again, on the one path
      * the usage text advertises for `| pbcopy`.
      */
-    private function convert(Configuration $config, string $markdown, ?string $input, string $output): void
-    {
+    private function convert(
+        Configuration $config,
+        string $markdown,
+        ?string $input,
+        string $output,
+        ?array $overrides,
+    ): void {
         $this->guardAgainstOverwrite($input, $output);
 
-        $converter = $this->application->converter($config, $markdown);
+        $converter = $this->application->converter($config, $markdown, $overrides);
 
         if ($output === '-') {
             $this->application->writeResult($output, $converter->convert());
-
-            return;
+        } else {
+            $converter->convert($output);
         }
 
-        $converter->convert($output);
+        $this->application->reportImageConversions($converter);
     }
 
     protected static function other(): string
@@ -88,9 +99,53 @@ final class ToDocx extends BaseCommand
     }
 
     /**
+     * The typed flags as the layer that outranks the frontmatter, or null when the
+     * run typed none.
+     *
+     * Null rather than an empty configuration, because a {@see Configuration} names
+     * every setting there is: handed to the merger it would put all of them, defaults
+     * included, above the frontmatter and undo the very layering it is for. An array
+     * is sparse, so a flag nobody typed leaves the document's own setting standing.
+     *
+     * @return array{styles?: array<string, mixed>, options?: array<string, mixed>}|null
+     */
+    private function typedConfiguration(CommandLine $command): ?array
+    {
+        $options = $this->typed($command);
+        $plain = $command->flag('plain') ? self::plain() : [];
+
+        if ($options === [] && $plain === []) {
+            return null;
+        }
+
+        $typed = ['options' => $options];
+
+        foreach ($plain as $section => $values) {
+            $typed[$section] = [...($typed[$section] ?? []), ...$values];
+        }
+
+        return $typed;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function overrides(CommandLine $command, ?string $input): array
+    {
+        return [...$this->typed($command), ...$this->inferred($command, $input)];
+    }
+
+    /**
+     * What the run's own flags say, and nothing else.
+     *
+     * These are the only settings that outrank the frontmatter, because they are the
+     * only ones a person typed: `--table-width 3000` is them saying it louder than
+     * the `tableWidth:` in the document. {@see self::inferred()} is the other half —
+     * values the run worked out for itself, which are defaults and must lose.
+     *
+     * @return array<string, mixed>
+     */
+    private function typed(CommandLine $command): array
     {
         $overrides = [];
 
@@ -100,13 +155,8 @@ final class ToDocx extends BaseCommand
             $overrides['images'] = self::imageMode((string) $command->value('images'));
         }
 
-        // A relative image path in a file means "next to the file", as a Markdown
-        // renderer in an editor would treat it. Standard input has no such
-        // anchor, and there the working directory is the only thing to go on.
-        $base = $command->value('image-base') ?? Application::directoryOf($input) ?? getcwd();
-
-        if (is_string($base) && $base !== '') {
-            $overrides['imageBasePath'] = $base;
+        if ($command->value('image-base') !== null) {
+            $overrides['imageBasePath'] = (string) $command->value('image-base');
         }
 
         if ($command->value('table-width') !== null) {
@@ -114,6 +164,51 @@ final class ToDocx extends BaseCommand
         }
 
         return $overrides;
+    }
+
+    /**
+     * What the run decided without being asked.
+     *
+     * @return array<string, mixed>
+     */
+    private function inferred(CommandLine $command, ?string $input): array
+    {
+        if ($command->value('image-base') !== null) {
+            return [];
+        }
+
+        // A relative image path in a file means "next to the file", as a Markdown
+        // renderer in an editor would treat it. Standard input has no such anchor,
+        // and there the working directory is the only thing to go on.
+        $base = Application::directoryOf($input) ?? getcwd();
+
+        return is_string($base) && $base !== '' ? ['imageBasePath' => $base] : [];
+    }
+
+    /**
+     * `--plain`, as the settings it switches off.
+     *
+     * Read off {@see Configuration::withoutDecoration()} rather than written out
+     * again, so the flag and the method it stands for cannot drift apart: the keys
+     * are the ones whose value differs from the default.
+     *
+     * @return array{styles?: array<string, mixed>, options?: array<string, mixed>}
+     */
+    private static function plain(): array
+    {
+        $default = Configuration::create()->toArray();
+        $plain = Configuration::create()->withoutDecoration()->toArray();
+        $off = [];
+
+        foreach (['styles', 'options'] as $section) {
+            foreach ($plain[$section] as $key => $value) {
+                if ($value !== $default[$section][$key]) {
+                    $off[$section][$key] = $value;
+                }
+            }
+        }
+
+        return $off;
     }
 
     private static function imageMode(string $mode): string
@@ -170,6 +265,7 @@ final class ToDocx extends BaseCommand
         Configuration $config,
         ?string $input,
         string $output,
+        ?array $overrides,
     ): void {
         $values = [];
 
@@ -182,7 +278,7 @@ final class ToDocx extends BaseCommand
 
         self::assertRegionExists($path, $region);
 
-        $template = $this->application->template($path, $config, $values);
+        $template = $this->application->template($path, $config, $values, $overrides);
         $template->insert($region, $markdown);
 
         // The second guard: filling the region is the slow part of a run.

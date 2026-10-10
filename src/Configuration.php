@@ -57,6 +57,26 @@ final class Configuration
         );
     }
 
+    /**
+     * Merge a batch of configuration over this one.
+     *
+     * Both sub-objects are merged rather than replaced, and the merge reads a missing
+     * key as "not mentioned" rather than as "reset". {@see Options::withAll()} is the
+     * one that decides what a `null` means, and it reads it as "not mentioned" for the
+     * same reason this does: the caller named a key and gave it no value, so reverting
+     * it would change something they never mentioned. A `null` for a slot or an option
+     * that accepts one is a value, and clears it.
+     *
+     * @param array{styles?: array<string, mixed>, options?: array<string, mixed>} $config
+     */
+    public function withAll(array $config): self
+    {
+        return new self(
+            isset($config['styles']) ? $this->styles->withAll($config['styles']) : $this->styles,
+            isset($config['options']) ? $this->options->withAll($config['options']) : $this->options,
+        );
+    }
+
     public function withBuiltInHeadingStyles(): self
     {
         $headings = [];

@@ -89,6 +89,7 @@ it('does not claim again what the code does not do', function (string $claim) {
     'a link wrapping a bare image is marked by a flag nothing read' => 'imageLabel',
     'the version is written down in only one place' => 'The one place the version is written down',
     'shipping the lock file makes an install reproducible' => 'a reproducible install is worth',
+    'one list of style keys covers every slot' => 'The keys a style slot\'s array form understands',
 ]);
 
 it('has no decorative dividers in it', function () {
